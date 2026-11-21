@@ -25,10 +25,10 @@ await page.clock.pauseAt(new Date('2026-11-02T12:00:01Z'));
 const errors = []; page.on('pageerror', error => errors.push(error.message));
 const publish = input => page.evaluate(input => window.publishAnnouncements(input), { enabled: true, mode: 'live', ...input });
 const active = value => page.locator(`#announcement-state[data-active="${value}"]`).waitFor({ state: 'attached' });
-const finishTimed = async (duration, transition = 550) => {
-  await page.clock.runFor(duration - 200 / (duration === 1500 && transition === 275 ? 2 : 1));
+const finishTimed = async (reading, rate = 1) => {
+  await page.clock.runFor(reading / rate);
   await page.locator('.match-splash-shade[data-exiting=true]').waitFor({ state: 'attached' });
-  await page.clock.runFor(transition);
+  await page.clock.runFor(550 / rate);
   await active(false);
 };
 const splash = kind => page.locator(`.match-splash-${kind}`);
@@ -153,14 +153,52 @@ try {
     await page.clock.runFor(150);
     await advance([longTurnover], { mode: 'replay', speed: speed === 4 ? 1 : 4 });
     assert.equal(await shade.evaluate(node => node.style.getPropertyValue('--splash-rate')), String(speed));
-    await page.clock.runFor(1800 / speed - 151);
+    await page.clock.runFor(3000 / speed - 151);
     assert.equal(await shade.getAttribute('data-exiting'), 'false', 'Changing speed does not restart the current card timer');
     await page.clock.runFor(1);
     await page.locator('.match-splash-shade[data-exiting=true]').waitFor({ state: 'attached' });
     await page.clock.runFor(550 / speed); await active(false);
   }
 
-  // Holding never prevents a mandatory response from becoming available.
+  const score = () => page.locator('#announcement-state').evaluate(node =>
+    [Number(node.dataset.homeScore), Number(node.dataset.awayScore)]);
+  const baselineScore = [start.state.homeScore, start.state.awayScore];
+  for (const scoringTeam of ['home', 'away']) {
+    await reset();
+    const next = record(1, [event('turnStart'), event('touchdown', scoringTeam)]);
+    next.state[`${scoringTeam}Score`] += 1;
+    await publish({ view: next.state, records: [start, next] });
+    await splash('turnStart').waitFor();
+    await splash('turnStart').evaluate(node => {
+      node.addEventListener('animationend', event => event.stopPropagation());
+    });
+    assert.deepEqual(await score(), baselineScore, 'A queued touchdown keeps the old score under START OF TURN');
+    await page.clock.runFor(1499);
+    assert.equal(await shade.getAttribute('data-exiting'), 'false');
+    await page.clock.runFor(1);
+    await page.locator('.match-splash-shade[data-exiting=true]').waitFor({ state: 'attached' });
+    await page.clock.runFor(324);
+    assert.deepEqual(await score(), baselineScore, 'The old score survives the reading, fade and chained gap');
+    await page.clock.runFor(1);
+    await splash('touchdown').waitFor();
+    assert.deepEqual(await score(), [next.state.homeScore, next.state.awayScore], 'TOUCHDOWN reveals the score');
+    await finishTimed(3000);
+  }
+  for (const recovery of ['reconnect', 'seek']) {
+    await reset();
+    const next = record(1, [event('turnStart'), event('touchdown')]);
+    next.state.homeScore += 1;
+    await publish({ view: next.state, records: [start, next] });
+    await splash('turnStart').waitFor();
+    assert.deepEqual(await score(), baselineScore);
+    await publish({ view: next.state, records: [start, next],
+      ...(recovery === 'reconnect' ? { enabled: false } : { mode: 'replay', snapshotKey: 100 }) });
+    await active(false);
+    assert.deepEqual(await score(), [next.state.homeScore, next.state.awayScore], `${recovery} immediately shows the authoritative score`);
+    assert.equal(await page.locator('.match-splash').count(), 0);
+  }
+
+  // A held scoring splash keeps a same-update next-drive prompt closed.
   await setHold(true);
   await reset();
   const scored = record(1, [{ ...event('touchdown'), scorer: { name: 'Lineman2', number: 8 }, reason: 'Skill-Test Humans 1 1 – 0 Bogruk\'s Almost Best' }]);
@@ -176,32 +214,25 @@ try {
   await publish({ view: { ...scored.state }, records: [start, scored] });
   await page.clock.runFor(10000);
   assert.equal(await splash('touchdown').count(), 1, 'Held scoring announcement survives same-revision next-drive prompt refresh');
+  assert.equal(await page.locator('#required-choice').count(), 0);
   await page.keyboard.press('Escape'); await page.clock.runFor(550); await active(false);
+  await page.locator('#required-choice').waitFor();
   await reset(); await advance([event('turnover')]); await splash('turnover').waitFor();
   await page.clock.runFor(10000); await splash('turnover').waitFor();
   await page.getByRole('button', { name: 'Dismiss announcement' }).waitFor();
   await finishShadeEntrance();
   const choice = { ...state(2), actions: [{ id: 'reroll', kind: 'reroll', label: 'Reroll', actor: 'home' }] };
-  await publish({ view: choice, records: [start, record(1, [event('turnover')]), record(2)] });
+  const held = record(1, [event('turnover')]);
+  await publish({ view: choice, records: [start, held] });
+  await page.clock.runFor(1000);
+  await splash('turnover').waitFor();
+  assert.equal(await page.locator('#required-choice').count(), 0, 'Missing choice transcript cannot cancel a held splash');
+  await publish({ view: choice, records: [start, held, record(2)] });
+  await page.locator('#announcement-state[data-revision="2"]').waitFor({ state: 'attached' });
+  assert.equal(await page.locator('#required-choice').count(), 0);
+  await splash('turnover').waitFor();
+  await page.keyboard.press('Escape'); await page.clock.runFor(550);
   await page.locator('#required-choice').waitFor(); await active(false);
-  assert.equal(await splash('turnover').evaluate(node => node.getAnimations().some(animation => animation.animationName === 'match-splash-exit')), true,
-    'A required choice keeps the card mounted for its exit');
-  assert.deepEqual(await shade.evaluate(node => [node.dataset.fading, getComputedStyle(node).pointerEvents]), ['true', 'none']);
-  await page.locator('#required-choice').click();
-  const interruptedOpacity = await shade.evaluate(node => {
-    window.interruptedShade = node;
-    const fade = node.getAnimations()[0];
-    fade.pause(); fade.currentTime = 100;
-    return Number(getComputedStyle(node).opacity);
-  });
-  assert.ok(interruptedOpacity > 0 && interruptedOpacity < 1);
-  const afterChoice = record(3, [event('turnStart', 'away')]);
-  await publish({ view: afterChoice.state, records: [start, record(1), record(2), afterChoice] });
-  await splash('turnStart').waitFor();
-  assert.ok(await shade.evaluate((node, opacity) => node === window.interruptedShade && Number(getComputedStyle(node).opacity) >= opacity - 0.01, interruptedOpacity),
-    'The incoming card reuses the shade and reverses its fade from the current opacity');
-  await page.clock.runFor(200);
-  await splash('turnStart').waitFor();
 
   await reset(); await advance([event('turnover')]); await splash('turnover').waitFor();
   assert.equal(await page.getByRole('button', { name: 'Dismiss announcement' }).isVisible(), true, 'Preference survives queue recovery');
@@ -218,7 +249,7 @@ try {
   await active(false); assert.equal(await page.locator('.match-splash').count(), 0, 'Hidden-tab catch-up discards historical events');
 
   await reset(); await advance([event('touchdown')], { mode: 'replay', speed: 2 }); await splash('touchdown').waitFor();
-  await setHold(false); await finishTimed(1500, 275);
+  await setHold(false); await finishTimed(3000, 2);
   await publish({ view: state(2), records: [start, record(1), record(2, [event('turnStart')])], mode: 'replay', snapshotKey: 1 });
   await active(false); assert.equal(await page.locator('.match-splash').count(), 0, 'Adjacent replay seek is also a snapshot');
 
@@ -249,25 +280,25 @@ try {
   }
   const board = () => page.locator('#announcement-state').evaluate(node =>
     [node.dataset.revision, node.dataset.homeScore, node.dataset.turn].map(Number));
-  const beforeTurnover = [0, start.state.homeScore, start.state.turn];
+  const caughtUp = [2, adjacent[2].state.homeScore, adjacent[2].state.turn];
   await publish({ view: adjacent[2].state, records: adjacent });
   await splash('turnover').waitFor();
-  assert.deepEqual(await board(), beforeTurnover);
+  await page.locator('#announcement-state[data-revision="2"]').waitFor({ state: 'attached' });
+  assert.deepEqual(await board(), caughtUp);
   await finishShadeEntrance();
   await shade.evaluate(node => { window.chainedShade = node; });
-  await page.clock.runFor(1800);
+  await page.clock.runFor(3000);
   assert.deepEqual(await splash('turnover').evaluate(node => node.getAnimations()
     .map(animation => animation.animationName)), ['match-splash-dim-out']);
-  assert.deepEqual(await board(), beforeTurnover, 'The completed revision stays queued while its card exits');
+  assert.deepEqual(await board(), caughtUp, 'The board catches up independently of the outgoing card');
   await verifyHeldShade();
   await page.clock.runFor(200);
   await page.locator('.match-splash').waitFor({ state: 'detached' });
-  assert.deepEqual(await board(), beforeTurnover, 'The exit gap still shows the outgoing board');
+  assert.deepEqual(await board(), caughtUp);
   await verifyHeldShade();
   await page.clock.runFor(125);
   await splash('turnStart').waitFor();
-  assert.deepEqual(await board(), [1, adjacent[1].state.homeScore, adjacent[1].state.turn],
-    'The scoreboard and turn advance when the next card starts');
+  assert.deepEqual(await board(), caughtUp);
   assert.deepEqual(await splash('turnStart').evaluate(node => node.getAnimations()
     .map(animation => animation.animationName)), ['match-splash-dim-in']);
   await verifyHeldShade();
@@ -275,7 +306,7 @@ try {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await setHold(true);
 
-  // A card skipped by the actual queue must release the same shade smoothly.
+  // A choice in the same update cannot suppress a queued turn-start.
   await reset();
   const scoringWithChoice = record(1, [event('touchdown')]);
   scoringWithChoice.state.homeScore += 1;
@@ -287,9 +318,11 @@ try {
   await finishShadeEntrance();
   await shade.evaluate(node => { window.chainedShade = node; });
   await page.keyboard.press('Escape');
-  assert.ok(await shade.evaluate(node => node === window.chainedShade && node.dataset.shadeHeld === 'false'
-    && node.getAnimations().some(transition => transition.transitionProperty === 'opacity')),
-    'A suppressed turn-start is not treated as a visible card');
+  await page.clock.runFor(325);
+  await splash('turnStart').waitFor();
+  await verifyHeldShade();
+  assert.equal(await page.locator('#required-choice').count(), 0);
+  await page.keyboard.press('Escape');
   await page.clock.runFor(550);
   await page.locator('#required-choice').waitFor();
   assert.equal(await splash('turnStart').count(), 0);
@@ -325,15 +358,18 @@ try {
   await turnStartSetting.check();
   await page.keyboard.press('Escape');
 
-  // A choice or reconnect arriving in either transition phase cancels its timers.
+  // Choices wait through fade and gap. Reconnect cancels both phases.
   for (const elapsed of [100, 300]) {
     await reset(); await advance([event('turnover'), event('turnStart')]); await splash('turnover').waitFor();
     await page.keyboard.press('Escape'); await page.clock.runFor(elapsed);
     await publish({ view: choice, records: [start, record(1), record(2)] });
+    await active(true);
+    assert.equal(await page.locator('#required-choice').count(), 0);
+    await page.clock.runFor(325 - elapsed);
+    await splash('turnStart').waitFor();
+    await page.keyboard.press('Escape');
+    await page.clock.runFor(550);
     await active(false); await page.locator('#required-choice').waitFor();
-    assert.deepEqual(await shade.evaluate(node => [node.dataset.fading, getComputedStyle(node).pointerEvents]), ['true', 'none']);
-    await page.clock.runFor(1000);
-    assert.equal(await page.locator('.match-splash').count(), 0, 'Choice cancels fade and gap callbacks');
     await reset(); await advance([event('turnover'), event('turnStart')]); await splash('turnover').waitFor();
     await page.keyboard.press('Escape'); await page.clock.runFor(elapsed);
     await publish({ view: state(2), records: [start, record(1), record(2)], enabled: false });
@@ -430,7 +466,7 @@ try {
   await page.getByRole('checkbox', { name: 'Start of turn', exact: true }).check();
   await page.keyboard.press('Escape');
   await page.clock.resume();
-  const output = fileURLToPath(new URL('../../.notes/art-preview/match-announcements/', import.meta.url));
+  const output = process.env.MATCH_ANNOUNCEMENTS_EVIDENCE_DIR ?? fileURLToPath(new URL('../../.notes/art-preview/match-announcements/', import.meta.url));
   mkdirSync(output, { recursive: true });
   for (const width of [1440, 390]) for (const kind of ['turnover', 'touchdown', 'turnStart']) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
@@ -459,5 +495,5 @@ try {
   await page.getByRole('button', { name: 'Dismiss announcement' }).scrollIntoViewIfNeeded();
   await page.getByRole('button', { name: 'Dismiss announcement' }).click(); await page.clock.runFor(550); await active(false);
   assert.deepEqual(errors, []);
-  console.log('PASS match announcements: ordering, duration, dismissal, choice priority, deduplication, catch-up, replay, rapid turns and responsive previews');
+  console.log('PASS match announcements: animation, reading/fade/gap, dismissal, choices after splashes, score timing, catch-up, replay and recovery');
 } finally { await browser.close(); await server.close(); }

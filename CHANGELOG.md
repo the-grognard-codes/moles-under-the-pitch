@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Accelerate live playback bursts from eight queued revisions until caught up, retaining every move and roll while animated splashes play at full length. Required choices wait for queued announcements, including held splashes. Touchdown scores appear with their splash, while seeking and recovery show the current score immediately.
+
 - Retain frozen replay events and transcript records as compact JSON between reads, reducing resident match memory without changing recovery or replay formats.
 
 - Keep active matches resident during result reads and computer inventory checks. Recovery timers back off under pressure and resume when quarantine expires. If a decision exceeds the recovery limit, end the match at its last recorded score.
@@ -28,7 +30,7 @@
 
 - Animate touchdowns, turnovers, turn starts, all 11 kickoff results, weather, half-time, and the end of a match, including concessions. Touchdown splashes name the scorer. Touchdown, half-time, and final splashes show both teams' scores side by side.
 
-- Keep the pitch dimmed between consecutive splashes. Turnovers last two seconds at normal speed, and splash timings scale with replay speed. Game Settings lets you choose which splashes to show or keep them visible until dismissed. Reduced motion replaces the larger movements with fades.
+- Keep the pitch dimmed between consecutive splashes. Turnover and touchdown splashes get three seconds before fading, and turn-start splashes get one and a half seconds. Splash timings scale with replay speed. Game Settings lets you choose which splashes to show or keep them visible until dismissed. Reduced motion replaces the larger movements with fades.
 
 - Clear consumed reroll dialogs for native callers and engine harnesses without configured skill preferences, including the stale Bone Head choice reproduced by the seeded harness. Configured browser sessions already received this cleanup.
 - Repair computer-coach setup when casualties invalidate a saved formation, in normal play and self-play. Bound simulation mock history and diagnostic storage, mark partial training trajectories, and add preview-first cleanup that preserves results and checkpoints.

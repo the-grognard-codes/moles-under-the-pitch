@@ -122,9 +122,10 @@ export function announcementText(event: MatchAnnouncement, surface: 'log' | 'spl
   return `${team}${headline}${detail ? `. ${detail}` : ''}`;
 }
 
-export function announcementDuration(event: MatchAnnouncementEvent, rate: number): number {
+export function announcementReadingDuration(event: MatchAnnouncementEvent, rate: number): number {
+  // Core splashes get their full reading time before exit. Other cards retain their animated timing.
   const milliseconds: Record<MatchAnnouncementEvent['kind'], number> = {
-    turnStart: 1500, turnover: 2000, kickoff: 2500, weather: 2500, touchdown: 3000, halfTime: 3000, fullTime: 4000,
+    turnStart: 1500, turnover: 3000, kickoff: 2300, weather: 2300, touchdown: 3000, halfTime: 2800, fullTime: 3800,
   };
   return milliseconds[event.kind] / rate;
 }
