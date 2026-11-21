@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Retain frozen replay events and transcript records as compact JSON between reads, reducing resident match memory without changing recovery or replay formats.
+
 - Keep active matches resident during result reads and computer inventory checks. Recovery timers back off under pressure and resume when quarantine expires. If a decision exceeds the recovery limit, end the match at its last recorded score.
 
 - Match-memory recovery pauses now cover coach and observer reconnects after OOM; safety tracking never waits on disk, and server size stops have neutral replay attribution.
