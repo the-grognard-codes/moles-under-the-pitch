@@ -28,13 +28,13 @@
     <section class="development-history" id="history" aria-labelledby="history-title">
     <h2 id="history-title">Merged changes</h2>
     <p>One entry per merged pull request. Follow its GitHub link for the implementation and review details.</p>
-    <p class="updates-coverage">202 merged pull requests · Latest merge November 21, 2026 · Newest first</p>
+    <p class="updates-coverage">219 merged pull requests · Latest merge November 21, 2026 · Newest first</p>
     <form id="updates-search" class="updates-tools" action="/development" method="get" hidden>
       <label>Search updates<input type="search" name="q" maxlength="200" placeholder="Topic, feature or PR number" autocomplete="off"></label>
       <label>Category<select name="category"><option value="">All updates</option><option>Gameplay</option><option>Design</option><option>Platform</option><option>Developer tools</option><option>Project notes</option></select></label>
       <div class="updates-tool-actions"><button type="submit">Find updates</button><button type="button" class="updates-clear" data-clear-updates>Clear filters</button></div>
     </form>
-    <p class="updates-status" id="updates-status" role="status">202 merged pull request updates, newest first.</p>
+    <p class="updates-status" id="updates-status" role="status">219 merged pull request updates, newest first.</p>
     <nav class="updates-pagination" aria-label="Updates pages, top" hidden></nav>
     <noscript><p>All updates are shown below. Use your browser's Find command to search the history.</p></noscript>
     <section class="updates-list" id="updates-list" aria-label="Merged pull request updates" tabindex="-1">
@@ -49,6 +49,38 @@
     <article class="panel update-entry" id="pr-559" data-pr="559" data-category="Platform">
       <div class="update-meta"><span class="update-category">Platform</span><time datetime="2026-11-21T13:08:55Z">November 21, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/559" target="_blank" rel="noreferrer">PR #559<span class="update-external" aria-hidden="true"> ↗</span></a></div>
       <h3>Keep oversized matches from exhausting server memory</h3><p>Oversized saved matches are refused before loading. A match that reaches the limit ends at its recorded score and shows coaches why. After confirmed heap exhaustion, recovery pauses for affected matches so other games can continue.</p>
+    </article>
+    <article class="panel update-entry" id="pr-599" data-pr="599" data-category="Developer tools">
+      <div class="update-meta"><span class="update-category">Developer tools</span><time datetime="2026-11-21T04:09:38Z">November 20, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/599" target="_blank" rel="noreferrer">PR #599<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Explore the experimental Training lab</h3><p>The public Training lab lets visitors inspect imported evaluation summaries. Local tools can run computer-coach evaluations, and Bogruk and Gobbo now recover when casualties make a saved setup invalid.</p>
+    </article>
+    <article class="panel update-entry" id="pr-575" data-pr="575" data-category="Gameplay">
+      <div class="update-meta"><span class="update-category">Gameplay</span><time datetime="2026-11-20T05:09:45Z">November 20, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/575" target="_blank" rel="noreferrer">PR #575<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Park computer matches while a coach is away</h3><p>Computer coaches free their worker slot while waiting for a human decision and wake when the match changes. Idle engines are released after 30 minutes. Matches saved by both coaches retain their 30-day resume window.</p>
+    </article>
+    <article class="panel update-entry" id="pr-574" data-pr="574" data-category="Gameplay">
+      <div class="update-meta"><span class="update-category">Gameplay</span><time datetime="2026-11-18T22:51:19Z">November 18, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/574" target="_blank" rel="noreferrer">PR #574<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Stage setups and kickoff placements until confirmation</h3><p>Coaches can see placement adjustments as they happen. Confirming records the final selections and positions in a single match revision.</p>
+    </article>
+    <article class="panel update-entry" id="pr-569" data-pr="569" data-category="Gameplay">
+      <div class="update-meta"><span class="update-category">Gameplay</span><time datetime="2026-11-18T17:03:08Z">November 18, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/569" target="_blank" rel="noreferrer">PR #569<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Animate match event splashes</h3><p>Team-colour splashes announce touchdowns, turnovers, turn starts, kickoff results, weather, half-time, and the end of a match. Scoring cards show both teams beside their scores, and reduced motion uses fades.</p>
+    </article>
+    <article class="panel update-entry" id="pr-564" data-pr="564" data-category="Gameplay">
+      <div class="update-meta"><span class="update-category">Gameplay</span><time datetime="2026-11-17T20:03:24Z">November 17, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/564" target="_blank" rel="noreferrer">PR #564<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Clear stale reroll prompts for computer coaches</h3><p>The native engine now clears an answered reroll prompt even when skill preferences are unset. This fixes a Bone Head loop where the computer kept answering the same prompt.</p>
+    </article>
+    <article class="panel update-entry" id="pr-558" data-pr="558" data-category="Gameplay">
+      <div class="update-meta"><span class="update-category">Gameplay</span><time datetime="2026-11-16T05:20:42Z">November 16, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/558" target="_blank" rel="noreferrer">PR #558<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Fix computer kickoff loops and bound placement adjustments</h3><p>Computer coaches can finish Solid Defence and Charge without repeating an invalid plan. Each kickoff selection or placement stage allows up to 50 adjustments, and coaches can still confirm after correcting an illegal formation.</p>
+    </article>
+    <article class="panel update-entry" id="pr-534" data-pr="534" data-category="Platform">
+      <div class="update-meta"><span class="update-category">Platform</span><time datetime="2026-11-13T15:44:01Z">November 13, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/534" target="_blank" rel="noreferrer">PR #534<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Keep durable matches loadable after persistence deadlines</h3><p>Loading a match rebuilds it from the last durable revision. A refused action checkpoint leaves that revision intact, and a final result can finish saving after the final checkpoint is secure.</p>
+    </article>
+    <article class="panel update-entry" id="pr-533" data-pr="533" data-category="Platform">
+      <div class="update-meta"><span class="update-category">Platform</span><time datetime="2026-11-13T15:33:12Z">November 13, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/533" target="_blank" rel="noreferrer">PR #533<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Recover computer coaches after a persistence failure</h3><p>Computer coaches wait, reload the current revision, and choose again after a failed save. Server diagnostics tie the failure to the match and request.</p>
     </article>
     <article class="panel update-entry" id="pr-529" data-pr="529" data-category="Platform">
       <div class="update-meta"><span class="update-category">Platform</span><time datetime="2026-11-13T04:46:34Z">November 12, 2026</time><a href="https://github.com/the-grognard-codes/fumbbl-rebuild/pull/529" target="_blank" rel="noreferrer">PR #529<span class="update-external" aria-hidden="true"> ↗</span></a></div>
@@ -81,6 +113,30 @@
     <article class="panel update-entry" id="pr-497" data-pr="497" data-category="Gameplay">
       <div class="update-meta"><span class="update-category">Gameplay</span><time datetime="2026-11-08T15:40:57Z">November 8, 2026</time><a href="https://github.com/the-grognard-codes/fumbbl-rebuild/pull/497" target="_blank" rel="noreferrer">PR #497<span class="update-external" aria-hidden="true"> ↗</span></a></div>
       <h3>Reduce gameplay overhead with capture-driven validation</h3><p>Reduced work in gameplay permission checks, recovery parsing, diagnostics and pitch hover updates. Added repeatable performance workloads and matched artifact comparisons while preserving authorization freshness and durable acceptance. Intermittent checkpoint spikes and broader browser stalls remain under investigation.</p>
+    </article>
+    <article class="panel update-entry" id="pr-495" data-pr="495" data-category="Gameplay">
+      <div class="update-meta"><span class="update-category">Gameplay</span><time datetime="2026-11-08T02:12:25Z">November 7, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/495" target="_blank" rel="noreferrer">PR #495<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Reduce idle pitch panning lag</h3><p>Panning an idle pitch does less rendering work. In live play and replay, home and away player cards dock on opposite sides. DEV also gained opt-in performance and network captures.</p>
+    </article>
+    <article class="panel update-entry" id="pr-480" data-pr="480" data-category="Platform">
+      <div class="update-meta"><span class="update-category">Platform</span><time datetime="2026-11-07T06:07:07Z">November 7, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/480" target="_blank" rel="noreferrer">PR #480<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Add Microsoft sign-in and improve sign-in recovery</h3><p>Coaches can use a personal Microsoft account alongside Google and email links. The sign-in pages make errors easier to recover from, and the site has new favicons.</p>
+    </article>
+    <article class="panel update-entry" id="pr-475" data-pr="475" data-category="Design">
+      <div class="update-meta"><span class="update-category">Design</span><time datetime="2026-11-07T03:28:47Z">November 6, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/475" target="_blank" rel="noreferrer">PR #475<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Make sign-in help easier to find</h3><p>Support has topic shortcuts, puts account troubleshooting and contact details ahead of device guidance, and is linked from sign-in and email-link completion.</p>
+    </article>
+    <article class="panel update-entry" id="pr-473" data-pr="473" data-category="Design">
+      <div class="update-meta"><span class="update-category">Design</span><time datetime="2026-11-07T00:24:42Z">November 6, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/473" target="_blank" rel="noreferrer">PR #473<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Give new coaches a clearer path from home to play</h3><p>The home page walks coaches through signing in, saving a team, and choosing an opponent. Development brings the project background and searchable merge history together.</p>
+    </article>
+    <article class="panel update-entry" id="pr-472" data-pr="472" data-category="Design">
+      <div class="update-meta"><span class="update-category">Design</span><time datetime="2026-11-07T00:06:51Z">November 6, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/472" target="_blank" rel="noreferrer">PR #472<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Bring team building into one compact workbench</h3><p>Coaches can open saved teams, recruit players, manage the roster and resources, and finish their team in one workspace. Optional customization stays available when needed.</p>
+    </article>
+    <article class="panel update-entry" id="pr-468" data-pr="468" data-category="Gameplay">
+      <div class="update-meta"><span class="update-category">Gameplay</span><time datetime="2026-11-06T17:38:09Z">November 6, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/468" target="_blank" rel="noreferrer">PR #468<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Save and reuse team deployment formations</h3><p>Each saved team can keep up to three offensive and three defensive formations. Coaches can load those templates during ordinary drive setup.</p>
     </article>
     <article class="panel update-entry" id="pr-463" data-pr="463" data-category="Gameplay">
       <div class="update-meta"><span class="update-category">Gameplay</span><time datetime="2026-11-06T05:00:26Z">November 6, 2026</time><a href="https://github.com/the-grognard-codes/fumbbl-rebuild/pull/463" target="_blank" rel="noreferrer">PR #463<span class="update-external" aria-hidden="true"> ↗</span></a></div>
@@ -125,6 +181,18 @@
     <article class="panel update-entry" id="pr-410" data-pr="410" data-category="Gameplay">
       <div class="update-meta"><span class="update-category">Gameplay</span><time datetime="2026-11-02T15:27:41Z">November 2, 2026</time><a href="https://github.com/the-grognard-codes/fumbbl-rebuild/pull/410" target="_blank" rel="noreferrer">PR #410<span class="update-external" aria-hidden="true"> ↗</span></a></div>
       <h3>Confirm common actions with a doubleclick or double tap</h3><p>Coaches can now confirm planned moves, blocks, blitzes, fouls, teammate passes and handoffs by doubleclicking or double tapping the selected final target. The selection click stays separate from confirmation, and touch input shows a Cancel plan control that hides when mouse or trackpad input resumes.</p>
+    </article>
+    <article class="panel update-entry" id="pr-407" data-pr="407" data-category="Gameplay">
+      <div class="update-meta"><span class="update-category">Gameplay</span><time datetime="2026-11-02T04:17:30Z">November 1, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/407" target="_blank" rel="noreferrer">PR #407<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Fix BB2025 targeting, reactions, and dice presentation</h3><p>Jump Up shows assists and proposed dice, Punt gets dedicated direction targeting, and On the Ball uses a planned three-square move. Block rerolls respect the selected die indices.</p>
+    </article>
+    <article class="panel update-entry" id="pr-391" data-pr="391" data-category="Design">
+      <div class="update-meta"><span class="update-category">Design</span><time datetime="2026-11-01T04:29:19Z">November 1, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/391" target="_blank" rel="noreferrer">PR #391<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Add device guidance and a display-scaling calculator</h3><p>Support explains desktop coaching, landscape tablets, and viewing on phones. The calculator shows how display scaling affects the physical screen space needed to play.</p>
+    </article>
+    <article class="panel update-entry" id="pr-382" data-pr="382" data-category="Platform">
+      <div class="update-meta"><span class="update-category">Platform</span><time datetime="2026-10-30T03:51:22Z">October 29, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/382" target="_blank" rel="noreferrer">PR #382<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Make Browser V2 the standard game client</h3><p>The Java desktop and WebStart clients were retired. Browser V2 became the standard server startup path while keeping the shared native rules engine.</p>
     </article>
     <article class="panel update-entry" id="pr-377" data-pr="377" data-category="Design">
       <div class="update-meta"><span class="update-category">Design</span><time datetime="2026-10-28T05:34:11Z">October 28, 2026</time><a href="https://github.com/the-grognard-codes/fumbbl-rebuild/pull/377" target="_blank" rel="noreferrer">PR #377<span class="update-external" aria-hidden="true"> ↗</span></a></div>

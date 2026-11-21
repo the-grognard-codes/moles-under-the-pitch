@@ -24,6 +24,70 @@
     "mergedAt": "2026-11-21T13:08:55Z"
   },
   {
+    "number": 599,
+    "title": "Explore the experimental Training lab",
+    "summary": "The public Training lab lets visitors inspect imported evaluation summaries. Local tools can run computer-coach evaluations, and Bogruk and Gobbo now recover when casualties make a saved setup invalid.",
+    "category": "Developer tools",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/599",
+    "mergedAt": "2026-11-21T04:09:38Z"
+  },
+  {
+    "number": 575,
+    "title": "Park computer matches while a coach is away",
+    "summary": "Computer coaches free their worker slot while waiting for a human decision and wake when the match changes. Idle engines are released after 30 minutes. Matches saved by both coaches retain their 30-day resume window.",
+    "category": "Gameplay",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/575",
+    "mergedAt": "2026-11-20T05:09:45Z"
+  },
+  {
+    "number": 574,
+    "title": "Stage setups and kickoff placements until confirmation",
+    "summary": "Coaches can see placement adjustments as they happen. Confirming records the final selections and positions in a single match revision.",
+    "category": "Gameplay",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/574",
+    "mergedAt": "2026-11-18T22:51:19Z"
+  },
+  {
+    "number": 569,
+    "title": "Animate match event splashes",
+    "summary": "Team-colour splashes announce touchdowns, turnovers, turn starts, kickoff results, weather, half-time, and the end of a match. Scoring cards show both teams beside their scores, and reduced motion uses fades.",
+    "category": "Gameplay",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/569",
+    "mergedAt": "2026-11-18T17:03:08Z"
+  },
+  {
+    "number": 564,
+    "title": "Clear stale reroll prompts for computer coaches",
+    "summary": "The native engine now clears an answered reroll prompt even when skill preferences are unset. This fixes a Bone Head loop where the computer kept answering the same prompt.",
+    "category": "Gameplay",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/564",
+    "mergedAt": "2026-11-17T20:03:24Z"
+  },
+  {
+    "number": 558,
+    "title": "Fix computer kickoff loops and bound placement adjustments",
+    "summary": "Computer coaches can finish Solid Defence and Charge without repeating an invalid plan. Each kickoff selection or placement stage allows up to 50 adjustments, and coaches can still confirm after correcting an illegal formation.",
+    "category": "Gameplay",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/558",
+    "mergedAt": "2026-11-16T05:20:42Z"
+  },
+  {
+    "number": 534,
+    "title": "Keep durable matches loadable after persistence deadlines",
+    "summary": "Loading a match rebuilds it from the last durable revision. A refused action checkpoint leaves that revision intact, and a final result can finish saving after the final checkpoint is secure.",
+    "category": "Platform",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/534",
+    "mergedAt": "2026-11-13T15:44:01Z"
+  },
+  {
+    "number": 533,
+    "title": "Recover computer coaches after a persistence failure",
+    "summary": "Computer coaches wait, reload the current revision, and choose again after a failed save. Server diagnostics tie the failure to the match and request.",
+    "category": "Platform",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/533",
+    "mergedAt": "2026-11-13T15:33:12Z"
+  },
+  {
     "number": 529,
     "title": "Reduce long-match checkpoint pauses",
     "summary": "Full checkpoints now reuse serialization results to prepare the recovery journal cursor. Matched long-history tests showed shorter compaction pauses and verified that matches still recover exactly.",
@@ -86,6 +150,54 @@
     "category": "Gameplay",
     "url": "https://github.com/the-grognard-codes/fumbbl-rebuild/pull/497",
     "mergedAt": "2026-11-08T15:40:57Z"
+  },
+  {
+    "number": 495,
+    "title": "Reduce idle pitch panning lag",
+    "summary": "Panning an idle pitch does less rendering work. In live play and replay, home and away player cards dock on opposite sides. DEV also gained opt-in performance and network captures.",
+    "category": "Gameplay",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/495",
+    "mergedAt": "2026-11-08T02:12:25Z"
+  },
+  {
+    "number": 480,
+    "title": "Add Microsoft sign-in and improve sign-in recovery",
+    "summary": "Coaches can use a personal Microsoft account alongside Google and email links. The sign-in pages make errors easier to recover from, and the site has new favicons.",
+    "category": "Platform",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/480",
+    "mergedAt": "2026-11-07T06:07:07Z"
+  },
+  {
+    "number": 475,
+    "title": "Make sign-in help easier to find",
+    "summary": "Support has topic shortcuts, puts account troubleshooting and contact details ahead of device guidance, and is linked from sign-in and email-link completion.",
+    "category": "Design",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/475",
+    "mergedAt": "2026-11-07T03:28:47Z"
+  },
+  {
+    "number": 473,
+    "title": "Give new coaches a clearer path from home to play",
+    "summary": "The home page walks coaches through signing in, saving a team, and choosing an opponent. Development brings the project background and searchable merge history together.",
+    "category": "Design",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/473",
+    "mergedAt": "2026-11-07T00:24:42Z"
+  },
+  {
+    "number": 472,
+    "title": "Bring team building into one compact workbench",
+    "summary": "Coaches can open saved teams, recruit players, manage the roster and resources, and finish their team in one workspace. Optional customization stays available when needed.",
+    "category": "Design",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/472",
+    "mergedAt": "2026-11-07T00:06:51Z"
+  },
+  {
+    "number": 468,
+    "title": "Save and reuse team deployment formations",
+    "summary": "Each saved team can keep up to three offensive and three defensive formations. Coaches can load those templates during ordinary drive setup.",
+    "category": "Gameplay",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/468",
+    "mergedAt": "2026-11-06T17:38:09Z"
   },
   {
     "number": 463,
@@ -174,6 +286,30 @@
     "category": "Gameplay",
     "mergedAt": "2026-11-02T15:27:41Z",
     "url": "https://github.com/the-grognard-codes/fumbbl-rebuild/pull/410"
+  },
+  {
+    "number": 407,
+    "title": "Fix BB2025 targeting, reactions, and dice presentation",
+    "summary": "Jump Up shows assists and proposed dice, Punt gets dedicated direction targeting, and On the Ball uses a planned three-square move. Block rerolls respect the selected die indices.",
+    "category": "Gameplay",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/407",
+    "mergedAt": "2026-11-02T04:17:30Z"
+  },
+  {
+    "number": 391,
+    "title": "Add device guidance and a display-scaling calculator",
+    "summary": "Support explains desktop coaching, landscape tablets, and viewing on phones. The calculator shows how display scaling affects the physical screen space needed to play.",
+    "category": "Design",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/391",
+    "mergedAt": "2026-11-01T04:29:19Z"
+  },
+  {
+    "number": 382,
+    "title": "Make Browser V2 the standard game client",
+    "summary": "The Java desktop and WebStart clients were retired. Browser V2 became the standard server startup path while keeping the shared native rules engine.",
+    "category": "Platform",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/382",
+    "mergedAt": "2026-10-30T03:51:22Z"
   },
   {
     "number": 377,
