@@ -1,5 +1,18 @@
 # Gatehouse scale and colour studies
 
+## North and south stands at kickoff
+
+The gallery now opens on the full pitch with both end stands populated and eleven players per team. Home supporters wear the Human navy and gold kit. The halfling with the pie, the elder with the tankard and the chestnut seller wear their fixed neutral outfits. The right-hand visiting stand belongs to the next side-stand review.
+
+| End | Occupied places | Neutral outfits | Standing supporters |
+| --- | ---: | ---: | ---: |
+| North, facing the viewer | 28 of 42 | 10 | 4 |
+| South, facing the pitch with their backs to the viewer | 38 of 57 | 12 | 4 |
+
+![Full overhead Gatehouse pitch at kickoff with supporters in the three north and four south bays](../../assets/game/references/stadiums/scale-studies/end-stands/full-ends/kickoff.webp)
+
+Open `/stadium-mockup?view=full-ends` and select **Inspect a bay** for the native and 4× crops. North bay 2 includes the centre benches and their stairs. South bays 13 and 14 flank the gate. **Seat markers** shows occupied contacts and the gaps reserved above standing supporters. Each crowd insert has the dimensions and origin of its seating bay. The full-resolution browser comparison checks the seven inserts, the surrounding architecture and the kickoff formation against the native canvas.
+
 ## Complete north and south cast
 
 Open `/stadium-mockup?view=end-poses&group=seated-a` for the new seated supporters. **Pose group** switches both ends of the stadium together. Each group shows three of nine places occupied, with a blitzer for scale and a 4× view for inspecting the silhouettes. [Artist sheet of all 24 drawings](../../assets/game/references/stadiums/scale-studies/end-stands/cast-angles.webp)
@@ -27,7 +40,7 @@ The seating checks validate the complete source against its bay mask and require
 
 ## West bay 6 · Crowd density review
 
-West bay 6 has nine seats arranged across three benches. The gallery opens at 66% attendance with two supporters on each bench. Select 100% to see all nine places filled or 33% to see one supporter per bench. The same blitzer stands at the touchline in every view for a game-scale comparison.
+West bay 6 has nine seats arranged across three benches. Select its 66% study for two supporters on each bench, 100% for all nine places, or 33% for one supporter per bench. The same blitzer stands at the touchline in every view for a game-scale comparison.
 
 ![The nine-seat bay at 100%, 66% and 33% attendance, at pitch scale and pixel zoom](../../assets/game/references/stadiums/scale-studies/bay-six/cast-on-pitch.webp)
 

@@ -1,5 +1,16 @@
 # Gatehouse gallery artwork
 
+## Populated end stands
+
+The seven end bays each have one transparent indexed crowd PNG, registered at that bay’s native top-left corner on the empty stadium. The seat plan records bay-local hip or boot anchors, the plank under each place, and the occupants. North uses the front drawings and south uses the rear drawings. The PNGs use the Human home navy and gold ramps at indices 1–32 and retain the artist sheet’s fixed colours at 33 and above. [Authored seat plan](end-stands/full-ends/layout.json) · [Gallery placements and image names](end-stands/full-ends/placements.json)
+
+From the repository root, run these commands with Pillow to reproduce and check the inserts. The checks cover the raw sprite against the bay mask, contact with the timber, face and gesture visibility, a vacant place above each standing supporter, and repeated neighbours across stairs. The passing layout contains 66 supporters, 22 in neutral clothing, in 99 places. [Kickoff preview](end-stands/full-ends/kickoff.webp)
+
+```text
+python -B assets/game/references/stadiums/scale-studies/end-stands/full-ends/build.py
+python -B assets/game/references/stadiums/scale-studies/end-stands/full-ends/test_build.py
+```
+
 ## Gatehouse bench-top template
 
 The [bench layout](gatehouse-benches.json) records 64 plank tops across all 15 seating bays. Each plank has a stable numeric ID and a name within its bay. The last digit is the plank number, so plank 62 is plank 2 in bay 6. Its rectangles are measured in native pixels from the bay’s top-left corner and stored as `[x, y, width, height]`. Their union, intersected with the approved seating mask for that bay, defines the usable timber surface. Keep the same plank IDs and surfaces when drawing a new stadium skin for this layout.

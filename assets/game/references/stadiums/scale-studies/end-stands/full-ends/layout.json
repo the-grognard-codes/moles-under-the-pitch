@@ -1,0 +1,39 @@
+[
+  {"bayId": 1, "rows": [
+    {"plank": "row-2", "anchors": [[33, 27], [58, 27], [82, 27], [106, 27], [131, 27]], "occupants": {"0": "horn", "1": "clap", "3": "mug", "4": "program"}},
+    {"plank": "row-3", "anchors": [[28, 48], [55, 48], [84, 48], [111, 48], [135, 48]], "occupants": {"0": "pie", "2": "standing-tambourine", "3": "whistle"}}
+  ]},
+  {"bayId": 2, "rows": [
+    {"plank": "row-2", "anchors": [[14, 27], [42, 27], [70, 27], [97, 27], [125, 27], [149, 27], [179, 27], [208, 27], [235, 27], [260, 27], [286, 27]], "occupants": {"0": "clap", "2": "mug", "3": "program", "4": "lookout", "5": "pie", "7": "whistle", "10": "chestnuts"}},
+    {"plank": "row-3", "anchors": [[18, 48], [44, 45], [73, 48], [103, 48], [132, 48], [159, 48], [188, 48], [216, 48], [234, 48], [275, 48]], "occupants": {"1": "standing-horn", "2": "whistle", "4": "chestnuts", "5": "clap", "6": "cheer", "8": "mug", "9": "lookout"}},
+    {"plank": "row-4", "anchors": [[217, 68]], "occupants": {"0": "standing-tambourine"}}
+  ]},
+  {"bayId": 3, "rows": [
+    {"plank": "row-2", "anchors": [[12, 27], [39, 27], [65, 27], [93, 27], [116, 27]], "occupants": {"0": "mug", "1": "cheer", "4": "pie"}},
+    {"plank": "row-3", "anchors": [[14, 48], [43, 48], [70, 48], [102, 48], [126, 48]], "occupants": {"0": "whistle", "2": "standing-horn", "3": "chestnuts"}}
+  ]},
+  {"bayId": 12, "rows": [
+    {"plank": "row-2", "anchors": [[48, 25], [86, 25], [127, 25]], "occupants": {}},
+    {"plank": "row-3", "anchors": [[31, 47], [60, 47], [90, 47], [122, 47]], "occupants": {"0": "lookout", "1": "standing-horn", "2": "mug", "3": "whistle"}},
+    {"plank": "row-4", "anchors": [[23, 70], [50, 70], [81, 70], [114, 70], [138, 70]], "occupants": {"0": "clap", "3": "tambourine", "4": "chestnuts"}},
+    {"plank": "row-5", "anchors": [[33, 89], [65, 89], [96, 89], [132, 89]], "occupants": {"0": "pie", "1": "program", "2": "cheer", "3": "clap"}}
+  ]},
+  {"bayId": 13, "rows": [
+    {"plank": "row-2", "anchors": [[14, 25], [39, 25], [65, 25]], "occupants": {"2": "pie"}},
+    {"plank": "row-3", "anchors": [[15, 47], [42, 47], [65, 47]], "occupants": {"0": "mug", "1": "horn"}},
+    {"plank": "row-4", "anchors": [[13, 70], [39, 70], [64, 70]], "occupants": {"0": "whistle", "2": "program"}},
+    {"plank": "row-5", "anchors": [[15, 89], [42, 89], [65, 89]], "occupants": {"0": "cheer", "1": "standing-tambourine", "2": "chestnuts"}}
+  ]},
+  {"bayId": 14, "rows": [
+    {"plank": "row-2", "anchors": [[17, 25], [43, 25], [69, 25]], "occupants": {}},
+    {"plank": "row-3", "anchors": [[16, 47], [42, 47], [68, 47]], "occupants": {"0": "tambourine", "1": "lookout", "2": "chestnuts"}},
+    {"plank": "row-4", "anchors": [[14, 70], [40, 70], [66, 70]], "occupants": {"1": "mug", "2": "cheer"}},
+    {"plank": "row-5", "anchors": [[16, 89], [45, 89], [70, 89]], "occupants": {"0": "standing-horn", "1": "whistle"}}
+  ]},
+  {"bayId": 15, "rows": [
+    {"plank": "row-2", "anchors": [[15, 25], [46, 25], [76, 25]], "occupants": {"0": "pie"}},
+    {"plank": "row-3", "anchors": [[15, 47], [40, 47], [67, 47], [93, 47], [121, 49]], "occupants": {"0": "cheer", "2": "horn", "3": "mug", "4": "tambourine"}},
+    {"plank": "row-4", "anchors": [[15, 70], [42, 70], [70, 70], [99, 70], [128, 70]], "occupants": {"0": "chestnuts", "1": "standing-tambourine", "3": "clap", "4": "pie"}},
+    {"plank": "row-5", "anchors": [[12, 89], [42, 89], [74, 89], [108, 89]], "occupants": {"0": "clap", "2": "program", "3": "lookout"}}
+  ]}
+]
