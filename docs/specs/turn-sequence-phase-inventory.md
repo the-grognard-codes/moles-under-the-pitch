@@ -16,11 +16,12 @@ It also lists all 38 concrete sequence generators plus ActivationSequenceBuilder
 and every server-main source file constructing a Dialog*Parameter or the terminal
 dialog factory call. Abstract reroll/skill providers are included explicitly.
 
-Phase letters below are **proposed semantic ownership**, because native code
-does not currently store these phases. A=turn play/activation resolution; C=turn cleanup; D=drive end;
-H=half end; F=match end; S=drive start/kick-off; T=turn start; P=pre-match prelude.
-An individual player activation is contained in A and may end without C.
-Caller-dependent steps do not acquire a phase simply from their package name.
+Phase letters below describe ownership under the proposed contract. A maps to
+`turnPlay`, C to `turnCleanup`, D to `driveEnd`, H to `halfEnd`, F to
+`matchEnd`, S to `driveStart` / `kickoff`, and T to `turnStart`. P labels
+the pre-match prelude for this inventory. An individual player activation is
+contained in A and can end while the team turn remains in A. Caller-dependent
+steps inherit the phase of the decision or outcome they serve.
 
 Mode columns enumerate literal TurnMode references in that source, **not** an
 exhaustive allowed-mode assertion. No literal reference means the step inherits
@@ -46,14 +47,14 @@ has executed or that every native dialog has a current browser renderer.
 
 | Case / source | Observed behavior at the base | Required ordering / open gap |
 | --- | --- | --- |
-| [StepEndTurn](../../ffb-server/src/main/java/com/fumbbl/ffb/server/step/bb2025/StepEndTurn.java).executeStep / [UtilServerSteps](../../ffb-server/src/main/java/com/fumbbl/ffb/server/step/UtilServerSteps.java).checkTouchdown | Legality check returns a boolean. If an unused canGrantReRollAfterTouchdown skill exists, DialogSkillUse is shown and the step returns before observeTurnEnd | **Current gap:** Star of the Show may precede the touchdown hook. A client test with a supplied same-update event/offer does not prove native emission order. Future server work after acceptance must emit the settled boundary before cleanup choice |
-| StepEndTurn.executeStep / [MatchAnnouncementPresentation](../../ffb-server/src/main/java/com/fumbbl/ffb/server/match/MatchAnnouncementPresentation.java).end | Non-touchdown observeTurnEnd(null, newHalf) occurs on its branch; touchdown calls observeTurnEnd(scorer, newHalf) after score/owner adjustment. end emits touchdown, or confirmed non-voluntary non-timeout turnover in REGULAR | Marker must name the closing/scoring team/half/turn rather than infer it from final actor or later SETUP mode |
+| [StepEndTurn](../../ffb-server/src/main/java/com/fumbbl/ffb/server/step/bb2025/StepEndTurn.java).executeStep / [UtilServerSteps](../../ffb-server/src/main/java/com/fumbbl/ffb/server/step/UtilServerSteps.java).checkTouchdown | Legality check returns a boolean. If an unused canGrantReRollAfterTouchdown skill exists, DialogSkillUse is shown and the step returns before observeTurnEnd | **Current gap:** the touchdown boundary is the marker and Star of the Show is its dependent cleanup decision. Record the settled touchdown for delivery before raising Star of the Show. A supplied same-update browser test covers client ordering only |
+| StepEndTurn.executeStep / [MatchAnnouncementPresentation](../../ffb-server/src/main/java/com/fumbbl/ffb/server/match/MatchAnnouncementPresentation.java).end | Non-touchdown observeTurnEnd(null, newHalf) occurs on its branch; touchdown calls observeTurnEnd(scorer, newHalf) after score/owner adjustment. end emits touchdown, or confirmed non-voluntary non-timeout turnover in REGULAR | Record the settled touchdown or turnover for delivery before raising dependent decisions. The marker identifies the closing or scoring team, half and turn at the boundary |
 | Off-turn touchdown | StepEndTurn detects scorer != current acting team, increments the scorer's turn counter, rechecks end of half, then observes the touchdown | Same celebration-before-cleanup; preserve scorer identity and native counter rules; do not create an extra numbered turn splash |
 | Last-turn touchdown / overtime | checkEndOfHalf uses both teams >=8; StepEndTurn may push Kickoff(withCoinChoice) or EndGame and later startHalf | Touchdown, applicable cleanup, then half/result presentation. Secret Weapon questions remain conditional on native !fEndGame rules; no invented end-game choice |
 | Free turns | StepEndTurn early NEXT_STEP for BLITZ, KICKOFF_RETURN, PASS_BLOCK, ILLEGAL_SUBSTITUTION, SWARMING; [StepApplyKickoffResult](../../ffb-server/src/main/java/com/fumbbl/ffb/server/step/bb2025/kickoff/StepApplyKickoffResult.java) separately manages QUICK_SNAP/HIGH_KICK/SOLID_DEFENCE | BLITZ/KICKOFF_RETURN/SWARMING get no numbered START OF TURN. A normal Blitz player action in REGULAR is different. Phase inherits S or the parent reaction |
 | Secret Weapon chain | StepEndTurn.resolveSendOffs, askForArgueTheCall, reRollArgueFailures, askForSecretWeaponBribes; sequential player selection and legacy path retained | C after the phase's splash; Argue/Bribery and Corruption/Bribe ordering stays native. Same dialog classes in a foul belong to A, before a settled turnover |
 | Activation traits and injury | ActivationSequenceBuilder inserts Animal Savagery, Steady Footing, ball/drop/APO/catch, Bone Head, Really Stupid, Take Root, Fury and Blood Lust; EndTurn generator can also settle these effects | Resolve causative decisions before splash. A generator name or an Apothecary dialog type alone cannot classify phase |
-| Same update event + dialog | Native public state can expose a dialog while a recorded sync carries an announcement; #541 tests this supplied shape | Event gate precedes cleanup choice, never clears the native backlog; emission-before-offer remains a server responsibility |
+| Same update event + dialog | Native public state can expose a dialog while a recorded sync carries an announcement; #541 tests this supplied shape | Send the durably accepted event before or with the offer. In live play, present the splash before the cleanup choice and preserve the native backlog. Client receipt does not gate the server |
 | Inducements crossing boundaries | [Inducement](../../ffb-server/src/main/java/com/fumbbl/ffb/server/step/generator/common/Inducement.java) receives [InducementPhase](../../ffb-common/src/main/java/com/fumbbl/ffb/inducement/InducementPhase.java): END_OF_OPPONENT_TURN, END_OF_OWN_TURN, START_OF_OWN_TURN, AFTER_KICKOFF_TO_OPPONENT, AFTER_INDUCEMENTS_PURCHASED, BEFORE_KICKOFF_SCATTER, END_OF_TURN_NOT_HALF, BEFORE_SETUP | END_OF_OWN_TURN / END_OF_OPPONENT_TURN are pushed by StepEndFeeding before final StepEndTurn; StepInitInducement offers spells/rocks only when no touchdown is currently detected, then StepEndInducement rechecks touchdown before EndTurn. Treat those as A-resolution until the outcome settles, not post-splash C merely because the enum says end-of-turn. START_OF_OWN_TURN is T; setup/kick-off contexts S and after purchase P. Not every declared phase currently offers an inducement. |
 
 ## Recovery and delivery points
@@ -61,11 +62,23 @@ has executed or that every native dialog has a current browser renderer.
 | Point | Existing durable source | Proposed contract / evidence needed |
 | --- | --- | --- |
 | Before/after Star of the Show | StepEndTurn.toJsonValue/initFrom retains touchdown flag, useStarOfTheShow, scorer and continuation flags; native dialog is in the game checkpoint | Same phase identity across accepted requests; emit once before cleanup offer; restore must not invent/re-execute a touchdown |
-| Between send-off choices | StepEndTurn serializes sequentialSendOffs, sendOffPlayerId, resolvedSendOffs, Argue/Bribe choices and natural-one/failure lists, preserving absence for legacy fields | Resume the current native choice from one accepted generation, with no repeated splash or lost send-off |
+| Between send-off choices | StepEndTurn serializes sequentialSendOffs, sendOffPlayerId, resolvedSendOffs, Argue/Bribe choices and natural-one/failure lists, preserving absence for legacy fields | Resume the current valid native choice from one accepted generation. The restore does not create a second boundary event |
 | During setup/kick-off/reaction | Native StepStack and each step's toJsonValue/initFrom; mode and dialog remain native state | Phase cursor must follow that continuation, not final score/mode heuristics |
 | Accepted action / failed checkpoint | [SetupApplication](../../ffb-server/src/main/java/com/fumbbl/ffb/server/match/SetupApplication.java).checkpoint, [RecoveryArtifactJson](../../ffb-server/src/main/java/com/fumbbl/ffb/server/match/RecoveryArtifactJson.java), [RecoveryJournal](../../ffb-server/src/main/java/com/fumbbl/ffb/server/match/RecoveryJournal.java), [MatchTranscript](../../ffb-server/src/main/java/com/fumbbl/ffb/server/match/MatchTranscript.java) | Same generation-CAS/tail/compaction for phase metadata; exact retry appends nothing. No publish-before-durable-acceptance exception |
-| Announcement pending / reconnect | SetupSession's GameState hooks route to MatchAnnouncementPresentation; checkpoint/restore retains pending and lastTurn; decorate attaches events to numbered syncs | Initial/reconnect/hidden baseline suppresses history; confirm how current cleanup choice is exposed. Forward replay uses recorded order; seek suppresses skipped splashes |
+| Announcement pending / reconnect | SetupSession's GameState hooks route to MatchAnnouncementPresentation; checkpoint/restore retains pending and lastTurn; decorate attaches events to numbered syncs | Restore the current phase and valid choice on initial load, reconnect, hidden-tab recovery and replay seek. Splash presentation is best effort. The log, clock and current prompt show match state. Forward replay uses recorded order |
 | Spectator / duplicate delivery | Public transcript and V2 projection share native facts; stable event identity is based on revision/command/ordinal in browser classification | Same phase facts, independent local holds, no spectator input/ack gating, no duplicate dialog or announcement |
+
+## Implementation follow-up
+
+After ADR acceptance, review every emission site in this inventory against the
+native ordering rule and file one or more issues for misaligned sites, starting
+with `StepEndTurn` and Star of the Show. Validate version-3 recovery and replay
+with regenerated fixtures and explicit rejection of unsupported versions.
+Apply existing payload caps to marker content. Where
+[#588](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/588)
+applies, a presentation acknowledgement affects only the deciding coach's
+clock within the server budget. Live ordering and restore behavior have
+separate acceptance cases.
 
 ## Selected concrete steps
 
