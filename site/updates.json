@@ -1,5 +1,29 @@
 [
   {
+    "number": 541,
+    "title": "Catch up smoothly when computer turns arrive in bursts",
+    "summary": "The board speeds up when eight revisions are queued, while still showing every move and dice roll. Animated splashes keep their reading time, and required choices wait for earlier splashes to clear.",
+    "category": "Gameplay",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/541",
+    "mergedAt": "2026-11-21T17:53:12Z"
+  },
+  {
+    "number": 543,
+    "title": "Reduce server memory used by match history",
+    "summary": "The server holds replay events and transcript records as compact JSON between reads. This lowers memory use for active matches while preserving saved match and replay formats.",
+    "category": "Platform",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/543",
+    "mergedAt": "2026-11-21T14:15:06Z"
+  },
+  {
+    "number": 559,
+    "title": "Keep oversized matches from exhausting server memory",
+    "summary": "Oversized saved matches are refused before loading. A match that reaches the limit ends at its recorded score and shows coaches why. After confirmed heap exhaustion, recovery pauses for affected matches so other games can continue.",
+    "category": "Platform",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/559",
+    "mergedAt": "2026-11-21T13:08:55Z"
+  },
+  {
     "number": 529,
     "title": "Reduce long-match checkpoint pauses",
     "summary": "Full checkpoints now reuse serialization results to prepare the recovery journal cursor. Matched long-history tests showed shorter compaction pauses and verified that matches still recover exactly.",

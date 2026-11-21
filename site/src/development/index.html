@@ -28,16 +28,28 @@
     <section class="development-history" id="history" aria-labelledby="history-title">
     <h2 id="history-title">Merged changes</h2>
     <p>One entry per merged pull request. Follow its GitHub link for the implementation and review details.</p>
-    <p class="updates-coverage">199 merged pull requests · Latest merge November 12, 2026 · Newest first</p>
+    <p class="updates-coverage">202 merged pull requests · Latest merge November 21, 2026 · Newest first</p>
     <form id="updates-search" class="updates-tools" action="/development" method="get" hidden>
       <label>Search updates<input type="search" name="q" maxlength="200" placeholder="Topic, feature or PR number" autocomplete="off"></label>
       <label>Category<select name="category"><option value="">All updates</option><option>Gameplay</option><option>Design</option><option>Platform</option><option>Developer tools</option><option>Project notes</option></select></label>
       <div class="updates-tool-actions"><button type="submit">Find updates</button><button type="button" class="updates-clear" data-clear-updates>Clear filters</button></div>
     </form>
-    <p class="updates-status" id="updates-status" role="status">199 merged pull request updates, newest first.</p>
+    <p class="updates-status" id="updates-status" role="status">202 merged pull request updates, newest first.</p>
     <nav class="updates-pagination" aria-label="Updates pages, top" hidden></nav>
     <noscript><p>All updates are shown below. Use your browser's Find command to search the history.</p></noscript>
     <section class="updates-list" id="updates-list" aria-label="Merged pull request updates" tabindex="-1">
+    <article class="panel update-entry" id="pr-541" data-pr="541" data-category="Gameplay">
+      <div class="update-meta"><span class="update-category">Gameplay</span><time datetime="2026-11-21T17:53:12Z">November 21, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/541" target="_blank" rel="noreferrer">PR #541<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Catch up smoothly when computer turns arrive in bursts</h3><p>The board speeds up when eight revisions are queued, while still showing every move and dice roll. Animated splashes keep their reading time, and required choices wait for earlier splashes to clear.</p>
+    </article>
+    <article class="panel update-entry" id="pr-543" data-pr="543" data-category="Platform">
+      <div class="update-meta"><span class="update-category">Platform</span><time datetime="2026-11-21T14:15:06Z">November 21, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/543" target="_blank" rel="noreferrer">PR #543<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Reduce server memory used by match history</h3><p>The server holds replay events and transcript records as compact JSON between reads. This lowers memory use for active matches while preserving saved match and replay formats.</p>
+    </article>
+    <article class="panel update-entry" id="pr-559" data-pr="559" data-category="Platform">
+      <div class="update-meta"><span class="update-category">Platform</span><time datetime="2026-11-21T13:08:55Z">November 21, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/559" target="_blank" rel="noreferrer">PR #559<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Keep oversized matches from exhausting server memory</h3><p>Oversized saved matches are refused before loading. A match that reaches the limit ends at its recorded score and shows coaches why. After confirmed heap exhaustion, recovery pauses for affected matches so other games can continue.</p>
+    </article>
     <article class="panel update-entry" id="pr-529" data-pr="529" data-category="Platform">
       <div class="update-meta"><span class="update-category">Platform</span><time datetime="2026-11-13T04:46:34Z">November 12, 2026</time><a href="https://github.com/the-grognard-codes/fumbbl-rebuild/pull/529" target="_blank" rel="noreferrer">PR #529<span class="update-external" aria-hidden="true"> ↗</span></a></div>
       <h3>Reduce long-match checkpoint pauses</h3><p>Full checkpoints now reuse serialization results to prepare the recovery journal cursor. Matched long-history tests showed shorter compaction pauses and verified that matches still recover exactly.</p>
