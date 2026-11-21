@@ -103,8 +103,9 @@
 .bay-six-poses figcaption span { display: block; margin-top: 2px; color: #baccbf; font-size: .8125rem; }
 .gatehouse-overview { max-width: 790px; }
 .kickoff-overview { --toolbar-space: 158px; max-width: min(100%, 790px, max(330px, calc((100svh - var(--toolbar-space)) * .665))); }
-.kickoff-overview[data-full-bowl="true"] { --toolbar-space: 182px; }
+.kickoff-overview[data-full-bowl="true"] { --toolbar-space: 204px; }
 .kickoff-toolbar { column-gap: 16px; }
+.kickoff-review-controls { gap: 4px 16px; }
 .gatehouse-bay-detail { margin-top: 24px; }
 .gatehouse-bay-detail h3 { margin: 0; font-size: 1.125rem; }
 .gatehouse-bay-detail .bay-six-crops { grid-template-columns: minmax(0, 1fr); }

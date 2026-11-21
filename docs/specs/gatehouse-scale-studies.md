@@ -4,6 +4,8 @@
 
 The gallery opens on the 22-player kickoff with all 15 seating bays populated. Home supporters face right along the west touchline in navy and gold. Visiting supporters face left from the east touchline in Orc red and gold. The pie carrier, elder with the tankard and chestnut seller keep their neutral outfits on either side.
 
+Three pointed lion standards hang from the north wall, and each side bay has a pole pennant projecting toward the pitch. The visiting pennants carry the Orc tusk on red. Ten cloth swags dress the north and south parapets. Four small lion shields hang on the two corner towers and the stone jambs of the south gate.
+
 | Stand | Occupied places | Neutral outfits | Standing supporters |
 | --- | ---: | ---: | ---: |
 | North | 41 of 62 | 14 | 4 |
@@ -14,9 +16,15 @@ The gallery opens on the 22-player kickoff with all 15 seating bays populated. H
 
 ![All four Gatehouse stands at kickoff, with the red away crowd on the right](../../assets/game/references/stadiums/scale-studies/kickoff.webp)
 
+### Regalia at pixel zoom
+
+![West lion and east tusk pennants, north wall standard and swag, and a south gatepost shield](../../assets/game/references/stadiums/scale-studies/regalia/details.webp)
+
+The detail plate shows the native pixels at 2×. In the gallery, **Regalia colors** switches the ornaments between the default team kits, white/black, yellow/violet, similar blues, and identical navy. Fixed hardware retains its colour, and the fittings stay on the stone. Turning off **Regalia** restores the approved crowd and pitch pixel for pixel. [Undecorated kickoff](https://github.com/the-grognard-codes/moles-under-the-pitch/blob/0b7ec30240629cf56a3525c3fdb951e69d0f913d/assets/game/references/stadiums/scale-studies/kickoff.webp)
+
 Open `/stadium-mockup?view=full-bowl` and select **Inspect a bay** to compare the native and 4× views. West bay 6 preserves the approved six supporters and their contacts on the original nine seats. East bay 10 shows the same bench scale with a different group facing inward. Bays 7 and 11 show how the crowd fills the long terraces beside the south gate.
 
-All eight side inserts were checked before any overlap or timber cutouts. In the finished kickoff they cover 48,806 pixels. Compositing just those inserts over the previous native kickoff reproduced the full gallery canvas pixel for pixel. The height order keeps faces, held objects and standing soles visible. A near-level pair can swap drawing order when their boot baselines differ by at most one native pixel.
+All eight side inserts were checked before any overlap or timber cutouts. In the undecorated kickoff they cover 48,806 pixels. Compositing just those inserts over the earlier end-stand kickoff reproduced the undecorated gallery canvas pixel for pixel. The height order keeps faces, held objects and standing soles visible. A near-level pair can swap drawing order when their boot baselines differ by at most one native pixel.
 
 ## North and south stands at kickoff
 

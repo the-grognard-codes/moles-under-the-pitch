@@ -1,5 +1,18 @@
 # Gatehouse gallery artwork
 
+## Banners and regalia
+
+The ornaments use a 172 × 74 pixel sheet and a grayscale material mask of exactly the same size. Every pixel starts with an authored material and shade. Values 1–16 select the primary cloth ramp, and 17–32 select the secondary ramp for crests, trim and stitching. A zero leaves the artwork’s own colour and alpha intact, including the bronze fittings, wooden rods and shadows. [Sprite sheet](regalia/atlas.png) · [Material mask](regalia/materials.png) · [Native frame rectangles](regalia/atlas.json)
+
+Each placement names its sprite, its home or away owner, and its top-left pixel on the 790 × 1188 stadium. The bay IDs identify which inspection views should include the whole ornament. The west and east poles point in toward the pitch. Their brackets switch sides while the heraldry stays upright. The full-bowl gallery flattens the placements onto one reusable transparent canvas and repaints it when the selected colours change. The **Regalia** toggle exposes the crowd underneath. [Placement layout](regalia/layout.json) · [Lossless detail crops](regalia/details.webp)
+
+Run these commands from the repository root with Pillow to regenerate and verify the artwork. The checks cover both material ramps, fixed crossbars, continuous silhouettes, mounting points, and clearance from seating, stairs, braziers and the pitch.
+
+```text
+python -B assets/game/references/stadiums/scale-studies/regalia/build.py
+python -B assets/game/references/stadiums/scale-studies/regalia/test_build.py
+```
+
 ## Populated side stands
 
 West bays 4–7 and east bays 8–11 each have a single transparent indexed PNG aligned to that bay’s native bounds. Each side holds 57 supporters in 86 places, including 19 neutral outfits. The west crowd uses the right-facing side drawings. The east crowd mirrors the individual figures, their knees, both boot contacts and the calf cutouts against the actual east bench geometry. West uses navy and gold and east uses red and gold. Only indices 1–32 carry kit colours. [Editable side seat plan](side-stands/layout.json) · [Side inserts and placements](side-stands/placements.json) · [Full kickoff preview](kickoff.webp)

@@ -13,6 +13,8 @@ const ends = JSON.parse(await readFile(resolve(artwork, 'end-stands/placements.j
 const endPoseGroups = JSON.parse(await readFile(resolve(artwork, 'end-stands/pose-placements.json'), 'utf8'));
 const fullEndPlacements = JSON.parse(await readFile(resolve(artwork, 'end-stands/full-ends/placements.json'), 'utf8'));
 const sidePlacements = JSON.parse(await readFile(resolve(artwork, 'side-stands/placements.json'), 'utf8'));
+const regaliaAtlas = JSON.parse(await readFile(resolve(artwork, 'regalia/atlas.json'), 'utf8'));
+const regaliaLayout = JSON.parse(await readFile(resolve(artwork, 'regalia/layout.json'), 'utf8'));
 const [atlasPng, authoringPng] = await Promise.all(['supporter-kits.png', 'supporters.png'].map(file =>
   readFile(resolve(artwork, 'bay-six', file), 'base64')));
 const { ramps } = JSON.parse(await readFile(resolve(artwork, '../../../team-colors/v1/delivery/manifest.json'), 'utf8'));
@@ -357,6 +359,101 @@ async function verifyEndPoseShowcase(page, original) {
 const fullKickoffLabel = 'Gatehouse kickoff with 22 players and crowds in all four stands';
 const sideStands = ['west', 'east'];
 
+async function verifyRegalia(page, stadium, approved, defaultDecorated) {
+  const toggle = page.getByRole('checkbox', { name: 'Regalia' });
+  const palette = page.getByLabel('Regalia colors');
+  const [art, mask] = await Promise.all(['atlas.png', 'materials.png'].map(file =>
+    readFile(resolve(artwork, 'regalia', file), 'base64')));
+  const colorPairs = {
+    defaults: { home: ['navy', 'gold'], away: ['red', 'gold'] },
+    identical: { home: ['navy', 'navy'], away: ['navy', 'navy'] },
+    'white / black': { home: ['white', 'black'], away: ['black', 'white'] },
+    'yellow / purple': { home: ['lemon', 'violet'], away: ['violet', 'lemon'] },
+    'similar blues': { home: ['navy', 'sky'], away: ['sky', 'navy'] },
+  };
+  const ramps = Object.fromEntries(Object.entries(colorPairs).map(([id, pair]) => [
+    id, Object.fromEntries(Object.entries(pair).map(([role, colors]) => [role, colors.flatMap(ramp)])),
+  ]));
+  const expected = await stadium.evaluate(async (canvas, { art, mask, atlas, layout, approved, ramps }) => {
+    function surface(width, height) {
+      const backed = document.createElement('canvas');
+      backed.width = width;
+      backed.height = height;
+      return backed.getContext('2d');
+    }
+    async function raster(src, width, height) {
+      const image = new Image();
+      image.src = src;
+      await image.decode();
+      if (image.width !== width || image.height !== height) throw Error('Incorrect regalia raster dimensions');
+      const ctx = surface(width, height);
+      ctx.drawImage(image, 0, 0);
+      return ctx.getImageData(0, 0, width, height);
+    }
+    const png = 'data:image/png;base64,';
+    const [source, materials, base] = await Promise.all([
+      raster(png + art, atlas.width, atlas.height),
+      raster(png + mask, atlas.width, atlas.height),
+      raster(approved, canvas.width, canvas.height),
+    ]);
+    const results = {};
+    for (const [id, pair] of Object.entries(ramps)) {
+      const rendered = surface(canvas.width, canvas.height);
+      const pixels = rendered.createImageData(canvas.width, canvas.height);
+      pixels.data.set(base.data);
+      const proof = { home: { fixed: 0, primary: new Set(), secondary: new Set() },
+        away: { fixed: 0, primary: new Set(), secondary: new Set() } };
+      for (const { id, owner, sprite, x, y } of layout.placements) {
+        const cell = atlas.sprites[sprite];
+        let visible = 0;
+        for (let row = 0; row < cell.height; row++) {
+          for (let col = 0; col < cell.width; col++) {
+            const src = ((cell.y + row) * atlas.width + cell.x + col) * 4;
+            const dst = ((y + row) * canvas.width + x + col) * 4;
+            const index = materials.data[src];
+            const alpha = source.data[src + 3];
+            if (index > 32 || (!alpha && index) || (alpha && alpha !== 255)) throw Error('Invalid material or outline');
+            if (!alpha) continue;
+            visible++;
+            if (index) {
+              const rgb = pair[owner][index - 1];
+              pixels.data.set([rgb >> 16, (rgb >> 8) & 255, rgb & 255, alpha], dst);
+              proof[owner][index <= 16 ? 'primary' : 'secondary'].add(index);
+            } else {
+              pixels.data.set(source.data.subarray(src, src + 4), dst);
+              proof[owner].fixed++;
+            }
+          }
+        }
+        if (!visible) throw Error('Empty regalia placement ' + id);
+      }
+      for (const { fixed, primary, secondary } of Object.values(proof)) {
+        if (fixed < 1 || primary.size < 4 || secondary.size < 4) throw Error('Expected fixed and shaded team details for both stands');
+      }
+      rendered.putImageData(pixels, 0, 0);
+      results[id] = rendered.canvas.toDataURL();
+    }
+    return results;
+  }, { art, mask, atlas: regaliaAtlas, layout: regaliaLayout, approved, ramps });
+  assert.deepEqual(await palette.locator('option').evaluateAll(options => options.map(option => option.value)), Object.keys(colorPairs));
+  assert.equal(defaultDecorated, expected.defaults, 'Regalia is painted at its registered pixels by default');
+  assert.equal(new Set([approved, ...Object.values(expected)]).size, Object.keys(colorPairs).length + 1);
+  assert.equal(await palette.isDisabled(), true);
+  await toggle.check();
+  for (const [preset, pixels] of Object.entries(expected)) {
+    await palette.selectOption(preset);
+    assert.equal(await stadium.evaluate(canvas => canvas.toDataURL()), pixels,
+      preset + ' preserves fixed colors and replaces each exact material shade for its owner');
+  }
+  await toggle.uncheck();
+  assert.equal(await stadium.evaluate(canvas => canvas.toDataURL()), approved, 'Turning off regalia restores the exact approved bowl');
+  await toggle.check();
+  assert.equal(await palette.inputValue(), 'similar blues');
+  assert.equal(await stadium.evaluate(canvas => canvas.toDataURL()), expected['similar blues']);
+  await palette.selectOption('defaults');
+  return expected.defaults;
+}
+
 async function verifyKickoff(page, original, full) {
   const picker = page.getByLabel('Gallery view');
   const stadium = page.getByLabel(full ? fullKickoffLabel : 'Gatehouse kickoff with 22 players and north and south crowds');
@@ -373,6 +470,16 @@ async function verifyKickoff(page, original, full) {
   assert.ok(sections.every(({ stand, bounds }) => stand === bounds.stand));
   await picker.selectOption(full ? 'full-bowl' : 'full-ends');
   await stadium.waitFor();
+  const regalia = page.getByRole('checkbox', { name: 'Regalia' });
+  let defaultDecorated;
+  if (full) {
+    assert.equal(await regalia.isChecked(), true);
+    assert.equal(await page.getByLabel('Regalia colors').inputValue(), 'defaults');
+    defaultDecorated = await stadium.evaluate(canvas => canvas.toDataURL());
+    await regalia.uncheck();
+  } else {
+    assert.equal(await regalia.count(), 0);
+  }
   assert.equal(await markers.isChecked(), false);
   assert.equal(await page.getByRole('checkbox', { name: 'Front rail' }).count(), 0);
   assert.deepEqual(await stadium.evaluate(c => [c.width, c.height]), [790, 1188]);
@@ -411,7 +518,7 @@ async function verifyKickoff(page, original, full) {
   }
   // Compare the entire native stadium against the architecture, the source
   // insert for every bay, and the two kickoff kits at regulation square scale.
-  const overview = await stadium.evaluate(async (canvas, { sections, original, sideColors }) => {
+  const unadorned = await stadium.evaluate(async (canvas, { sections, original, sideColors }) => {
     async function image(src) {
       const art = new Image();
       art.src = src;
@@ -476,6 +583,7 @@ async function verifyKickoff(page, original, full) {
     if (rendered !== expected.toDataURL()) throw Error('The native overview differs from the source bays and 22 players');
     return rendered;
   }, { sections, original, sideColors: { west: [ramp('navy'), ramp('gold')], east: [ramp('red'), ramp('gold')] } });
+  const overview = full ? await verifyRegalia(page, stadium, unadorned, defaultDecorated) : unadorned;
 
   assert.deepEqual(await bayPicker.locator('option').allTextContents(), sections.map(({ stand, bayId }) =>
     stand[0].toUpperCase() + stand.slice(1) + ' bay ' + bayId));
@@ -490,11 +598,20 @@ async function verifyKickoff(page, original, full) {
     const before = row[row.indexOf(bounds) - 1], after = row[row.indexOf(bounds) + 1];
     // Detail includes the adjoining staircase, gap, or edge of the central gate.
     const side = sideStands.includes(section.stand);
-    const left = side ? bounds.x - 20 : (before ? Math.floor((before.x + before.width + bounds.x) / 2) : bounds.x - 32);
-    const right = side ? bounds.x + bounds.width + 20
+    let left = side ? bounds.x - 20 : (before ? Math.floor((before.x + before.width + bounds.x) / 2) : bounds.x - 32);
+    let right = side ? bounds.x + bounds.width + 20
       : (after ? Math.ceil((bounds.x + bounds.width + after.x) / 2) : bounds.x + bounds.width + 32);
-    const top = side && before ? Math.floor((before.y + before.height + bounds.y) / 2) : bounds.y - 24;
-    const bottom = side && after ? Math.ceil((bounds.y + bounds.height + after.y) / 2) : bounds.y + bounds.height + 24;
+    let top = side && before ? Math.floor((before.y + before.height + bounds.y) / 2) : bounds.y - 24;
+    let bottom = side && after ? Math.ceil((bounds.y + bounds.height + after.y) / 2) : bounds.y + bounds.height + 24;
+    if (full) {
+      for (const piece of regaliaLayout.placements.filter(piece => piece.bayIds.includes(bayId))) {
+        const cell = regaliaAtlas.sprites[piece.sprite];
+        left = Math.min(left, piece.x);
+        right = Math.max(right, piece.x + cell.width);
+        top = Math.min(top, piece.y);
+        bottom = Math.max(bottom, piece.y + cell.height);
+      }
+    }
     await detail.evaluate((section, { left, right, top, bottom, bayId, cropId }) => {
       const full = document.querySelector('canvas[data-ready="true"]');
       const x = Math.max(0, left), y = Math.max(0, top);
@@ -969,7 +1086,7 @@ try {
   await page.getByText(rosterLabel, { exact: true }).click();
   assert.equal(await page.locator('.bay-six-zoom').evaluate(element =>
     element.scrollWidth > element.clientWidth && document.documentElement.scrollWidth === window.innerWidth), true);
-  console.log('All 15 bays, side kits and facings, 22-player kickoff, approved west and end views, all 12 pose pairs, native and enlarged crops, rails and seat markers passed.');
+  console.log('All 15 bays, regalia palettes, side kits and facings, 22-player kickoff, approved west and end views, all 12 pose pairs, native and enlarged crops, rails and seat markers passed.');
 } finally {
   await browser?.close();await server.close();
 }

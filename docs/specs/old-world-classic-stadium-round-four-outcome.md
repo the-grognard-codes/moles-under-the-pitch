@@ -53,4 +53,4 @@ The gallery can cross-fade the live render against either the approved full stil
 
 **Angled cameras.** Keep the gallery's 30, 40 and 50 degree views on turf. The approved painting uses upright faces and banners on both sidelines. A perspective stadium needs its own visual target before work starts on angled architecture or crowds. Live match rendering continues to use its existing assets.
 
-The follow-up gallery now shows 22 players and 193 supporters at kickoff. Each of the 15 crowd inserts fits a registered seating bay, with the visiting supporters in the four east bays. The gallery includes native-size and 4× views for each section. [Gatehouse scale and colour studies](gatehouse-scale-studies.md)
+The follow-up gallery shows 22 players and 193 supporters at kickoff. Each of the 15 crowd inserts fits a registered seating bay, with the visiting supporters in the four east bays. A separate overlay adds 25 team-coloured standards, pennants, swags and shields. The gallery includes native-size and 4× views of each section and lets the reviewer change ornament colours or hide the overlay. [Gatehouse scale and colour studies](gatehouse-scale-studies.md)

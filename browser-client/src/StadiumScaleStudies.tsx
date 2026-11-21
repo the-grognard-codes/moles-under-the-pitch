@@ -14,7 +14,8 @@ import sidePlacements from '../../assets/game/references/stadiums/scale-studies/
 import type { Point } from './pitch-projection.ts';
 import { playerArtPlacement, resolvePlayerArt } from './player-art.ts';
 import { bowl, drawBowlGround } from './stadium-bowl-study.ts';
-import { MOCKUP_PLAYER_WIDTH_IN_SQUARES, STILL_LAYOUT, mockupCamera, mockupColorPair, mockupPlayers, type MockupPlayer } from './stadium-mockup.ts';
+import { MOCKUP_PLAYER_WIDTH_IN_SQUARES, STILL_LAYOUT, mockupCamera, mockupColorPair, mockupPlayers, type MockupColorPreset, type MockupPlayer } from './stadium-mockup.ts';
+import { loadRegalia, regaliaBounds, regaliaPresets } from './stadium-regalia.ts';
 import { teamColorArt } from './team-color-art.ts';
 import type { TeamColors } from './team-colors.ts';
 import './stadium-mockup.css';
@@ -225,11 +226,19 @@ async function loadBowlSection(study: BowlPlacement) {
   const bounds = seatingLayout.bays.find(({ id }) => id === study.bayId)!;
   const root = isSideStand(study.stand) ? sideImageRoot : endImageRoot + 'full-ends/';
   const crowd = await image(studyImages[root + study.crowd], bounds);
-  return { ...study, bounds, frames: bowlBayFrames(bounds), crowd };
+  const frames = bowlBayFrames(bounds);
+  const regalia = regaliaBounds(study.bayId);
+  const expanded = regalia.length ? bowlCrop(
+    Math.min(frames.native.x, ...regalia.map(piece => piece.x)),
+    Math.min(frames.native.y, ...regalia.map(piece => piece.y)),
+    Math.max(frames.native.x + frames.native.width, ...regalia.map(piece => piece.x + piece.width)),
+    Math.max(frames.native.y + frames.native.height, ...regalia.map(piece => piece.y + piece.height)),
+  ) : frames.native;
+  return { ...study, bounds, frames, decoratedFrames: { native: expanded, detail: expanded }, crowd };
 }
 
 async function loadLayers() {
-  const [architecture, seating, player, atlas, studies, showcases, fullBowl, kickoff] = await Promise.all([
+  const [architecture, seating, player, atlas, studies, showcases, fullBowl, kickoff, regalia] = await Promise.all([
     image(architectureUrl, bowl),
     image(seatingUrl, bowl),
     loadScalePlayer(mockupPlayers('human')[0]),
@@ -248,6 +257,7 @@ async function loadLayers() {
     })),
     Promise.all(bowlPlacements.map(loadBowlSection)),
     loadKickoff(),
+    loadRegalia(),
   ]);
   const stadium = drawingSurface();
   const baseContext = stadium.getContext('2d')!;
@@ -267,7 +277,7 @@ async function loadLayers() {
   }
   context.putImageData(pixels, 0, 0);
   const fullEnds = fullBowl.filter(({ stand }) => !isSideStand(stand));
-  return { stadium, overlay, benches, player, atlas, studies, showcases, fullBowl, fullEnds, kickoff };
+  return { stadium, overlay, benches, player, atlas, studies, showcases, fullBowl, fullEnds, kickoff, regalia };
 }
 
 function drawSeatMarkers(context: CanvasRenderingContext2D, bounds: Point, slots: readonly SeatSlot[], seats: readonly Occupant[]) {
@@ -368,6 +378,8 @@ export function StadiumScaleStudies() {
   const [benches, setBenches] = useState(false);
   const [rail, setRail] = useState(true);
   const [markers, setMarkers] = useState(false);
+  const [regalia, setRegalia] = useState(true);
+  const [regaliaPreset, setRegaliaPreset] = useState<MockupColorPreset>('defaults');
   const canvas = useRef<HTMLCanvasElement>(null);
   const review = useRef<HTMLElement>(null);
   const study = seatingStudies.find(({ id }) => id === view);
@@ -387,6 +399,7 @@ export function StadiumScaleStudies() {
   const bayId = placements.some(({ bayId }) => bayId === selectedBay) ? selectedBay : placements[0].bayId;
   const kickoffBays = fullEndsView ? layers?.fullEnds : layers?.fullBowl;
   const inspectedBay = kickoffBays?.find(bay => bay.bayId === bayId);
+  const inspectedFrames = fullBowlView ? inspectedBay?.decoratedFrames : inspectedBay?.frames;
   const markerToggle = <label><input type="checkbox" checked={markers} onChange={event => setMarkers(event.target.checked)}
     aria-describedby={markers ? 'gatehouse-marker-key' : undefined}/>Seat markers</label>;
   const controls = <div className="mockup-controls">
@@ -417,11 +430,12 @@ export function StadiumScaleStudies() {
     if (benches) context.drawImage(layers.benches, 0, 0);
     if (kickoffView && kickoffBays) {
       for (const { bounds, crowd } of kickoffBays) context.drawImage(crowd, bounds.x, bounds.y);
+      if (fullBowlView && regalia) context.drawImage(layers.regalia(regaliaPreset), 0, 0);
       for (const { sprite, at } of layers.kickoff) drawScalePlayer(context, sprite, at);
       if (markers) {
         for (const { bounds, slots, seats } of kickoffBays) drawSeatMarkers(context, bounds, slots, seats);
       }
-      if (inspectedBay) drawReviewCrops(review.current, full, cropId, inspectedBay.frames);
+      if (inspectedFrames) drawReviewCrops(review.current, full, cropId, inspectedFrames);
     }
     const variant = layers.studies.find(({ id }) => id === view);
     if (variant) {
@@ -442,7 +456,8 @@ export function StadiumScaleStudies() {
         drawReviewCrops(review.current, full, 'end-' + end.id, end.frames);
       }
     }
-  }, [layers, view, masked, kickoffView, kickoffBays, cropId, endView, displayedEnds, inspectedBay, benches, rail, markers]);
+  }, [layers, view, masked, kickoffView, kickoffBays, cropId, endView, displayedEnds, inspectedFrames,
+    benches, rail, markers, fullBowlView, regalia, regaliaPreset]);
 
   const overview = <div className={'scale-study-crop gatehouse-overview' + (kickoffView ? ' kickoff-overview' : '')}
     data-full-bowl={fullBowlView}>
@@ -488,8 +503,21 @@ export function StadiumScaleStudies() {
       <div className="bay-six-toolbar kickoff-toolbar">
         {standOccupancy.filter(({ stand }) => fullBowlView || !isSideStand(stand)).map(({ stand, label, occupied, capacity }) =>
           <p key={stand}>{label} <strong>{occupied} of {capacity} occupied</strong></p>)}
-        <div className="mockup-controls">{markerToggle}</div>
-        <a className="end-stand-reference" href={'#' + detailId}>Inspect a bay</a>
+        <div className="mockup-controls kickoff-review-controls">
+          {markerToggle}
+          {fullBowlView && <>
+            <label><input type="checkbox" checked={regalia} onChange={event => setRegalia(event.target.checked)}/>Regalia</label>
+            <label>Regalia colors
+              <select value={regaliaPreset} disabled={!regalia} onChange={event => {
+                const preset = regaliaPresets.find(preset => preset.id === event.target.value);
+                if (preset) setRegaliaPreset(preset.id);
+              }}>
+                {regaliaPresets.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
+              </select>
+            </label>
+          </>}
+          <a className="end-stand-reference" href={'#' + detailId}>Inspect a bay</a>
+        </div>
       </div>
       {markerKey}
       {overview}
@@ -509,7 +537,7 @@ export function StadiumScaleStudies() {
           {inspectedBay && <p><strong>{inspectedBay.seats.length} of {inspectedBay.capacity} occupied</strong></p>}
           {fullBowlView && <a className="end-stand-reference" href={`?view=full-bowl&bay=${bayId}#${detailId}`}>Link to this bay</a>}
         </div>
-        {inspectedBay && <ReviewCrops key={bayId} id={cropId} frames={inspectedBay.frames}/>}
+        {inspectedFrames && <ReviewCrops key={bayId} id={cropId} frames={inspectedFrames}/>}
       </section>
     </section>}
     {study && <section ref={review} className="bay-six-review" aria-labelledby="bay-six-heading">
