@@ -14,28 +14,28 @@
       "id": 1,
       "stand": "north",
       "x": 33,
-      "y": 28,
+      "y": 8,
       "width": 149,
-      "height": 72,
-      "pixelCount": 9883
+      "height": 92,
+      "pixelCount": 12231
     },
     {
       "id": 2,
       "stand": "north",
       "x": 244,
-      "y": 28,
+      "y": 8,
       "width": 301,
-      "height": 72,
-      "pixelCount": 20755
+      "height": 92,
+      "pixelCount": 26583
     },
     {
       "id": 3,
       "stand": "north",
       "x": 607,
-      "y": 28,
+      "y": 8,
       "width": 149,
-      "height": 72,
-      "pixelCount": 9855
+      "height": 92,
+      "pixelCount": 12167
     },
     {
       "id": 4,

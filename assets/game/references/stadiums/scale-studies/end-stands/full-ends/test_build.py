@@ -53,6 +53,19 @@ class FullEndStandTests(unittest.TestCase):
             colors = ["#" + bytes(output[i:i + 3]).hex() for i in range(3 * start, 3 * (start + 16), 3)]
             self.assertEqual(ramps[material], colors)
 
+    def test_all_three_north_back_rows_seat_supporters_on_the_original_plank(self):
+        records = build.proof.read(build.HERE / "placements.json")
+        for bay_id in (1, 2, 3):
+            bay = self.bays[bay_id]
+            record = next(entry for entry in records if entry["bayId"] == bay_id)
+            first_plank, _ = self.supports[bay_id]["row-1"]
+            back_row = [seat for seat in record["seats"] if seat["plankId"] == first_plank]
+            with self.subTest(bay=bay_id):
+                self.assertTrue(back_row)
+                for seat in back_row:
+                    self.assertIn("knee", seat)
+                    self.assertEqual(32, bay["y"] + seat["y"])
+
     def check_protected_pixels(self, record, bay, crowd):
         union = set()
         for seat in record["seats"]:
@@ -118,13 +131,13 @@ class FullEndStandTests(unittest.TestCase):
             build.validate_end_stands([north1], self.bays)
 
     def test_rejects_head_occlusion_at_close_anchors(self):
-        plan = {"bayId": 1, "rows": [{"plank": "row-2", "anchors": [[50, 25], [52, 25]],
+        plan = {"bayId": 1, "rows": [{"plank": "row-2", "anchors": [[50, 45], [52, 45]],
                                      "occupants": {"0": "horn", "1": "clap"}}]}
         with self.assertRaisesRegex(ValueError, "covers a face, gesture, or standing sole"):
             build.build_bay(plan, self.bays[1], self.supports[1], self.mask, self.tiles, self.landmarks)
 
     def test_rejects_raw_alpha_outside_bay_before_indexed_paste(self):
-        plan = {"bayId": 1, "rows": [{"plank": "row-2", "anchors": [[34, 25]], "occupants": {"0": "horn"}}]}
+        plan = {"bayId": 1, "rows": [{"plank": "row-1", "anchors": [[39, 24]], "occupants": {"0": "horn"}}]}
         damaged = self.tiles.copy()
         indexed = damaged["north-horn"][0].copy()
         indexed.putpixel((0, 0), 33)
@@ -135,8 +148,8 @@ class FullEndStandTests(unittest.TestCase):
 
     def test_rejects_vacancy_without_full_seated_fit(self):
         plan = {"bayId": 1, "rows": [
-            {"plank": "row-2", "anchors": [[34, 25]], "occupants": {"0": "horn"}},
-            {"plank": "row-1", "anchors": [[72, 4]], "occupants": {}},
+            {"plank": "row-2", "anchors": [[34, 45]], "occupants": {"0": "horn"}},
+            {"plank": "row-1", "anchors": [[27, 24]], "occupants": {}},
         ]}
         with self.assertRaisesRegex(ValueError, "has no seated pose fitting vacant place"):
             build.build_bay(plan, self.bays[1], self.supports[1], self.mask, self.tiles, self.landmarks)

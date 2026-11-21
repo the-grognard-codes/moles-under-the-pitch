@@ -19,6 +19,13 @@ NORTH = [
     [(316,36),(705,36),(705,128),(316,128)],
     [(787,36),(946,36),(951,67),(962,70),(965,94),(979,105),(979,128),(787,128)],
 ]
+# Native headroom above the approved north outlines. Taper beside the arches
+# and corner walls, then meet the original y=28 mask spans exactly.
+NORTH_HEADROOM = [
+    [(59, 28), (60, 20), (64, 8), (174, 8), (178, 18), (181, 28)],
+    [(244, 28), (247, 19), (255, 8), (533, 8), (541, 19), (544, 28)],
+    [(607, 28), (610, 19), (617, 8), (722, 8), (727, 19), (730, 28)],
+]
 WEST = [
     [(27,170),(112,209),(112,489),(27,489)],
     [(28,562),(112,562),(112,684),(66,684),(58,667),(42,656),(28,659)],
@@ -48,6 +55,8 @@ def build_mask():
     polygons = (polygon for _, outlines in STANDS for polygon in outlines)
     for bay_id, polygon in enumerate(polygons, 1):
         draw.polygon(native(polygon), fill=bay_id)
+    for bay_id, polygon in enumerate(NORTH_HEADROOM, 1):
+        draw.polygon(polygon, fill=bay_id)
     # North braziers project in front of the first row.
     for x in (380, 645):
         brazier = [(x-15,132),(x-15,114),(x-6,106),(x,89),(x+8,105),(x+14,112),(x+15,132)]

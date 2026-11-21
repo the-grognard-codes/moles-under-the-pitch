@@ -214,7 +214,9 @@ async function verifyEndDraw(stadium, sections, original, withRail) {
       const native = document.querySelector('#end-' + id + '-native-canvas');
       const zoom = document.querySelector('#end-' + id + '-zoom-canvas');
       const pitchY = id === 'north' ? 169 : 969;
-      const frameY = id === 'north' ? y - 12 : pitchY - 8;
+      const frameY = id === 'north' ? Math.max(0, y - 12) : pitchY - 8;
+      const frameBottom = id === 'north' ? pitchY + 32 + 8 : y + height + 12;
+      if (native.height !== frameBottom - frameY) throw Error(id + ' native crop exceeds stadium bounds');
       const nativePixels = frame.getImageData(x - 12, frameY, native.width, native.height).data;
       const nativeContext = native.getContext('2d');
       if (!nativeContext.getImageData(0, 0, native.width, native.height).data.every((value, i) => value === nativePixels[i])) {
@@ -224,10 +226,12 @@ async function verifyEndDraw(stadium, sections, original, withRail) {
       const withBlitzer = nativeContext.getImageData(156 - (x - 12), pitchY - frameY, 32, 32).data;
       if (turf.filter((value, i) => value !== withBlitzer[i]).length < 100) throw Error(id + ' native crop is missing its blitzer');
 
-      const detailWidth = width + 16;
-      const detailHeight = height + 16;
+      const detailX = Math.max(0, x - 8);
+      const detailY = Math.max(0, y - 8);
+      const detailWidth = Math.min(full.width, x + width + 8) - detailX;
+      const detailHeight = Math.min(full.height, y + height + 8) - detailY;
       if (zoom.width !== detailWidth * 4 || zoom.height !== detailHeight * 4) throw Error(id + ' has the wrong pixel zoom');
-      const detail = frame.getImageData(x - 8, y - 8, detailWidth, detailHeight).data;
+      const detail = frame.getImageData(detailX, detailY, detailWidth, detailHeight).data;
       const pixels = zoom.getContext('2d').getImageData(0, 0, zoom.width, zoom.height).data;
       for (let yy = 0; yy < zoom.height; yy++) {
         for (let xx = 0; xx < zoom.width; xx++) {
@@ -445,9 +449,9 @@ async function verifyFullEndStands(page, original) {
       const full = document.querySelector('canvas[data-ready="true"]');
       const native = section.querySelector('#full-end-bay-native-canvas');
       const zoom = section.querySelector('#full-end-bay-zoom-canvas');
-      const top = bounds.y - 24;
+      const top = Math.max(0, bounds.y - 24);
       const width = right - left;
-      const height = bounds.height + 48;
+      const height = Math.min(full.height, bounds.y + bounds.height + 24) - top;
       if (native.width !== width || native.height !== height || zoom.width !== width * 4 || zoom.height !== height * 4)
         throw Error('Incorrect crop dimensions for bay ' + bounds.id);
       const actual = native.getContext('2d').getImageData(0, 0, width, height).data;

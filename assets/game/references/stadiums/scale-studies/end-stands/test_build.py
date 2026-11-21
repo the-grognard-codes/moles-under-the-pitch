@@ -157,7 +157,12 @@ class EndStandTests(unittest.TestCase):
         }
         for filename, checksum in approved.items():
             with self.subTest(filename=filename), Image.open(build.HERE / filename) as layer:
-                self.assertEqual(checksum, sha256(layer.convert("RGBA").tobytes()).hexdigest())
+                reviewed = layer.convert("RGBA")
+                if filename.startswith("north"):
+                    headroom = 28 - self.bays[1]["y"]  # The reviewed bay began at native y=28.
+                    self.assertIsNone(reviewed.crop((0, 0, layer.width, headroom)).getbbox())
+                    reviewed = reviewed.crop((0, headroom, layer.width, layer.height))
+                self.assertEqual(checksum, sha256(reviewed.tobytes()).hexdigest())
 
     def check_source(self, seat, bay, crowd, with_rail):
         cell = build.spectator(self.atlas, seat["pose"], self.palette)
@@ -180,9 +185,20 @@ class EndStandTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, f"{pose} crosses bay {bay_id}"):
                     self.render(stand, self.layout[stand], damaged)
 
+    def test_north_headroom_admits_an_untrimmed_pose_on_each_rear_plank(self):
+        pose = "north-clap"
+        person = build.spectator(self.atlas, pose, self.palette)
+        for bay_id, x in ((1, 80), (2, 150), (3, 60)):
+            with self.subTest(bay=bay_id):
+                bay = self.bays[bay_id]
+                _, timber = self.supports[bay_id]["row-1"]
+                origin, _ = build.place(person, pose, (x, 32 - bay["y"]), 1, self.landmarks[pose], timber)
+                visible = build.checked_pixels(person, origin, self.mask, bay, pose)
+                self.assertLess(min(y for _, y in visible) + bay["y"], 28)
+
     def test_empty_place_on_unusable_board_is_rejected(self):
         layout = deepcopy(self.layout["north"])
-        layout["rows"][0]["anchors"][1] = [58, 7]
+        layout["rows"][0]["anchors"][1] = [58, 35 - self.bays[1]["y"]]
         with self.assertRaisesRegex(ValueError, "unsupported vacant seat"):
             self.render("north", layout, self.atlas)
 

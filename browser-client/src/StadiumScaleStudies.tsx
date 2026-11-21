@@ -71,6 +71,12 @@ const westPlayer = {
   y: bowl.pitchY + (Math.floor((bay.y + bay.height / 2 - bowl.pitchY) / square) + .5) * square,
 };
 
+function bowlCrop(left: number, top: number, right: number, bottom: number): Crop {
+  const x = Math.max(0, left);
+  const y = Math.max(0, top);
+  return { x, y, width: Math.min(bowl.width, right) - x, height: Math.min(bowl.height, bottom) - y };
+}
+
 function endFrames(bounds: Crop, north: boolean) {
   const pitchBottom = bowl.pitchY + STILL_LAYOUT.pitch.height;
   const playerAt = { x: bowl.pitchX + square / 2, y: north ? bowl.pitchY + square / 2 : pitchBottom - square / 2 };
@@ -80,8 +86,8 @@ function endFrames(bounds: Crop, north: boolean) {
   const bottom = north ? bowl.pitchY + square + 8 : bounds.y + bounds.height + 12;
   return {
     playerAt,
-    native: { x: left, y: top, width: right - left, height: bottom - top },
-    detail: { x: bounds.x - 8, y: bounds.y - 8, width: bounds.width + 16, height: bounds.height + 16 },
+    native: bowlCrop(left, top, right, bottom),
+    detail: bowlCrop(bounds.x - 8, bounds.y - 8, bounds.x + bounds.width + 8, bounds.y + bounds.height + 8),
   };
 }
 
@@ -92,11 +98,9 @@ function fullEndFrames(bounds: typeof bay) {
   const after = row[index + 1];
   const rightEdge = bounds.x + bounds.width;
   // Include the adjacent stair or gate approach up to the center of the gap.
-  const left = before ? Math.floor((before.x + before.width + bounds.x) / 2) : Math.max(0, bounds.x - 32);
-  const right = after ? Math.ceil((rightEdge + after.x) / 2) : Math.min(bowl.width, rightEdge + 32);
-  const top = Math.max(0, bounds.y - 24);
-  const bottom = Math.min(bowl.height, bounds.y + bounds.height + 24);
-  const frame = { x: left, y: top, width: right - left, height: bottom - top };
+  const left = before ? Math.floor((before.x + before.width + bounds.x) / 2) : bounds.x - 32;
+  const right = after ? Math.ceil((rightEdge + after.x) / 2) : rightEdge + 32;
+  const frame = bowlCrop(left, bounds.y - 24, right, bounds.y + bounds.height + 24);
   return { native: frame, detail: frame };
 }
 

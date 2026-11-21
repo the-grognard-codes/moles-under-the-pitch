@@ -6,10 +6,12 @@ The gallery now opens on the full pitch with both end stands populated and eleve
 
 | End | Occupied places | Neutral outfits | Standing supporters |
 | --- | ---: | ---: | ---: |
-| North, facing the viewer | 28 of 42 | 10 | 4 |
+| North, facing the viewer | 41 of 62 | 14 | 4 |
 | South, facing the pitch with their backs to the viewer | 38 of 57 | 12 | 4 |
 
 ![Full overhead Gatehouse pitch at kickoff with supporters in the three north and four south bays](../../assets/game/references/stadiums/scale-studies/end-stands/full-ends/kickoff.webp)
+
+The north back row adds 20 places across the three bays. Thirteen are occupied, from left to right in groups of three, seven and three. Each bay mask extends 20 native pixels up the rear wall and tapers at the arches. The supporters on this row are seated, with their hips on the original timber at stadium y=32. The earlier crowd, the stair entrances and the pitch retain their original positions.
 
 Open `/stadium-mockup?view=full-ends` and select **Inspect a bay** for the native and 4× crops. North bay 2 includes the centre benches and their stairs. South bays 13 and 14 flank the gate. **Seat markers** shows occupied contacts and the gaps reserved above standing supporters. Each crowd insert has the dimensions and origin of its seating bay. The full-resolution browser comparison checks the seven inserts, the surrounding architecture and the kickoff formation against the native canvas.
 
@@ -34,7 +36,7 @@ Open `/stadium-mockup?view=ends` to see the same three seated supporters from op
 
 ![South stand at 4× zoom. The upper row shows the original leg shapes. The lower row shows each supporter’s corrected seated silhouette on the same bench.](../../assets/game/references/stadiums/scale-studies/end-stands/on-pitch.webp)
 
-Each bay has three of nine places occupied, including one fixed neutral outfit. North bay 1 has room for complete seated figures on two inner planks, with five and four places. The top and bottom planks have too little clearance for a full silhouette. South bay 12 has three usable planks with three places each. **Seat markers** shows the occupied and vacant places. **Front rail** toggles the separate rail. **View six full poses** opens the transparent drawings so the silhouette of each seated figure can be inspected on its own. [Artist sheet](../../assets/game/references/stadiums/scale-studies/end-stands/artist-reference.webp)
+Each bay in this earlier study has three of nine places occupied, including one fixed neutral outfit. North bay 1 uses five and four places on its two inner planks. South bay 12 uses three planks with three places each. **Seat markers** shows the occupied and vacant places. **Front rail** toggles the separate rail. **View six full poses** opens the transparent drawings so the silhouette of each seated figure can be inspected on its own. [Artist sheet](../../assets/game/references/stadiums/scale-studies/end-stands/artist-reference.webp)
 
 The seating checks validate the complete source against its bay mask and require the rear seat contour to remain on its plank. Native and 4× browser comparisons showed that the revision changes only the three rear seat areas with the rail visible or hidden. The west-facing cast supplies the side-view reference for later stands.
 

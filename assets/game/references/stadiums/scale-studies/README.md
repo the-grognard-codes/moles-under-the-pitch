@@ -4,7 +4,7 @@
 
 The seven end bays each have one transparent indexed crowd PNG, registered at that bay’s native top-left corner on the empty stadium. The seat plan records bay-local hip or boot anchors, the plank under each place, and the occupants. North uses the front drawings and south uses the rear drawings. The PNGs use the Human home navy and gold ramps at indices 1–32 and retain the artist sheet’s fixed colours at 33 and above. [Authored seat plan](end-stands/full-ends/layout.json) · [Gallery placements and image names](end-stands/full-ends/placements.json)
 
-From the repository root, run these commands with Pillow to reproduce and check the inserts. The checks cover the raw sprite against the bay mask, contact with the timber, face and gesture visibility, a vacant place above each standing supporter, and repeated neighbours across stairs. The passing layout contains 66 supporters, 22 in neutral clothing, in 99 places. [Kickoff preview](end-stands/full-ends/kickoff.webp)
+The two ends have 79 supporters in 119 places, including 26 in neutral clothing. Run the following commands from the repository root with Pillow to reproduce the inserts. The checks cover the raw sprite against the bay mask, contact with the timber, face and gesture visibility, a vacant place above each standing supporter, and repeated neighbours across stairs. [Kickoff preview](end-stands/full-ends/kickoff.webp)
 
 ```text
 python -B assets/game/references/stadiums/scale-studies/end-stands/full-ends/build.py
@@ -14,6 +14,8 @@ python -B assets/game/references/stadiums/scale-studies/end-stands/full-ends/tes
 ## Gatehouse bench-top template
 
 The [bench layout](gatehouse-benches.json) records 64 plank tops across all 15 seating bays. Each plank has a stable numeric ID and a name within its bay. The last digit is the plank number, so plank 62 is plank 2 in bay 6. Its rectangles are measured in native pixels from the bay’s top-left corner and stored as `[x, y, width, height]`. Their union, intersected with the approved seating mask for that bay, defines the usable timber surface. Keep the same plank IDs and surfaces when drawing a new stadium skin for this layout.
+
+For a compatible stadium skin, leave room for seated heads and raised hands on the rear wall of each north bay. These three insert canvases begin at stadium y=8 and are 92 px tall. The back-row hip anchors sit at local y=24, or stadium y=32. Follow the [seating mask](empty-seating.png) where it tapers beside the arches and corner walls. Only the painted timber can support a seated or standing figure.
 
 Enable **Bench tops** in the gallery to show the surfaces beneath the crowd. Colours repeat by plank number within each bay. The exported mask identifies each individual plank across the stadium. The west-bay crowd builder uses the same template to register each hip and check that both boot contacts of a standing supporter land on one plank. Spectator silhouettes may extend past the wood anywhere the seating-section mask permits.
 

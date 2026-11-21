@@ -1,10 +1,10 @@
 {
   "north": {
     "label": "North stand · Front view",
-    "rail": [15, 66, 141],
+    "rail": [15, 86, 141],
     "rows": [
-      {"plank": "row-2", "anchors": [[34, 25], [58, 25], [82, 25], [106, 25], [130, 25]], "occupants": {"0": "horn", "3": "pie"}},
-      {"plank": "row-3", "anchors": [[38, 48], [68, 48], [99, 48], [130, 48]], "occupants": {"1": "clap"}}
+      {"plank": "row-2", "anchors": [[34, 45], [58, 45], [82, 45], [106, 45], [130, 45]], "occupants": {"0": "horn", "3": "pie"}},
+      {"plank": "row-3", "anchors": [[38, 68], [68, 68], [99, 68], [130, 68]], "occupants": {"1": "clap"}}
     ]
   },
   "south": {
