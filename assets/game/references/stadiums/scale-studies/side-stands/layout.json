@@ -1,0 +1,42 @@
+[
+  {"bayId": 4, "rows": [
+    {"plank": "wall-bench", "anchors": [[7, 36], [7, 57], [7, 80], [7, 106], [6, 125], [7, 148], [6, 170], [7, 192], [7, 215], [7, 237]], "occupants": {"0": "seated-tambourine", "2": "seated-horn", "3": "seated-cheer", "4": "seated-pie", "5": "seated-chestnuts", "6": "seated-program", "7": "seated-pie"}},
+    {"plank": "rear-bench", "anchors": [[20, 45], [20, 65], [20, 86], [20, 108], [20, 129], [20, 151], [20, 173], [20, 192], [20, 217], [20, 237]], "occupants": {"1": "seated-mug", "3": "seated-clap", "5": "standing-tambourine", "7": "seated-horn", "8": "seated-whistle", "9": "seated-cheer"}, "standingContacts": {"5": [21, 158]}},
+    {"plank": "inner-bench", "anchors": [[39, 48], [39, 69], [39, 91], [39, 114], [39, 136], [39, 158], [39, 180], [39, 201], [39, 224]], "occupants": {"0": "seated-chestnuts", "1": "seated-program", "4": "seated-lookout", "5": "seated-mug", "6": "seated-clap", "8": "seated-lookout"}}
+  ]},
+  {"bayId": 5, "rows": [
+    {"plank": "wall-bench", "anchors": [[6, 28], [6, 51], [6, 65]], "occupants": {"1": "seated-lookout", "2": "seated-chestnuts"}},
+    {"plank": "rear-bench", "anchors": [[19, 30], [19, 52], [19, 72]], "occupants": {"0": "seated-pie", "1": "seated-program"}},
+    {"plank": "inner-bench", "anchors": [[38, 32], [38, 54], [38, 77]], "occupants": {"0": "seated-cheer", "2": "standing-tambourine"}, "standingContacts": {"2": [39, 84]}}
+  ]},
+  {"bayId": 6, "rows": [
+    {"plank": "wall-bench", "anchors": [[6, 28], [6, 46], [6, 65]], "occupants": {"0": "seated-mug", "1": "seated-lookout"}},
+    {"plank": "rear-bench", "anchors": [[19, 28], [19, 44], [19, 64]], "occupants": {"0": "seated-chestnuts", "2": "standing-horn"}, "standingContacts": {"2": [20, 72]}},
+    {"plank": "inner-bench", "anchors": [[38, 29], [38, 48], [38, 66]], "occupants": {"0": "seated-whistle", "1": "seated-clap"}}
+  ]},
+  {"bayId": 7, "rows": [
+    {"plank": "wall-bench", "anchors": [[6, 29], [6, 51], [6, 74], [6, 97], [6, 118], [6, 140], [6, 162], [6, 184], [6, 207], [6, 228], [6, 251], [6, 273], [6, 295]], "occupants": {"1": "seated-program", "2": "seated-pie", "3": "seated-chestnuts", "4": "seated-lookout", "5": "seated-program", "6": "seated-lookout", "8": "seated-tambourine", "10": "seated-chestnuts", "12": "seated-cheer"}},
+    {"plank": "rear-bench", "anchors": [[19, 32], [19, 53], [19, 74], [19, 99], [19, 121], [19, 142], [19, 164], [19, 186], [19, 209], [19, 231], [19, 251], [19, 276], [19, 298]], "occupants": {"0": "seated-chestnuts", "1": "seated-whistle", "2": "seated-cheer", "5": "standing-tambourine", "7": "seated-clap", "8": "seated-pie", "9": "seated-mug", "10": "seated-lookout", "11": "seated-whistle"}, "standingContacts": {"5": [20, 149]}},
+    {"plank": "inner-bench", "anchors": [[38, 34], [38, 55], [38, 76], [38, 97], [38, 118], [38, 139], [38, 160], [38, 181], [38, 202], [38, 223], [38, 244], [38, 265], [38, 286]], "occupants": {"0": "seated-horn", "1": "seated-pie", "2": "seated-mug", "3": "seated-clap", "4": "seated-horn", "7": "seated-program", "9": "seated-chestnuts", "11": "standing-horn"}, "standingContacts": {"11": [39, 272]}}
+  ]},
+  {"bayId": 8, "rows": [
+    {"plank": "wall-bench", "anchors": [[59, 35], [59, 56], [59, 83], [59, 100], [59, 128], [59, 145], [59, 168], [59, 190], [59, 208], [59, 235]], "occupants": {"1": "seated-mug", "2": "seated-cheer", "4": "seated-horn", "5": "seated-cheer", "6": "seated-chestnuts", "7": "seated-pie", "8": "seated-lookout"}},
+    {"plank": "rear-bench", "anchors": [[47, 42], [47, 57], [47, 85], [47, 107], [47, 130], [47, 152], [47, 176], [47, 197], [47, 220], [47, 239]], "occupants": {"0": "seated-lookout", "1": "seated-pie", "2": "seated-clap", "4": "standing-tambourine", "8": "seated-mug", "9": "seated-cheer"}, "standingContacts": {"4": [46, 137]}},
+    {"plank": "inner-bench", "anchors": [[27, 49], [27, 71], [27, 93], [27, 116], [27, 138], [27, 162], [27, 184], [27, 205], [27, 227]], "occupants": {"0": "seated-chestnuts", "2": "seated-horn", "3": "seated-program", "4": "seated-mug", "6": "seated-whistle", "7": "seated-clap"}}
+  ]},
+  {"bayId": 9, "rows": [
+    {"plank": "wall-bench", "anchors": [[59, 28], [59, 49], [59, 65]], "occupants": {"1": "seated-chestnuts", "2": "seated-horn"}},
+    {"plank": "rear-bench", "anchors": [[47, 30], [47, 51], [47, 72]], "occupants": {"0": "seated-mug", "1": "seated-clap"}},
+    {"plank": "inner-bench", "anchors": [[27, 32], [27, 53], [27, 77]], "occupants": {"1": "seated-cheer", "2": "seated-tambourine"}}
+  ]},
+  {"bayId": 10, "rows": [
+    {"plank": "wall-bench", "anchors": [[59, 29], [59, 47], [59, 65]], "occupants": {"0": "seated-chestnuts", "1": "seated-lookout"}},
+    {"plank": "rear-bench", "anchors": [[47, 28], [47, 45], [47, 64]], "occupants": {"0": "seated-cheer", "2": "standing-horn"}, "standingContacts": {"2": [46, 71]}},
+    {"plank": "inner-bench", "anchors": [[27, 28], [27, 48], [27, 64]], "occupants": {"0": "seated-mug", "2": "seated-whistle"}}
+  ]},
+  {"bayId": 11, "rows": [
+    {"plank": "wall-bench", "anchors": [[59, 30], [59, 50], [59, 75], [59, 95], [59, 120], [59, 139], [59, 161], [59, 187], [59, 206], [59, 229], [59, 252], [59, 272], [59, 293]], "occupants": {"0": "seated-program", "2": "seated-mug", "3": "seated-cheer", "4": "seated-tambourine", "6": "seated-mug", "7": "seated-tambourine", "9": "seated-cheer", "10": "seated-pie", "12": "seated-program"}},
+    {"plank": "rear-bench", "anchors": [[47, 32], [47, 54], [47, 76], [47, 98], [47, 120], [47, 143], [47, 165], [47, 187], [47, 209], [47, 231], [47, 253], [47, 275], [47, 296]], "occupants": {"0": "seated-whistle", "2": "seated-pie", "4": "seated-lookout", "5": "seated-whistle", "7": "seated-chestnuts", "8": "seated-lookout", "10": "seated-clap", "12": "standing-tambourine"}, "standingContacts": {"12": [46, 303]}},
+    {"plank": "inner-bench", "anchors": [[27, 31], [27, 52], [27, 74], [27, 96], [27, 117], [27, 138], [27, 160], [27, 181], [27, 202], [27, 223], [27, 244], [27, 265], [27, 286]], "occupants": {"0": "seated-pie", "1": "seated-clap", "3": "seated-program", "4": "seated-chestnuts", "6": "seated-clap", "8": "standing-horn", "10": "seated-chestnuts", "11": "seated-horn", "12": "seated-lookout"}, "standingContacts": {"8": [26, 209]}}
+  ]}
+]

@@ -95,7 +95,9 @@ def handrail(size):
     return image
 
 
-def place_pose(person, pose, support, x, y, landmarks, planks):
+def place_pose(person, pose, support, x, y, landmarks, planks, facing=1):
+    if facing not in (-1, 1):
+        raise ValueError("facing must be -1 or 1")
     alpha = person.getchannel("A")
     bounds = alpha.getbbox()
     if bounds is None:
@@ -122,29 +124,30 @@ def place_pose(person, pose, support, x, y, landmarks, planks):
         if not on_plank(x, y):
             raise ValueError(f"{pose} hip is off {support}")
         back = x
-        while on_plank(back - 1, y):
-            back -= 1
+        while on_plank(back - facing, y):
+            back -= facing
         front = x
-        while on_plank(front + 1, y):
-            front += 1
-        width = front - back + 1
+        while on_plank(front + facing, y):
+            front += facing
+        width = (front - back) * facing + 1
         if support == "wall-bench":
             # A fan can perch nearer the lip with room for their back inside the wall.
             # Measure the continuous seated silhouette over timber one pixel above the hip.
             bearing = 0
-            for px in range(front, back - 1, -1):
+            for px in range(front, back - facing, -facing):
                 if not (on_plank(px, y - 1) and 0 <= px - left < alpha.width
                         and contact_y > 0 and alpha.getpixel((px - left, contact_y - 1))):
                     break
                 bearing += 1
-            if 3 * bearing < 2 * width or 3 * (x - back) > 2 * width:
+            if 3 * bearing < 2 * width or 3 * (x - back) * facing > 2 * width:
                 raise ValueError(f"{pose} has insufficient support on {support}")
         elif x != back:
             raise ValueError(f"{pose} hip and knee do not fit {support}")
-        if not (front <= knee_x <= x + width + 1 and on_plank(front, knee_y)):
+        span = (knee_x - x) * facing
+        if not ((knee_x - front) * facing >= 0 and span <= width + 1 and on_plank(front, knee_y)):
             raise ValueError(f"{pose} hip and knee do not fit {support}")
         seat.update(stance="seated", knee={"x": knee_x, "y": knee_y},
-                    benchWidth=width, thighSpan=knee_x - x)
+                    benchWidth=width, thighSpan=span)
     else:
         local_sole_x, local_sole_y = landmarks["otherSole"]
         sole_x, sole_y = left + local_sole_x, top + local_sole_y

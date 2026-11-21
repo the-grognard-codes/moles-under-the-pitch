@@ -12,6 +12,7 @@ const studies = JSON.parse(await readFile(resolve(artwork, 'bay-six/seats.json')
 const ends = JSON.parse(await readFile(resolve(artwork, 'end-stands/placements.json'), 'utf8'));
 const endPoseGroups = JSON.parse(await readFile(resolve(artwork, 'end-stands/pose-placements.json'), 'utf8'));
 const fullEndPlacements = JSON.parse(await readFile(resolve(artwork, 'end-stands/full-ends/placements.json'), 'utf8'));
+const sidePlacements = JSON.parse(await readFile(resolve(artwork, 'side-stands/placements.json'), 'utf8'));
 const [atlasPng, authoringPng] = await Promise.all(['supporter-kits.png', 'supporters.png'].map(file =>
   readFile(resolve(artwork, 'bay-six', file), 'base64')));
 const { ramps } = JSON.parse(await readFile(resolve(artwork, '../../../team-colors/v1/delivery/manifest.json'), 'utf8'));
@@ -353,34 +354,64 @@ async function verifyEndPoseShowcase(page, original) {
   await verifyEndDraw(stadium, await readEndSections(ends), original, true);
 }
 
-async function verifyFullEndStands(page, original) {
+const fullKickoffLabel = 'Gatehouse kickoff with 22 players and crowds in all four stands';
+const sideStands = ['west', 'east'];
+
+async function verifyKickoff(page, original, full) {
   const picker = page.getByLabel('Gallery view');
-  const stadium = page.getByLabel('Gatehouse kickoff with 22 players and north and south crowds');
-  const review = page.getByRole('region', { name: 'North and south stands at kickoff' });
+  const stadium = page.getByLabel(full ? fullKickoffLabel : 'Gatehouse kickoff with 22 players and north and south crowds');
+  const review = page.getByRole('region', { name: full ? 'Full stadium at kickoff' : 'North and south stands at kickoff' });
   const detail = page.getByRole('region', { name: 'Bay details' });
-  const bayPicker = page.getByLabel('End-stand bay');
+  const bayPicker = page.getByLabel(full ? 'Seating bay' : 'End-stand bay');
   const markers = page.getByRole('checkbox', { name: 'Seat markers' });
-  const sections = await Promise.all(fullEndPlacements.map(async entry => ({
+  const placement = full ? [...fullEndPlacements, ...sidePlacements].sort((a, b) => a.bayId - b.bayId) : fullEndPlacements;
+  const sections = await Promise.all(placement.map(async entry => ({
     ...entry, bounds: layout.bays.find(({ id }) => id === entry.bayId),
-    png: await readFile(resolve(artwork, 'end-stands/full-ends', entry.crowd), 'base64'),
+    png: await readFile(resolve(artwork, sideStands.includes(entry.stand) ? 'side-stands' : 'end-stands/full-ends', entry.crowd), 'base64'),
   })));
-  assert.deepEqual(sections.map(({ bayId }) => bayId), [1, 2, 3, 12, 13, 14, 15]);
-  await picker.selectOption('full-ends');
+  assert.deepEqual(sections.map(({ bayId }) => bayId), full ? layout.bays.map(({ id }) => id) : [1, 2, 3, 12, 13, 14, 15]);
+  assert.ok(sections.every(({ stand, bounds }) => stand === bounds.stand));
+  await picker.selectOption(full ? 'full-bowl' : 'full-ends');
   await stadium.waitFor();
   assert.equal(await markers.isChecked(), false);
   assert.equal(await page.getByRole('checkbox', { name: 'Front rail' }).count(), 0);
   assert.deepEqual(await stadium.evaluate(c => [c.width, c.height]), [790, 1188]);
   assert.ok(await detail.evaluate(section =>
     Boolean(document.querySelector('.gatehouse-overview').compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING)));
-  for (const stand of ['north', 'south']) {
+  const labels = { north: 'North', south: 'South', west: 'West (home)', east: 'East (away)' };
+  for (const stand of full ? Object.keys(labels) : ['north', 'south']) {
     const { capacity, occupied } = sections.filter(bay => bay.stand === stand).reduce((total, bay) =>
       ({ capacity: total.capacity + bay.capacity, occupied: total.occupied + bay.seats.length }), { capacity: 0, occupied: 0 });
     assert.ok(Math.abs(occupied - capacity * 2 / 3) <= 1);
-    await review.getByText(new RegExp('^' + stand + ' ' + occupied + ' of ' + capacity + ' occupied$', 'i')).waitFor();
+    await review.getByText(labels[stand] + ' ' + occupied + ' of ' + capacity + ' occupied', { exact: true }).waitFor();
   }
-  // Compare the entire stadium to the approved architecture with only the seven
-  // bay sprites and the two actual kickoff kits drawn over it.
-  const overview = await stadium.evaluate(async (canvas, { sections, original }) => {
+  if (full) {
+    const westTrial = studies.find(({ id }) => id === 'b');
+    const westSix = sections.find(({ bayId }) => bayId === 6);
+    const places = seats => seats.map(seat => [seatKey(seat), seat.pose, seat.x, seat.y]).sort();
+    assert.deepEqual(places(westSix.seats), places(westTrial.seats), 'West 6 preserves the approved trial poses and locations');
+    for (const { stand, seats } of sidePlacements) {
+      assert.ok(seats.some(({ neutral }) => neutral) && seats.some(({ neutral }) => !neutral));
+      for (const seat of seats) {
+        assert.equal(seat.neutral, poseById.get(seat.pose).wardrobe === 'neutral');
+        const source = landmarks[seat.pose];
+        const delta = (marker, origin) => [
+          (marker[0] - origin[0]) * (stand === 'west' ? 1 : -1), marker[1] - origin[1],
+        ];
+        if (source.knee) {
+          assert.deepEqual([seat.knee.x - seat.x, seat.knee.y - seat.y], delta(source.knee, source.contact),
+            stand + ' ' + seat.pose + ' must face the pitch');
+        } else {
+          const [first, second] = seat.feet;
+          assert.deepEqual([second.x - first.x, second.y - first.y], delta(source.otherSole, source.contact),
+            stand + ' ' + seat.pose + ' must face the pitch');
+        }
+      }
+    }
+  }
+  // Compare the entire native stadium against the architecture, the source
+  // insert for every bay, and the two kickoff kits at regulation square scale.
+  const overview = await stadium.evaluate(async (canvas, { sections, original, sideColors }) => {
     async function image(src) {
       const art = new Image();
       art.src = src;
@@ -393,8 +424,23 @@ async function verifyFullEndStands(page, original) {
     const context = expected.getContext('2d');
     context.imageSmoothingEnabled = false;
     context.drawImage(await image(original), 0, 0);
-    for (const { bounds, png } of sections) {
+    for (const { stand, bounds, png } of sections) {
       const art = await image('data:image/png;base64,' + png);
+      if (sideColors[stand]) {
+        const artCanvas = document.createElement('canvas');
+        artCanvas.width = art.width;
+        artCanvas.height = art.height;
+        const artContext = artCanvas.getContext('2d');
+        artContext.drawImage(art, 0, 0);
+        const native = artContext.getImageData(0, 0, art.width, art.height).data;
+        const palette = new Set();
+        for (let i = 0; i < native.length; i += 4) {
+          if (native[i + 3] === 255) palette.add((native[i] << 16) + (native[i + 1] << 8) + native[i + 2]);
+        }
+        for (const family of sideColors[stand]) {
+          if (!family.some(rgb => palette.has(rgb))) throw Error('Missing side team colors in bay ' + bounds.id);
+        }
+      }
       const before = context.getImageData(bounds.x, bounds.y, bounds.width, bounds.height).data;
       context.drawImage(art, bounds.x, bounds.y);
       if (!context.getImageData(bounds.x, bounds.y, bounds.width, bounds.height).data.some((value, i) => value !== before[i])) {
@@ -427,12 +473,12 @@ async function verifyFullEndStands(page, original) {
       release();
     }
     const rendered = canvas.toDataURL();
-    if (rendered !== expected.toDataURL()) throw Error('The native overview differs from the seven bays and 22 players');
+    if (rendered !== expected.toDataURL()) throw Error('The native overview differs from the source bays and 22 players');
     return rendered;
-  }, { sections, original });
+  }, { sections, original, sideColors: { west: [ramp('navy'), ramp('gold')], east: [ramp('red'), ramp('gold')] } });
 
   assert.deepEqual(await bayPicker.locator('option').allTextContents(), sections.map(({ stand, bayId }) =>
-    (stand === 'north' ? 'North' : 'South') + ' bay ' + bayId));
+    stand[0].toUpperCase() + stand.slice(1) + ' bay ' + bayId));
   await page.getByRole('link', { name: 'Inspect a bay' }).click();
   for (const section of sections) {
     const { bayId, seats, capacity, bounds } = section;
@@ -443,40 +489,56 @@ async function verifyFullEndStands(page, original) {
     const row = sections.filter(bay => bay.stand === section.stand).map(({ bounds }) => bounds);
     const before = row[row.indexOf(bounds) - 1], after = row[row.indexOf(bounds) + 1];
     // Detail includes the adjoining staircase, gap, or edge of the central gate.
-    const left = before ? Math.floor((before.x + before.width + bounds.x) / 2) : Math.max(0, bounds.x - 32);
-    const right = after ? Math.ceil((bounds.x + bounds.width + after.x) / 2) : Math.min(790, bounds.x + bounds.width + 32);
-    await detail.evaluate((section, { left, right, bounds }) => {
+    const side = sideStands.includes(section.stand);
+    const left = side ? bounds.x - 20 : (before ? Math.floor((before.x + before.width + bounds.x) / 2) : bounds.x - 32);
+    const right = side ? bounds.x + bounds.width + 20
+      : (after ? Math.ceil((bounds.x + bounds.width + after.x) / 2) : bounds.x + bounds.width + 32);
+    const top = side && before ? Math.floor((before.y + before.height + bounds.y) / 2) : bounds.y - 24;
+    const bottom = side && after ? Math.ceil((bounds.y + bounds.height + after.y) / 2) : bounds.y + bounds.height + 24;
+    await detail.evaluate((section, { left, right, top, bottom, bayId, cropId }) => {
       const full = document.querySelector('canvas[data-ready="true"]');
-      const native = section.querySelector('#full-end-bay-native-canvas');
-      const zoom = section.querySelector('#full-end-bay-zoom-canvas');
-      const top = Math.max(0, bounds.y - 24);
-      const width = right - left;
-      const height = Math.min(full.height, bounds.y + bounds.height + 24) - top;
+      const x = Math.max(0, left), y = Math.max(0, top);
+      const native = section.querySelector('#' + cropId + '-native-canvas');
+      const zoom = section.querySelector('#' + cropId + '-zoom-canvas');
+      const width = Math.min(full.width, right) - x;
+      const height = Math.min(full.height, bottom) - y;
       if (native.width !== width || native.height !== height || zoom.width !== width * 4 || zoom.height !== height * 4)
-        throw Error('Incorrect crop dimensions for bay ' + bounds.id);
+        throw Error('Incorrect crop dimensions for bay ' + bayId);
       const actual = native.getContext('2d').getImageData(0, 0, width, height).data;
-      const expected = full.getContext('2d').getImageData(left, top, width, height).data;
-      if (actual.some((value, i) => value !== expected[i])) throw Error('Incorrect native crop in bay ' + bounds.id);
+      const expected = full.getContext('2d').getImageData(x, y, width, height).data;
+      if (actual.some((value, i) => value !== expected[i])) throw Error('Incorrect native crop in bay ' + bayId);
       const enlarged = zoom.getContext('2d').getImageData(0, 0, zoom.width, zoom.height).data;
       for (let y = 0; y < zoom.height; y++) {
         for (let x = 0; x < zoom.width; x++) {
           const source = (Math.floor(y / 4) * width + Math.floor(x / 4)) * 4;
           const target = (y * zoom.width + x) * 4;
           for (let channel = 0; channel < 4; channel++) {
-            if (expected[source + channel] !== enlarged[target + channel]) throw Error('Blurred pixels in bay ' + bounds.id);
+            if (expected[source + channel] !== enlarged[target + channel]) throw Error('Blurred pixels in bay ' + bayId);
           }
         }
       }
-    }, { left, right, bounds });
+    }, { left, right, top, bottom, bayId, cropId: full ? 'bowl-bay' : 'full-end-bay' });
   }
   await markers.check();
-  assert.equal(await verifyEndMarkers(stadium, sections), true, 'All occupied and vacant end-stand places are marked');
+  assert.equal(await verifyEndMarkers(stadium, sections), true, 'All selected occupied and vacant places are marked');
   await markers.uncheck();
   assert.equal(await stadium.evaluate(c => c.toDataURL()), overview);
   await page.setViewportSize({ width: 360, height: 800 });
   await bayPicker.selectOption('2');
   assert.equal(await detail.locator('.bay-six-zoom').evaluate(element =>
     element.scrollWidth > element.clientWidth && document.documentElement.scrollWidth === window.innerWidth), true);
+  if (full) {
+    for (const id of ['7', '11']) {
+      await bayPicker.selectOption(id);
+      const zoom = detail.getByRole('region', { name: 'Pixel zoom · 4×' });
+      await zoom.focus();
+      await zoom.press('End');
+      assert.equal(await zoom.evaluate(element =>
+        element.scrollHeight > element.clientHeight && element.scrollWidth > element.clientWidth), true);
+      await page.waitForFunction(() => document.activeElement.scrollTop > 0);
+      assert.equal(await page.getByRole('link', { name: 'Link to this bay' }).getAttribute('href'), '?view=full-bowl&bay=' + id + '#bowl-detail');
+    }
+  }
   await page.setViewportSize({ width: 1200, height: 960 });
 }
 
@@ -493,8 +555,8 @@ try {
   await canvas.waitFor();
   const select = page.getByLabel('Gallery view');
   assert.deepEqual(studies.map(({ id }) => id), ['a', 'b', 'c']);
-  assert.equal(await select.inputValue(), 'full-ends');
-  await page.getByLabel('Gatehouse kickoff with 22 players and north and south crowds').waitFor();
+  assert.equal(await select.inputValue(), 'full-bowl');
+  await page.getByLabel(fullKickoffLabel).waitFor();
   await select.selectOption('b');
   assert.equal(await select.inputValue(), 'b');
   await page.getByText('6 of 9 occupied', { exact: true }).waitFor();
@@ -510,7 +572,7 @@ try {
     .map(({ id }) => identity(id)).sort(), ['chestnuts', 'mug', 'pie']);
   assert.equal(posesManifest.filter(({ wardrobe }) => wardrobe === 'team').length, 9);
   assert.deepEqual(await select.locator('option').allTextContents(),
-    ['North and south · Full stands', 'A · 100% full', 'B · 66% full', 'C · 33% full', 'North and south · 33%',
+    ['Full stadium · Kickoff', 'North and south · Full stands', 'A · 100% full', 'B · 66% full', 'C · 33% full', 'North and south · 33%',
       'North and south · Pose showcase', 'Empty stadium', 'Show seating masks']);
   const rail = page.getByRole('checkbox', { name: 'Front rail' });
   const markers = page.getByRole('checkbox', { name: 'Seat markers' });
@@ -866,7 +928,8 @@ try {
   assert.equal(await benches.isChecked(), true);
   await benches.uncheck();
   await page.waitForFunction(src=>document.querySelector('canvas').toDataURL()===src,original);
-  await verifyFullEndStands(page, original);
+  await verifyKickoff(page, original, true);
+  await verifyKickoff(page, original, false);
   await verifyEndStands(page, original);
   await verifyEndPoseShowcase(page, original);
   await page.goto(url + '?view=end-poses&group=standing');
@@ -891,6 +954,11 @@ try {
   await canvas.waitFor();
   assert.equal(await select.inputValue(), 'full-ends');
   assert.equal(await page.getByLabel('End-stand bay').inputValue(), '13');
+  await page.goto(url + '?view=full-bowl&bay=11#bowl-detail');
+  await canvas.waitFor();
+  assert.equal(await select.inputValue(), 'full-bowl');
+  assert.equal(await page.getByLabel('Seating bay').inputValue(), '11');
+  await page.waitForFunction(() => window.scrollY > 0);
   await page.goto(url+'?view=scale');
   await canvas.waitFor();
   assert.equal(await select.inputValue(), 'b');
@@ -901,7 +969,7 @@ try {
   await page.getByText(rosterLabel, { exact: true }).click();
   assert.equal(await page.locator('.bay-six-zoom').evaluate(element =>
     element.scrollWidth > element.clientWidth && document.documentElement.scrollWidth === window.innerWidth), true);
-  console.log('Full end stands, 22-player kickoff, approved west and end views, all 12 pose pairs, native and enlarged crops, rails and seat markers passed.');
+  console.log('All 15 bays, side kits and facings, 22-player kickoff, approved west and end views, all 12 pose pairs, native and enlarged crops, rails and seat markers passed.');
 } finally {
   await browser?.close();await server.close();
 }

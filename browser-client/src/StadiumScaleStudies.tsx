@@ -10,6 +10,7 @@ import castAnglesUrl from '../../assets/game/references/stadiums/scale-studies/e
 import endReferenceUrl from '../../assets/game/references/stadiums/scale-studies/end-stands/artist-reference.webp';
 import endPoseGroups from '../../assets/game/references/stadiums/scale-studies/end-stands/pose-placements.json';
 import fullEndPlacements from '../../assets/game/references/stadiums/scale-studies/end-stands/full-ends/placements.json';
+import sidePlacements from '../../assets/game/references/stadiums/scale-studies/side-stands/placements.json';
 import type { Point } from './pitch-projection.ts';
 import { playerArtPlacement, resolvePlayerArt } from './player-art.ts';
 import { bowl, drawBowlGround } from './stadium-bowl-study.ts';
@@ -27,11 +28,13 @@ const studyImages = import.meta.glob<string>([
   '../../assets/game/references/stadiums/scale-studies/bay-six/*.png',
   '../../assets/game/references/stadiums/scale-studies/end-stands/*.png',
   '../../assets/game/references/stadiums/scale-studies/end-stands/full-ends/*.png',
+  '../../assets/game/references/stadiums/scale-studies/side-stands/*.png',
 ], {
   eager: true, query: '?url', import: 'default',
 });
 const studyImageRoot = '../../assets/game/references/stadiums/scale-studies/bay-six/';
 const endImageRoot = '../../assets/game/references/stadiums/scale-studies/end-stands/';
+const sideImageRoot = '../../assets/game/references/stadiums/scale-studies/side-stands/';
 const fullEndsLabel = 'North and south · Full stands';
 const endViewLabel = 'North and south · 33%';
 const endShowcaseLabel = 'North and south · Pose showcase';
@@ -51,16 +54,22 @@ type Occupant = SeatSlot & Point & { knee?: Point; otherSole?: Point; feet?: rea
 type Crop = Point & { width: number; height: number };
 type CropFrames = { native: Crop; detail: Crop };
 type EndPlacement = typeof endPoseGroups[number]['views'][number];
-type FullEndPlacement = typeof fullEndPlacements[number];
+type BowlPlacement = (typeof fullEndPlacements | typeof sidePlacements)[number];
 const fullPlan = seatingStudies[0].seats;
-const endOccupancy = ['north', 'south'].map(stand => {
-  const bays = fullEndPlacements.filter(bay => bay.stand === stand);
+const bowlPlacements = [...fullEndPlacements, ...sidePlacements].sort((a, b) => a.bayId - b.bayId);
+const standOccupancy = ['north', 'west', 'east', 'south'].map(stand => {
+  const bays = bowlPlacements.filter(bay => bay.stand === stand);
   return {
-    stand: stand === 'north' ? 'North' : 'South',
+    stand,
+    label: stand === 'west' ? 'West (home)' : stand === 'east' ? 'East (away)' : standName(stand),
     occupied: bays.reduce((sum, bay) => sum + bay.seats.length, 0),
     capacity: bays.reduce((sum, bay) => sum + bay.capacity, 0),
   };
 });
+
+function standName(stand: string) {
+  return stand[0].toUpperCase() + stand.slice(1);
+}
 
 function seatKey({ slot, plankId }: SeatSlot) {
   return `${plankId}:${slot.x},${slot.y}`;
@@ -91,21 +100,34 @@ function endFrames(bounds: Crop, north: boolean) {
   };
 }
 
-function fullEndFrames(bounds: typeof bay) {
+function isSideStand(stand: string) {
+  return stand === 'west' || stand === 'east';
+}
+
+function bowlBayFrames(bounds: typeof bay) {
   const row = seatingLayout.bays.filter(({ stand }) => stand === bounds.stand);
   const index = row.findIndex(({ id }) => id === bounds.id);
   const before = row[index - 1];
   const after = row[index + 1];
   const rightEdge = bounds.x + bounds.width;
+  const bottomEdge = bounds.y + bounds.height;
   // Include the adjacent stair or gate approach up to the center of the gap.
-  const left = before ? Math.floor((before.x + before.width + bounds.x) / 2) : bounds.x - 32;
-  const right = after ? Math.ceil((rightEdge + after.x) / 2) : rightEdge + 32;
-  const frame = bowlCrop(left, bounds.y - 24, right, bounds.y + bounds.height + 24);
+  const frame = isSideStand(bounds.stand) ? bowlCrop(
+    bounds.x - 20,
+    before ? Math.floor((before.y + before.height + bounds.y) / 2) : bounds.y - 24,
+    rightEdge + 20,
+    after ? Math.ceil((bottomEdge + after.y) / 2) : bottomEdge + 24,
+  ) : bowlCrop(
+    before ? Math.floor((before.x + before.width + bounds.x) / 2) : bounds.x - 32,
+    bounds.y - 24,
+    after ? Math.ceil((rightEdge + after.x) / 2) : rightEdge + 32,
+    bottomEdge + 24,
+  );
   return { native: frame, detail: frame };
 }
 
-function endBayLabel({ stand, bayId }: FullEndPlacement) {
-  return (stand === 'north' ? 'North' : 'South') + ' bay ' + bayId;
+function bayLabel({ stand, bayId }: BowlPlacement) {
+  return standName(stand) + ' bay ' + bayId;
 }
 
 async function image(url: string, dimensions: { width: number; height: number }) {
@@ -199,14 +221,15 @@ async function loadEndSection(study: EndPlacement) {
   return { ...study, bounds, frames: endFrames(bounds, study.id === 'north'), crowd, rail };
 }
 
-async function loadFullEndSection(study: FullEndPlacement) {
+async function loadBowlSection(study: BowlPlacement) {
   const bounds = seatingLayout.bays.find(({ id }) => id === study.bayId)!;
-  const crowd = await image(studyImages[endImageRoot + 'full-ends/' + study.crowd], bounds);
-  return { ...study, bounds, frames: fullEndFrames(bounds), crowd };
+  const root = isSideStand(study.stand) ? sideImageRoot : endImageRoot + 'full-ends/';
+  const crowd = await image(studyImages[root + study.crowd], bounds);
+  return { ...study, bounds, frames: bowlBayFrames(bounds), crowd };
 }
 
 async function loadLayers() {
-  const [architecture, seating, player, atlas, studies, showcases, fullEnds, kickoff] = await Promise.all([
+  const [architecture, seating, player, atlas, studies, showcases, fullBowl, kickoff] = await Promise.all([
     image(architectureUrl, bowl),
     image(seatingUrl, bowl),
     loadScalePlayer(mockupPlayers('human')[0]),
@@ -223,7 +246,7 @@ async function loadLayers() {
       const views = await Promise.all(group.views.map(loadEndSection));
       return { id: group.id, views };
     })),
-    Promise.all(fullEndPlacements.map(loadFullEndSection)),
+    Promise.all(bowlPlacements.map(loadBowlSection)),
     loadKickoff(),
   ]);
   const stadium = drawingSurface();
@@ -243,7 +266,8 @@ async function loadLayers() {
     if (!bay) pixels.data[i+3] = 0;
   }
   context.putImageData(pixels, 0, 0);
-  return { stadium, overlay, benches, player, atlas, studies, showcases, fullEnds, kickoff };
+  const fullEnds = fullBowl.filter(({ stand }) => !isSideStand(stand));
+  return { stadium, overlay, benches, player, atlas, studies, showcases, fullBowl, fullEnds, kickoff };
 }
 
 function drawSeatMarkers(context: CanvasRenderingContext2D, bounds: Point, slots: readonly SeatSlot[], seats: readonly Occupant[]) {
@@ -253,21 +277,22 @@ function drawSeatMarkers(context: CanvasRenderingContext2D, bounds: Point, slots
     const { x, y } = seat.slot;
     if (!occupied.has(seatKey(seat))) context.strokeRect(bounds.x + x - .5, bounds.y + y - .5, 2, 2);
   }
-  for (const { knee } of seats) {
-    if (!knee) continue;
-    const x = bounds.x + knee.x, y = bounds.y + knee.y;
-    context.fillStyle = '#101820';
+  const toBowl = ({ x, y }: Point) => ({ x: bounds.x + x, y: bounds.y + y });
+  const knees = seats.flatMap(({ knee }) => knee ? [toBowl(knee)] : []);
+  const contacts = seats.flatMap(seat => seat.feet ?? (seat.otherSole ? [seat, seat.otherSole] : [seat])).map(toBowl);
+  // Draw every outline before marker colors, so a nearby outline cannot hide a knee.
+  context.fillStyle = '#101820';
+  for (const { x, y } of knees) {
     context.fillRect(x - 1, y - 1, 3, 3);
-    context.fillStyle = '#ffe17b';
-    context.fillRect(x, y, 1, 1);
   }
-  const contacts = seats.flatMap(seat => seat.feet ?? (seat.otherSole ? [seat, seat.otherSole] : [seat]));
-  for (const contact of contacts) {
-    const x = bounds.x + contact.x, y = bounds.y + contact.y;
-    context.fillStyle = '#101820';
+  for (const { x, y } of contacts) {
     context.fillRect(x - 2, y - 1, 5, 3);
     context.fillRect(x - 1, y - 2, 3, 5);
-    context.fillStyle = '#80f5ff';
+  }
+  context.fillStyle = '#ffe17b';
+  for (const { x, y } of knees) context.fillRect(x, y, 1, 1);
+  context.fillStyle = '#80f5ff';
+  for (const { x, y } of contacts) {
     context.fillRect(x - 1, y, 3, 1);
     context.fillRect(x, y - 1, 1, 3);
   }
@@ -334,12 +359,12 @@ export function StadiumScaleStudies() {
   const [view, setView] = useState(() => {
     const requested = endQuery.get('view');
     if (requested === 'scale') return 'b';
-    return requested === 'ends' || requested === 'end-poses' ? requested : 'full-ends';
+    return requested === 'ends' || requested === 'end-poses' || requested === 'full-ends' ? requested : 'full-bowl';
   });
   const [endGroup, setEndGroup] = useState(() =>
     endPoseGroups.find(({ id }) => id === endQuery.get('group'))?.id ?? endPoseGroups[0].id);
-  const [endBay, setEndBay] = useState(() =>
-    fullEndPlacements.find(({ bayId }) => String(bayId) === endQuery.get('bay'))?.bayId ?? fullEndPlacements[0].bayId);
+  const [selectedBay, setSelectedBay] = useState(() =>
+    bowlPlacements.find(({ bayId }) => String(bayId) === endQuery.get('bay'))?.bayId);
   const [benches, setBenches] = useState(false);
   const [rail, setRail] = useState(true);
   const [markers, setMarkers] = useState(false);
@@ -351,10 +376,17 @@ export function StadiumScaleStudies() {
   const contactSpacing = spacing && (spacing.min === spacing.max ? spacing.min : `${spacing.min}–${spacing.max}`);
   const masked = view === 'masks';
   const fullEndsView = view === 'full-ends';
+  const fullBowlView = view === 'full-bowl';
+  const kickoffView = fullBowlView || fullEndsView;
+  const detailId = fullEndsView ? 'full-ends-detail' : 'bowl-detail';
+  const cropId = fullEndsView ? 'full-end-bay' : 'bowl-bay';
   const showcaseView = view === 'end-poses';
   const endView = view === 'ends' || showcaseView;
   const displayedEnds = layers?.showcases.find(({ id }) => id === (showcaseView ? endGroup : 'approved'))?.views;
-  const inspectedBay = layers?.fullEnds.find(({ bayId }) => bayId === endBay);
+  const placements = fullEndsView ? fullEndPlacements : bowlPlacements;
+  const bayId = placements.some(({ bayId }) => bayId === selectedBay) ? selectedBay : placements[0].bayId;
+  const kickoffBays = fullEndsView ? layers?.fullEnds : layers?.fullBowl;
+  const inspectedBay = kickoffBays?.find(bay => bay.bayId === bayId);
   const markerToggle = <label><input type="checkbox" checked={markers} onChange={event => setMarkers(event.target.checked)}
     aria-describedby={markers ? 'gatehouse-marker-key' : undefined}/>Seat markers</label>;
   const controls = <div className="mockup-controls">
@@ -363,7 +395,7 @@ export function StadiumScaleStudies() {
   </div>;
   const markerKey = markers && <p className="bay-six-marker-key" id="gatehouse-marker-key">
     <span>Cyan crosses</span> mark hip or boot contact. <span>Gold dots</span> mark seated knees.
-    {(fullEndsView || endView || (study && study.seats.length < study.capacity)) && <> <span>Grey squares</span> mark vacant seats.</>}
+    {(kickoffView || endView || (study && study.seats.length < study.capacity)) && <> <span>Grey squares</span> mark vacant seats.</>}
   </p>;
 
   useEffect(() => {
@@ -372,6 +404,9 @@ export function StadiumScaleStudies() {
     loadLayers().then(value => { if (active) setLayers(value); }, () => { if (active) setFailed(true); });
     return () => { active = false; };
   }, []);
+  useEffect(() => {
+    if (layers && kickoffView && window.location.hash === '#' + detailId) review.current?.scrollIntoView();
+  }, [layers, kickoffView, detailId]);
   useLayoutEffect(() => {
     const full = canvas.current;
     const context = full?.getContext('2d');
@@ -380,13 +415,13 @@ export function StadiumScaleStudies() {
     context.drawImage(layers.stadium, 0, 0);
     if (masked) context.drawImage(layers.overlay, 0, 0);
     if (benches) context.drawImage(layers.benches, 0, 0);
-    if (fullEndsView) {
-      for (const { bounds, crowd } of layers.fullEnds) context.drawImage(crowd, bounds.x, bounds.y);
+    if (kickoffView && kickoffBays) {
+      for (const { bounds, crowd } of kickoffBays) context.drawImage(crowd, bounds.x, bounds.y);
       for (const { sprite, at } of layers.kickoff) drawScalePlayer(context, sprite, at);
       if (markers) {
-        for (const { bounds, slots, seats } of layers.fullEnds) drawSeatMarkers(context, bounds, slots, seats);
+        for (const { bounds, slots, seats } of kickoffBays) drawSeatMarkers(context, bounds, slots, seats);
       }
-      if (inspectedBay) drawReviewCrops(review.current, full, 'full-end-bay', inspectedBay.frames);
+      if (inspectedBay) drawReviewCrops(review.current, full, cropId, inspectedBay.frames);
     }
     const variant = layers.studies.find(({ id }) => id === view);
     if (variant) {
@@ -407,14 +442,16 @@ export function StadiumScaleStudies() {
         drawReviewCrops(review.current, full, 'end-' + end.id, end.frames);
       }
     }
-  }, [layers, view, masked, fullEndsView, endView, displayedEnds, inspectedBay, benches, rail, markers]);
+  }, [layers, view, masked, kickoffView, kickoffBays, cropId, endView, displayedEnds, inspectedBay, benches, rail, markers]);
 
-  const overview = <div className={'scale-study-crop gatehouse-overview' + (fullEndsView ? ' full-ends-overview' : '')}>
+  const overview = <div className={'scale-study-crop gatehouse-overview' + (kickoffView ? ' kickoff-overview' : '')}
+    data-full-bowl={fullBowlView}>
     <canvas ref={canvas} width={bowl.width} height={bowl.height} data-ready={Boolean(layers)}
-      aria-label={fullEndsView ? 'Gatehouse kickoff with 22 players and north and south crowds'
-        : study ? 'Gatehouse stadium with ' + study.label + ' in west bay 6'
-          : endView ? 'Gatehouse stadium with north and south supporters'
-            : masked ? 'Gatehouse seating masks' : 'Empty Gatehouse stadium'}/>
+      aria-label={fullBowlView ? 'Gatehouse kickoff with 22 players and crowds in all four stands'
+        : fullEndsView ? 'Gatehouse kickoff with 22 players and north and south crowds'
+          : study ? 'Gatehouse stadium with ' + study.label + ' in west bay 6'
+            : endView ? 'Gatehouse stadium with north and south supporters'
+              : masked ? 'Gatehouse seating masks' : 'Empty Gatehouse stadium'}/>
   </div>;
 
   return <main className="stadium-mockup scale-studies gatehouse-bay-gallery">
@@ -423,6 +460,7 @@ export function StadiumScaleStudies() {
       <div className="mockup-controls">
         <label>Gallery view
           <select value={view} onChange={event => setView(event.target.value)}>
+            <option value="full-bowl">Full stadium · Kickoff</option>
             <option value="full-ends">{fullEndsLabel}</option>
             {seatingStudies.map(({ id, label }) => <option key={id} value={id}>{label}</option>)}
             <option value="ends">{endViewLabel}</option>
@@ -445,31 +483,33 @@ export function StadiumScaleStudies() {
     </ul>}
     {failed && <p role="alert">The stadium artwork could not be loaded.</p>}
     {!failed && !layers && <p role="status">Loading stadium artwork…</p>}
-    {fullEndsView && <section className="bay-six-review full-ends-review" aria-labelledby="full-ends-heading">
-      <h2 id="full-ends-heading">North and south stands at kickoff</h2>
-      <div className="bay-six-toolbar">
-        {endOccupancy.map(({ stand, occupied, capacity }) =>
-          <p key={stand}>{stand} <strong>{occupied} of {capacity} occupied</strong></p>)}
+    {kickoffView && <section className="bay-six-review" aria-labelledby="kickoff-heading">
+      <h2 id="kickoff-heading">{fullBowlView ? 'Full stadium at kickoff' : 'North and south stands at kickoff'}</h2>
+      <div className="bay-six-toolbar kickoff-toolbar">
+        {standOccupancy.filter(({ stand }) => fullBowlView || !isSideStand(stand)).map(({ stand, label, occupied, capacity }) =>
+          <p key={stand}>{label} <strong>{occupied} of {capacity} occupied</strong></p>)}
         <div className="mockup-controls">{markerToggle}</div>
-        <a className="end-stand-reference" href="#full-ends-detail">Inspect a bay</a>
+        <a className="end-stand-reference" href={'#' + detailId}>Inspect a bay</a>
       </div>
       {markerKey}
       {overview}
-      <section ref={review} className="full-ends-detail" id="full-ends-detail" aria-labelledby="full-ends-detail-heading">
-        <h3 id="full-ends-detail-heading">Bay details</h3>
+      <section ref={review} className="gatehouse-bay-detail" id={detailId} aria-labelledby="bay-detail-heading"
+        data-side={inspectedBay ? isSideStand(inspectedBay.stand) : false}>
+        <h3 id="bay-detail-heading">Bay details</h3>
         <div className="bay-six-toolbar">
           <div className="mockup-controls">
-            <label>End-stand bay
-              <select value={endBay} onChange={event => setEndBay(Number(event.target.value))}>
-                {fullEndPlacements.map(placement => <option key={placement.bayId} value={placement.bayId}>
-                  {endBayLabel(placement)}
+            <label>{fullEndsView ? 'End-stand bay' : 'Seating bay'}
+              <select value={bayId} onChange={event => setSelectedBay(Number(event.target.value))}>
+                {placements.map(placement => <option key={placement.bayId} value={placement.bayId}>
+                  {bayLabel(placement)}
                 </option>)}
               </select>
             </label>
           </div>
           {inspectedBay && <p><strong>{inspectedBay.seats.length} of {inspectedBay.capacity} occupied</strong></p>}
+          {fullBowlView && <a className="end-stand-reference" href={`?view=full-bowl&bay=${bayId}#${detailId}`}>Link to this bay</a>}
         </div>
-        {inspectedBay && <ReviewCrops id="full-end-bay" frames={inspectedBay.frames}/>}
+        {inspectedBay && <ReviewCrops key={bayId} id={cropId} frames={inspectedBay.frames}/>}
       </section>
     </section>}
     {study && <section ref={review} className="bay-six-review" aria-labelledby="bay-six-heading">
@@ -517,6 +557,6 @@ export function StadiumScaleStudies() {
         <ReviewCrops id={'end-' + end.id} frames={end.frames}/>
       </section>)}
     </section>}
-    {!fullEndsView && overview}
+    {!kickoffView && overview}
   </main>;
 }

@@ -102,11 +102,18 @@
 .bay-six-poses figcaption { margin-top: 6px; font-size: .875rem; line-height: 1.35; }
 .bay-six-poses figcaption span { display: block; margin-top: 2px; color: #baccbf; font-size: .8125rem; }
 .gatehouse-overview { max-width: 790px; }
-.full-ends-overview { max-width: min(100%, 790px, max(330px, calc((100svh - 158px) * .665))); }
-.full-ends-detail { margin-top: 24px; }
-.full-ends-detail h3 { margin: 0; font-size: 1.125rem; }
-.full-ends-detail .bay-six-crops { grid-template-columns: minmax(0, 1fr); }
-.full-ends-detail .bay-six-crops figure:first-child { overflow-x: auto; }
+.kickoff-overview { --toolbar-space: 158px; max-width: min(100%, 790px, max(330px, calc((100svh - var(--toolbar-space)) * .665))); }
+.kickoff-overview[data-full-bowl="true"] { --toolbar-space: 182px; }
+.kickoff-toolbar { column-gap: 16px; }
+.gatehouse-bay-detail { margin-top: 24px; }
+.gatehouse-bay-detail h3 { margin: 0; font-size: 1.125rem; }
+.gatehouse-bay-detail .bay-six-crops { grid-template-columns: minmax(0, 1fr); }
+.gatehouse-bay-detail .bay-six-crops figure:first-child { overflow-x: auto; }
+.gatehouse-bay-detail[data-side="true"] .bay-six-zoom { max-height: min(64svh, 640px); overflow: auto; }
+
+@media (min-width: 681px) {
+  .gatehouse-bay-detail[data-side="true"] .bay-six-crops { grid-template-columns: max-content minmax(0, 1fr); }
+}
 
 @media (max-width: 680px) {
   .scale-study-comparisons { grid-template-columns: minmax(0, 416px); }

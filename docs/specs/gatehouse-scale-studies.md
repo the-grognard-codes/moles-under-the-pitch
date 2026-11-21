@@ -1,15 +1,31 @@
 # Gatehouse scale and colour studies
 
+## Full stadium at kickoff
+
+The gallery opens on the 22-player kickoff with all 15 seating bays populated. Home supporters face right along the west touchline in navy and gold. Visiting supporters face left from the east touchline in Orc red and gold. The pie carrier, elder with the tankard and chestnut seller keep their neutral outfits on either side.
+
+| Stand | Occupied places | Neutral outfits | Standing supporters |
+| --- | ---: | ---: | ---: |
+| North | 41 of 62 | 14 | 4 |
+| West · home | 57 of 86 | 19 | 5 |
+| East · away | 57 of 86 | 19 | 4 |
+| South | 38 of 57 | 12 | 4 |
+| **Whole stadium** | **193 of 291** | **64** | **17** |
+
+![All four Gatehouse stands at kickoff, with the red away crowd on the right](../../assets/game/references/stadiums/scale-studies/kickoff.webp)
+
+Open `/stadium-mockup?view=full-bowl` and select **Inspect a bay** to compare the native and 4× views. West bay 6 preserves the approved six supporters and their contacts on the original nine seats. East bay 10 shows the same bench scale with a different group facing inward. Bays 7 and 11 show how the crowd fills the long terraces beside the south gate.
+
+All eight side inserts were checked before any overlap or timber cutouts. In the finished kickoff they cover 48,806 pixels. Compositing just those inserts over the previous native kickoff reproduced the full gallery canvas pixel for pixel. The height order keeps faces, held objects and standing soles visible. A near-level pair can swap drawing order when their boot baselines differ by at most one native pixel.
+
 ## North and south stands at kickoff
 
-The gallery now opens on the full pitch with both end stands populated and eleven players per team. Home supporters wear the Human navy and gold kit. The halfling with the pie, the elder with the tankard and the chestnut seller wear their fixed neutral outfits. The right-hand visiting stand belongs to the next side-stand review.
+The earlier end-stand review shows both end stands populated and eleven players per team. Home supporters wear the Human navy and gold kit. The halfling with the pie, the elder with the tankard and the chestnut seller wear their fixed neutral outfits. [Previous end-stand kickoff](https://github.com/the-grognard-codes/moles-under-the-pitch/blob/3904fe1c2affb2c1b64e9c984ec2cd67ed55040d/assets/game/references/stadiums/scale-studies/end-stands/full-ends/kickoff.webp)
 
 | End | Occupied places | Neutral outfits | Standing supporters |
 | --- | ---: | ---: | ---: |
 | North, facing the viewer | 41 of 62 | 14 | 4 |
 | South, facing the pitch with their backs to the viewer | 38 of 57 | 12 | 4 |
-
-![Full overhead Gatehouse pitch at kickoff with supporters in the three north and four south bays](../../assets/game/references/stadiums/scale-studies/end-stands/full-ends/kickoff.webp)
 
 The north back row adds 20 places across the three bays. Thirteen are occupied, from left to right in groups of three, seven and three. Each bay mask extends 20 native pixels up the rear wall and tapers at the arches. The supporters on this row are seated, with their hips on the original timber at stadium y=32. The earlier crowd, the stair entrances and the pitch retain their original positions.
 

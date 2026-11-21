@@ -1,10 +1,21 @@
 # Gatehouse gallery artwork
 
+## Populated side stands
+
+West bays 4–7 and east bays 8–11 each have a single transparent indexed PNG aligned to that bay’s native bounds. Each side holds 57 supporters in 86 places, including 19 neutral outfits. The west crowd uses the right-facing side drawings. The east crowd mirrors the individual figures, their knees, both boot contacts and the calf cutouts against the actual east bench geometry. West uses navy and gold and east uses red and gold. Only indices 1–32 carry kit colours. [Editable side seat plan](side-stands/layout.json) · [Side inserts and placements](side-stands/placements.json) · [Full kickoff preview](kickoff.webp)
+
+Each row in the seat plan names a physical plank and lists its permanent bay-local anchors. The `occupants` keys are indices into that list. A standing supporter may use a separate `standingContacts` entry for their boots while keeping their original seat. Leave the preceding seat on their plank vacant. The builder checks the full source silhouette against the bay before exposing any timber behind a calf. In the [side pose landmarks](bay-six/pose-landmarks.json), `face` and `gesture` bound the pixels to keep visible, measured in the original 48 × 48 cell as `[left, top, right, bottom]` with exclusive right and bottom edges. The east inserts reflect these rectangles with their sprites.
+
+```text
+python -B assets/game/references/stadiums/scale-studies/side-stands/build.py
+python -B assets/game/references/stadiums/scale-studies/side-stands/test_build.py
+```
+
 ## Populated end stands
 
 The seven end bays each have one transparent indexed crowd PNG, registered at that bay’s native top-left corner on the empty stadium. The seat plan records bay-local hip or boot anchors, the plank under each place, and the occupants. North uses the front drawings and south uses the rear drawings. The PNGs use the Human home navy and gold ramps at indices 1–32 and retain the artist sheet’s fixed colours at 33 and above. [Authored seat plan](end-stands/full-ends/layout.json) · [Gallery placements and image names](end-stands/full-ends/placements.json)
 
-The two ends have 79 supporters in 119 places, including 26 in neutral clothing. Run the following commands from the repository root with Pillow to reproduce the inserts. The checks cover the raw sprite against the bay mask, contact with the timber, face and gesture visibility, a vacant place above each standing supporter, and repeated neighbours across stairs. [Kickoff preview](end-stands/full-ends/kickoff.webp)
+The two ends have 79 supporters in 119 places, including 26 in neutral clothing. Run the following commands from the repository root with Pillow to reproduce the inserts. The checks cover the raw sprite against the bay mask, contact with the timber, face and gesture visibility, a vacant place above each standing supporter, and repeated neighbours across stairs. [Earlier end-stand kickoff](https://github.com/the-grognard-codes/moles-under-the-pitch/blob/3904fe1c2affb2c1b64e9c984ec2cd67ed55040d/assets/game/references/stadiums/scale-studies/end-stands/full-ends/kickoff.webp)
 
 ```text
 python -B assets/game/references/stadiums/scale-studies/end-stands/full-ends/build.py
