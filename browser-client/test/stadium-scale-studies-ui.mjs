@@ -358,19 +358,20 @@ async function verifyEndPoseShowcase(page, original) {
 
 const fullKickoffLabel = 'Gatehouse kickoff with 22 players and crowds in all four stands';
 const sideStands = ['west', 'east'];
+const colorPairs = {
+  defaults: { home: ['navy', 'gold'], away: ['red', 'gold'] },
+  identical: { home: ['navy', 'navy'], away: ['navy', 'navy'] },
+  'white / black': { home: ['white', 'black'], away: ['black', 'white'] },
+  'yellow / purple': { home: ['lemon', 'violet'], away: ['violet', 'lemon'] },
+  'similar blues': { home: ['navy', 'sky'], away: ['sky', 'navy'] },
+};
+const decorationPaletteLabel = 'End zone and regalia colors';
 
 async function verifyRegalia(page, stadium, approved, defaultDecorated) {
   const toggle = page.getByRole('checkbox', { name: 'Regalia' });
-  const palette = page.getByLabel('Regalia colors');
+  const palette = page.getByLabel(decorationPaletteLabel);
   const [art, mask] = await Promise.all(['atlas.png', 'materials.png'].map(file =>
     readFile(resolve(artwork, 'regalia', file), 'base64')));
-  const colorPairs = {
-    defaults: { home: ['navy', 'gold'], away: ['red', 'gold'] },
-    identical: { home: ['navy', 'navy'], away: ['navy', 'navy'] },
-    'white / black': { home: ['white', 'black'], away: ['black', 'white'] },
-    'yellow / purple': { home: ['lemon', 'violet'], away: ['violet', 'lemon'] },
-    'similar blues': { home: ['navy', 'sky'], away: ['sky', 'navy'] },
-  };
   const ramps = Object.fromEntries(Object.entries(colorPairs).map(([id, pair]) => [
     id, Object.fromEntries(Object.entries(pair).map(([role, colors]) => [role, colors.flatMap(ramp)])),
   ]));
@@ -451,7 +452,90 @@ async function verifyRegalia(page, stadium, approved, defaultDecorated) {
   assert.equal(await palette.inputValue(), 'similar blues');
   assert.equal(await stadium.evaluate(canvas => canvas.toDataURL()), expected['similar blues']);
   await palette.selectOption('defaults');
-  return expected.defaults;
+  return expected;
+}
+
+async function verifyEndZones(page, stadium, approved, decorated, defaultKickoff) {
+  const zones = page.getByRole('checkbox', { name: 'End zones' });
+  const regalia = page.getByRole('checkbox', { name: 'Regalia' });
+  const palette = page.getByLabel(decorationPaletteLabel);
+  const expected = await stadium.evaluate(async (canvas, { approved, decorated, colorPairs }) => {
+    const { drawGatehouseEndZones } = await import('/src/stadium-end-zones.ts');
+    const pitch = { x: 156, y: 169, width: 480, height: 832 };
+    const square = 32;
+    const rows = [pitch.y, pitch.y + pitch.height - square];
+    function surface() {
+      const layer = document.createElement('canvas');
+      layer.width = canvas.width;
+      layer.height = canvas.height;
+      return layer.getContext('2d');
+    }
+    async function read(src) {
+      const image = new Image();
+      image.src = src;
+      await image.decode();
+      return image;
+    }
+    const base = await read(approved);
+    const results = {};
+    for (const [preset, pair] of Object.entries(colorPairs)) {
+      const paint = surface();
+      drawGatehouseEndZones(paint, pitch, square, {
+        north: { name: 'Cinderclaw Crew', primary: pair.away[0] },
+        south: { name: 'Ironbank Rovers', primary: pair.home[0] },
+      });
+      function compose(original) {
+        const native = surface();
+        native.drawImage(original, 0, 0);
+        for (const top of rows) {
+          const chalk = native.getImageData(pitch.x, top, pitch.width, square);
+          native.drawImage(paint.canvas, pitch.x, top, pitch.width, square, pitch.x, top, pitch.width, square);
+          const strip = native.getImageData(pitch.x, top, pitch.width, square);
+          let changed = 0;
+          for (let y = 0; y < square; y++) {
+            const across = top === pitch.y ? y === 0 : y === 0 || y === square - 1;
+            for (let x = 0; x < pitch.width; x++) {
+              const at = (y * pitch.width + x) * 4;
+              if (across || x % square === 0 || x === pitch.width - 1) {
+                strip.data.set(chalk.data.subarray(at, at + 4), at);
+              } else if (strip.data.subarray(at, at + 3).some((value, index) => value !== chalk.data[at + index])) {
+                changed++;
+              }
+            }
+          }
+          if (changed < pitch.width * square / 2) throw Error('Insufficient paint in end zone at y=' + top);
+          native.putImageData(strip, pitch.x, top);
+        }
+        return native.canvas.toDataURL();
+      }
+      results[preset] = { paintOnly: compose(base) };
+      if (preset === 'defaults' || preset === 'similar blues') {
+        results[preset].combined = compose(await read(decorated[preset]));
+      }
+    }
+    return results;
+  }, { approved, decorated, colorPairs });
+  assert.equal(defaultKickoff, expected.defaults.combined, 'The default kickoff shows the native paint under the chalk and the default regalia');
+  assert.equal(new Set(Object.values(expected).map(({ paintOnly }) => paintOnly)).size, Object.keys(colorPairs).length);
+  await zones.check();
+  await regalia.uncheck();
+  assert.equal(await palette.isEnabled(), true);
+  for (const [preset, { paintOnly }] of Object.entries(expected)) {
+    await palette.selectOption(preset);
+    assert.equal(await stadium.evaluate(canvas => canvas.toDataURL()), paintOnly,
+      preset + ' paints the away north and home south strips with native chalk above them');
+  }
+  await zones.uncheck();
+  assert.equal(await palette.isDisabled(), true);
+  assert.equal(await stadium.getAttribute('aria-label'), fullKickoffLabel);
+  assert.equal(await stadium.evaluate(canvas => canvas.toDataURL()), approved, 'Both review layers off restores the original kickoff');
+  await regalia.check();
+  assert.equal(await stadium.evaluate(canvas => canvas.toDataURL()), decorated['similar blues']);
+  await zones.check();
+  assert.equal(await stadium.evaluate(canvas => canvas.toDataURL()), expected['similar blues'].combined);
+  await palette.selectOption('defaults');
+  assert.equal(await stadium.evaluate(canvas => canvas.toDataURL()), defaultKickoff);
+  return defaultKickoff;
 }
 
 async function verifyKickoff(page, original, full) {
@@ -471,14 +555,21 @@ async function verifyKickoff(page, original, full) {
   await picker.selectOption(full ? 'full-bowl' : 'full-ends');
   await stadium.waitFor();
   const regalia = page.getByRole('checkbox', { name: 'Regalia' });
-  let defaultDecorated;
+  const zones = page.getByRole('checkbox', { name: 'End zones' });
+  let defaultKickoff, defaultDecorated;
   if (full) {
     assert.equal(await regalia.isChecked(), true);
-    assert.equal(await page.getByLabel('Regalia colors').inputValue(), 'defaults');
+    assert.equal(await zones.isChecked(), true);
+    assert.equal(await stadium.getAttribute('aria-label'), fullKickoffLabel +
+      '. Cinderclaw Crew in the north end zone and Ironbank Rovers in the south end zone.');
+    assert.equal(await page.getByLabel(decorationPaletteLabel).inputValue(), 'defaults');
+    defaultKickoff = await stadium.evaluate(canvas => canvas.toDataURL());
+    await zones.uncheck();
     defaultDecorated = await stadium.evaluate(canvas => canvas.toDataURL());
     await regalia.uncheck();
   } else {
     assert.equal(await regalia.count(), 0);
+    assert.equal(await zones.count(), 0);
   }
   assert.equal(await markers.isChecked(), false);
   assert.equal(await page.getByRole('checkbox', { name: 'Front rail' }).count(), 0);
@@ -583,7 +674,11 @@ async function verifyKickoff(page, original, full) {
     if (rendered !== expected.toDataURL()) throw Error('The native overview differs from the source bays and 22 players');
     return rendered;
   }, { sections, original, sideColors: { west: [ramp('navy'), ramp('gold')], east: [ramp('red'), ramp('gold')] } });
-  const overview = full ? await verifyRegalia(page, stadium, unadorned, defaultDecorated) : unadorned;
+  let overview = unadorned;
+  if (full) {
+    const decorated = await verifyRegalia(page, stadium, unadorned, defaultDecorated);
+    overview = await verifyEndZones(page, stadium, unadorned, decorated, defaultKickoff);
+  }
 
   assert.deepEqual(await bayPicker.locator('option').allTextContents(), sections.map(({ stand, bayId }) =>
     stand[0].toUpperCase() + stand.slice(1) + ' bay ' + bayId));
@@ -1086,7 +1181,7 @@ try {
   await page.getByText(rosterLabel, { exact: true }).click();
   assert.equal(await page.locator('.bay-six-zoom').evaluate(element =>
     element.scrollWidth > element.clientWidth && document.documentElement.scrollWidth === window.innerWidth), true);
-  console.log('All 15 bays, regalia palettes, side kits and facings, 22-player kickoff, approved west and end views, all 12 pose pairs, native and enlarged crops, rails and seat markers passed.');
+  console.log('All 15 bays, end-zone and regalia palettes, side kits and facings, 22-player kickoff, approved west and end views, all 12 pose pairs, native and enlarged crops, rails and seat markers passed.');
 } finally {
   await browser?.close();await server.close();
 }

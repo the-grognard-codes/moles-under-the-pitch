@@ -105,7 +105,8 @@
 .kickoff-overview { --toolbar-space: 158px; max-width: min(100%, 790px, max(330px, calc((100svh - var(--toolbar-space)) * .665))); }
 .kickoff-overview[data-full-bowl="true"] { --toolbar-space: 204px; }
 .kickoff-toolbar { column-gap: 16px; }
-.kickoff-review-controls { gap: 4px 16px; }
+.kickoff-review-controls { min-width: 0; gap: 4px 16px; }
+.kickoff-colors { min-width: 0; flex-wrap: wrap; }
 .gatehouse-bay-detail { margin-top: 24px; }
 .gatehouse-bay-detail h3 { margin: 0; font-size: 1.125rem; }
 .gatehouse-bay-detail .bay-six-crops { grid-template-columns: minmax(0, 1fr); }

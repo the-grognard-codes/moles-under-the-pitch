@@ -1,5 +1,9 @@
 # Gatehouse gallery artwork
 
+## Painted end zones
+
+The full-bowl gallery paints two 480 × 32 pixel strips. Their top-left corners are (156, 169) for the north goal and (156, 969) for the south goal on the 790 × 1188 canvas. Each strip covers 15 complete squares. Club names and primary kit colours drive the paint, and the original pitch markings sit above it. A palette change rebuilds the two strips together. [Native paint and lettering](../../../../../browser-client/src/stadium-end-zones.ts) · [Three palette examples](end-zones.webp)
+
 ## Banners and regalia
 
 The ornaments use a 172 × 74 pixel sheet and a grayscale material mask of exactly the same size. Every pixel starts with an authored material and shade. Values 1–16 select the primary cloth ramp, and 17–32 select the secondary ramp for crests, trim and stitching. A zero leaves the artwork’s own colour and alpha intact, including the bronze fittings, wooden rods and shadows. [Sprite sheet](regalia/atlas.png) · [Material mask](regalia/materials.png) · [Native frame rectangles](regalia/atlas.json)

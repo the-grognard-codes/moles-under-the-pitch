@@ -16,11 +16,21 @@ Three pointed lion standards hang from the north wall, and each side bay has a p
 
 ![All four Gatehouse stands at kickoff, with the red away crowd on the right](../../assets/game/references/stadiums/scale-studies/kickoff.webp)
 
+### Painted end zones
+
+The visiting Cinderclaw Crew defend the north end. The home Ironbank Rovers defend the south end beside the gate. Both team names read upright from the overhead camera. The colours follow the team defending each goal, independently of the home supporters in the stands behind it.
+
+Each end zone is one playable row, 15 squares wide. The paint mixes the team’s primary colour with 27% of the existing turf colour. The renderer picks ivory or charcoal lettering by measuring its contrast against the resulting paint. Across all 16 primaries, including the flecks of turf texture, the lowest contrast is 4.76:1. The two names still distinguish the ends when both kits use the same navy. The regular square divisions and goal lines run over the paint.
+
+The three pairs below show the default kits, white/black, and identical navy at native resolution. In each pair the north end is above the south end. Switch off **End zones** in the full-stadium gallery to compare the paint with the original grass.
+
+![Cinderclaw Crew and Ironbank Rovers end zones in three kit combinations](../../assets/game/references/stadiums/scale-studies/end-zones.webp)
+
 ### Regalia at pixel zoom
 
 ![West lion and east tusk pennants, north wall standard and swag, and a south gatepost shield](../../assets/game/references/stadiums/scale-studies/regalia/details.webp)
 
-The detail plate shows the native pixels at 2×. In the gallery, **Regalia colors** switches the ornaments between the default team kits, white/black, yellow/violet, similar blues, and identical navy. Fixed hardware retains its colour, and the fittings stay on the stone. Turning off **Regalia** restores the approved crowd and pitch pixel for pixel. [Undecorated kickoff](https://github.com/the-grognard-codes/moles-under-the-pitch/blob/0b7ec30240629cf56a3525c3fdb951e69d0f913d/assets/game/references/stadiums/scale-studies/kickoff.webp)
+The detail plate shows the native pixels at 2×. In the gallery, **End zone and regalia colors** switches the ornaments and field paint between the default team kits, white/black, yellow/violet, similar blues, and identical navy. Fixed hardware retains its colour, and the fittings stay on the stone. Switch off both **Regalia** and **End zones** to see the undecorated kickoff. [Undecorated kickoff](https://github.com/the-grognard-codes/moles-under-the-pitch/blob/0b7ec30240629cf56a3525c3fdb951e69d0f913d/assets/game/references/stadiums/scale-studies/kickoff.webp)
 
 Open `/stadium-mockup?view=full-bowl` and select **Inspect a bay** to compare the native and 4× views. West bay 6 preserves the approved six supporters and their contacts on the original nine seats. East bay 10 shows the same bench scale with a different group facing inward. Bays 7 and 11 show how the crowd fills the long terraces beside the south gate.
 

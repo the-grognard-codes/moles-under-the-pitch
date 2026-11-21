@@ -97,6 +97,11 @@ export function drawBowlGround(context: CanvasRenderingContext2D, fillExterior =
     context.fillStyle = i % 2 ? '#768046' : '#707940';
     context.fillRect(px + next(pitch.width - 3), py + next(pitch.height - 2), 1 + next(3), 1);
   }
+  drawBowlMarkings(context);
+}
+
+export function drawBowlMarkings(context: CanvasRenderingContext2D) {
+  const { pitchX: px, pitchY: py } = bowl;
   context.fillStyle = '#838a56';
   for (let x = square; x < pitch.width; x += square) context.fillRect(px + x, py, 1, pitch.height);
   for (let y = square; y < pitch.height; y += square) context.fillRect(px, py + y, pitch.width, 1);
