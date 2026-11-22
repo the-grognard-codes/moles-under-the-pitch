@@ -1,6 +1,7 @@
 # ADR request: turn-sequence phases and presentation
 
-Status: requested; resulting ADR proposed, not accepted.
+Status: resulting ADR accepted by the maintainer on 2026-11-21 for
+[PR #551](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/551).
 Source: [#549](https://github.com/the-grognard-codes/fumbbl-rebuild/issues/549),
 the [2026-11-14 ordering decision](https://github.com/the-grognard-codes/fumbbl-rebuild/pull/541#issuecomment-6884610201)
 and [spec patch](https://github.com/the-grognard-codes/fumbbl-rebuild/pull/541#issuecomment-6885261078).
@@ -52,10 +53,10 @@ a supplied event. The wider matrix is [#547](https://github.com/the-grognard-cod
 ## Scope and deliverables
 
 - This request, the linked source inventory, and
-  [proposed ADR 0007](../adr/0007-server-owned-turn-sequence-presentation.md).
-- A phase model, proposed server-owned signal, local presentation ordering,
+  [ADR 0007](../adr/0007-server-owned-turn-sequence-presentation.md).
+- A phase model, server-owned signal, local presentation ordering,
   embedded version-3 transcript policy, restore behavior and existing budgets.
-- Explicit amendment to ADR 0002's embedded-format policy on acceptance and
+- Explicit amendment to ADR 0002's embedded-format policy and
   consistency review against ADRs 0004 and 0006 and decision-time clocks (#588).
 
 No protocol implementation, `StepEndTurn` refactor, animated artwork, rules
@@ -112,8 +113,7 @@ hold uses the coach's decision time and planned time bank as applicable.
 ## Alternatives and resolved decisions
 
 The ADR compares explicit markers with client inference, server-held dialogs
-and an unversioned extension. The maintainer confirmed these choices for the
-proposed contract:
+and an unversioned extension. The accepted contract records these choices.
 
 1. `turnPlay` contains individual activations. The other phases distinguish
    cleanup, drive/half/match boundaries, drive start and turn start.
@@ -139,10 +139,10 @@ proposed contract:
 
 ### Acceptance and follow-up
 
-- [ ] Maintainer approves a final policy with a date and evidence link.
-- [ ] Add accepted vocabulary to `CONTEXT.md` and an invariant link to the
-  architecture map only after acceptance.
-- [ ] After acceptance, audit every inventory emission site and file one or more
+- [x] Maintainer approves a final policy with a date and evidence link.
+- [x] Add accepted vocabulary to [CONTEXT.md](../../CONTEXT.md) and an
+  invariant link to the [architecture map](../agents/architecture-map.md).
+- [ ] After publication, audit every inventory emission site and file one or more
   issues for misaligned sites, starting with `StepEndTurn` and Star of the Show.
 - [ ] File separately scoped protocol, fixture and validation tickets.
 

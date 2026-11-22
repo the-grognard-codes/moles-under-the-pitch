@@ -41,3 +41,27 @@ The ordered, durable record of accepted decisions, revealed outcomes, board chec
 
 **Match replay**:
 A read-only view reconstructed from stored transcript records and board checkpoints after a match finishes.
+
+**Turn play (`turnPlay`)**:
+The playable part of a numbered team turn, including its player activations and pending decisions that determine how play ends.
+
+**Player activation**:
+The part of team-turn play in which one player acts, including the reactions needed to resolve that player's action.
+
+**Turn cleanup (`turnCleanup`)**:
+The decisions and effects that follow a settled touchdown, turnover, or voluntary end of a team turn.
+
+**Drive end (`driveEnd`)**:
+The closing recovery, removals, and expiration of effects after a touchdown or half boundary.
+
+**Half end (`halfEnd`)**:
+The transition after a half and its applicable cleanup, before the following half begins or the match ends.
+
+**Match end (`matchEnd`)**:
+The terminal phase that settles applicable match-ending choices and the final result.
+
+**Drive start (`driveStart` / `kickoff`)**:
+The phase from pre-setup decisions through team setup, the kick-off event, and ball settlement before the first numbered turn.
+
+**Turn start (`turnStart`)**:
+The initialization and start-of-turn choices before the first playable selection of a numbered team turn.

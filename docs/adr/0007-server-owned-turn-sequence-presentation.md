@@ -1,18 +1,16 @@
 # Let the server describe turn phases and clients order their presentation
 
-Status: proposed
+Status: accepted by the maintainer on 2026-11-21 for [PR #551](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/551).
 Issue: [#549](https://github.com/the-grognard-codes/fumbbl-rebuild/issues/549)
 Request: [turn-sequence contract](../specs/turn-sequence-contract-adr.md)
 Evidence: [phase inventory](../specs/turn-sequence-phase-inventory.md), reviewed
 2026-11-15 at `65ed24fdb7f242645d5c4673a3aebce7b4b92110`.
 Policy feedback: [maintainer confirmation](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/551#issuecomment-7068224583).
 
-Propose server-owned, versioned phase/boundary metadata persisted with accepted
-native outcomes, and client-owned splash/input scheduling. This makes cleanup
+The server owns versioned phase and boundary metadata persisted with accepted
+native outcomes. Each client schedules its own splashes and input. This makes cleanup
 ordering explicit without making the engine wait for a coach's animation or
-until-dismissed preference. The proposal incorporates the maintainer's live
-ordering requirements and the policy decisions from PR #551. Formal acceptance
-is pending.
+until-dismissed preference.
 
 ## Decision and boundaries
 
@@ -45,7 +43,7 @@ awaiting input. Mode or final actor alone is therefore insufficient evidence.
 
 ### Signal and ownership
 
-Propose an ordered `presentation` extension in each version-3 transcript
+Use an ordered `presentation` extension in each version-3 transcript
 record and its V2 publication. Its candidate items describe phase entry/exit,
 the three existing announcement kinds, and a gate/reference for a decision
 offered in the final public state. Each includes a stable identity derived from
@@ -107,7 +105,7 @@ the native end-to-end edge-case matrix remains
 
 Use embedded transcript format 3 for writers and readers across recovery,
 journal assembly, completed results, replay and diagnostics. This amends the
-format section of [ADR 0002](0002-bounded-match-transcript.md) on acceptance.
+format section of [ADR 0002](0002-bounded-match-transcript.md).
 During the build phase, readers explicitly reject version 2 and all unknown
 versions. Replace version-2 fixtures with regenerated version-3 fixtures or
 remove obsolete fixtures. Existing version-2 matches are unsupported.
@@ -185,27 +183,25 @@ size checks.
 
 [ADR 0002](0002-bounded-match-transcript.md) continues to govern the public
 durable transcript, recorded outcomes, digest and admission. ADR 0007 amends
-its embedded-format policy on acceptance.
+its embedded-format policy.
 [ADR 0004](0004-durable-recovery-journal.md) keeps one generation-CAS transaction
 and exact recorded continuation. Markers travel with its tails and compaction.
 ADR 0006 keeps one owner and bounded execution. Splash presentation stays
 asynchronous to the engine.
 
 Current code already emits durable `matchAnnouncements` and restores native
-steps/dialogs. It does not expose the proposed phase model/version, universally
+steps/dialogs. It does not expose the accepted phase model/version, universally
 emit before cleanup decisions, or prove the inventory's whole scenario matrix.
 #541 fixes client scheduling of available announcements; it does not by itself
 close these server/protocol gaps. #547 owns its existing tests. New protocol,
-fixture replacement and emission implementation tickets wait for acceptance.
+fixture replacement and emission work belong in separate implementation tickets.
 
-### Acceptance and follow-up
+### Implementation follow-up
 
-Record the maintainer's formal acceptance with a date and evidence link.
-After acceptance, add the phase vocabulary to `CONTEXT.md` and link the
-invariant from the architecture map. Audit every emission site in the phase
-inventory against the native ordering rule and file one or more issues for
-sites that need correction, starting with `StepEndTurn` and Star of the Show.
-Track protocol and validation work in separate implementation slices.
+After publication, audit every emission site in the phase inventory against
+the native ordering rule and file one or more issues for sites that need
+correction, starting with `StepEndTurn` and Star of the Show. Track protocol
+and validation work in separate implementation slices.
 
 Implementation validation must cover each inventory dialog family and shared
 hook, activation vs cleanup Argue/Apothecary/Blood Lust, Star of the Show,

@@ -39,6 +39,12 @@ canonical art synced into the browser by `npm run assets:sync`.
 
 ## Invariants to check in review
 
+- **The server owns turn boundaries.** The server records a settled touchdown
+  or turnover before raising dependent cleanup decisions. Live clients present
+  the splash before those decisions, independently of engine progression.
+  [ADR 0007](../adr/0007-server-owned-turn-sequence-presentation.md) defines
+  the format-3 transcript policy and the remaining implementation work.
+
 - **Server is authoritative.** Browser input selects among server-offered
   decisions. Presentation and projection code observes state and never decides
   or changes native rules (see the `GameState` observer comments).

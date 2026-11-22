@@ -1,9 +1,10 @@
 # BB2025 turn-sequence phase inventory
 
-Status: source inventory for proposed ADR 0007; no runtime phase model accepted.
+Status: source inventory for accepted ADR 0007. Runtime findings reflect the
+reviewed revision.
 Reviewed: 2026-11-15 at `65ed24fdb7f242645d5c4673a3aebce7b4b92110`.
 Request: [#549 request](turn-sequence-contract-adr.md).
-Decision: [proposed ADR](../adr/0007-server-owned-turn-sequence-presentation.md).
+Decision: [ADR 0007](../adr/0007-server-owned-turn-sequence-presentation.md).
 
 ## Scope and how to read the catalog
 
@@ -16,7 +17,7 @@ It also lists all 38 concrete sequence generators plus ActivationSequenceBuilder
 and every server-main source file constructing a Dialog*Parameter or the terminal
 dialog factory call. Abstract reroll/skill providers are included explicitly.
 
-Phase letters below describe ownership under the proposed contract. A maps to
+Phase letters below describe ownership under the accepted contract. A maps to
 `turnPlay`, C to `turnCleanup`, D to `driveEnd`, H to `halfEnd`, F to
 `matchEnd`, S to `driveStart` / `kickoff`, and T to `turnStart`. P labels
 the pre-match prelude for this inventory. An individual player activation is
@@ -70,7 +71,7 @@ has executed or that every native dialog has a current browser renderer.
 
 ## Implementation follow-up
 
-After ADR acceptance, review every emission site in this inventory against the
+After ADR publication, review every emission site in this inventory against the
 native ordering rule and file one or more issues for misaligned sites, starting
 with `StepEndTurn` and Star of the Show. Validate version-3 recovery and replay
 with regenerated fixtures and explicit rejection of unsupported versions.
