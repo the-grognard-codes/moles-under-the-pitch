@@ -1,0 +1,664 @@
+{
+  "version": 1,
+  "canvas": {
+    "width": 790,
+    "height": 1188
+  },
+  "layers": {
+    "approved": [
+      {
+        "kind": "ground"
+      },
+      {
+        "kind": "image",
+        "art": "stairs.png",
+        "x": 106,
+        "y": 122,
+        "width": 44,
+        "height": 35,
+        "rotate180": false
+      },
+      {
+        "kind": "image",
+        "art": "stairs.png",
+        "x": 631,
+        "y": 1005,
+        "width": 52,
+        "height": 42,
+        "rotate180": true
+      },
+      {
+        "kind": "image",
+        "art": "architecture.webp",
+        "x": 0,
+        "y": 0,
+        "width": 790,
+        "height": 1188
+      }
+    ]
+  },
+  "crowds": {
+    "full": {
+      "art": "crowd.png",
+      "materials": "crowd-materials.png",
+      "bays": [
+        {
+          "id": 1,
+          "stand": "north",
+          "x": 33,
+          "y": 8,
+          "width": 149,
+          "height": 92
+        },
+        {
+          "id": 2,
+          "stand": "north",
+          "x": 244,
+          "y": 8,
+          "width": 301,
+          "height": 92
+        },
+        {
+          "id": 3,
+          "stand": "north",
+          "x": 607,
+          "y": 8,
+          "width": 149,
+          "height": 92
+        },
+        {
+          "id": 4,
+          "stand": "west",
+          "x": 21,
+          "y": 131,
+          "width": 66,
+          "height": 248
+        },
+        {
+          "id": 5,
+          "stand": "west",
+          "x": 22,
+          "y": 435,
+          "width": 65,
+          "height": 95
+        },
+        {
+          "id": 6,
+          "stand": "west",
+          "x": 22,
+          "y": 589,
+          "width": 65,
+          "height": 74
+        },
+        {
+          "id": 7,
+          "stand": "west",
+          "x": 22,
+          "y": 719,
+          "width": 65,
+          "height": 324
+        },
+        {
+          "id": 8,
+          "stand": "east",
+          "x": 703,
+          "y": 131,
+          "width": 66,
+          "height": 248
+        },
+        {
+          "id": 9,
+          "stand": "east",
+          "x": 703,
+          "y": 435,
+          "width": 66,
+          "height": 95
+        },
+        {
+          "id": 10,
+          "stand": "east",
+          "x": 703,
+          "y": 589,
+          "width": 66,
+          "height": 74
+        },
+        {
+          "id": 11,
+          "stand": "east",
+          "x": 703,
+          "y": 719,
+          "width": 66,
+          "height": 324
+        },
+        {
+          "id": 12,
+          "stand": "south",
+          "x": 28,
+          "y": 1070,
+          "width": 152,
+          "height": 91
+        },
+        {
+          "id": 13,
+          "stand": "south",
+          "x": 244,
+          "y": 1070,
+          "width": 78,
+          "height": 91
+        },
+        {
+          "id": 14,
+          "stand": "south",
+          "x": 464,
+          "y": 1070,
+          "width": 82,
+          "height": 91
+        },
+        {
+          "id": 15,
+          "stand": "south",
+          "x": 613,
+          "y": 1070,
+          "width": 149,
+          "height": 91
+        }
+      ]
+    }
+  },
+  "regaliaAtlases": {
+    "approved": {
+      "art": "regalia.png",
+      "materials": "regalia-materials.png",
+      "width": 172,
+      "height": 74,
+      "sprites": {
+        "human-standard": {
+          "x": 0,
+          "y": 0,
+          "width": 26,
+          "height": 42
+        },
+        "orc-standard": {
+          "x": 28,
+          "y": 0,
+          "width": 26,
+          "height": 42
+        },
+        "human-pennant-right": {
+          "x": 56,
+          "y": 0,
+          "width": 27,
+          "height": 48
+        },
+        "human-pennant-left": {
+          "x": 85,
+          "y": 0,
+          "width": 27,
+          "height": 48
+        },
+        "orc-pennant-right": {
+          "x": 114,
+          "y": 0,
+          "width": 27,
+          "height": 48
+        },
+        "orc-pennant-left": {
+          "x": 143,
+          "y": 0,
+          "width": 27,
+          "height": 48
+        },
+        "human-swag": {
+          "x": 0,
+          "y": 50,
+          "width": 42,
+          "height": 13
+        },
+        "orc-swag": {
+          "x": 44,
+          "y": 50,
+          "width": 42,
+          "height": 13
+        },
+        "human-shield": {
+          "x": 88,
+          "y": 50,
+          "width": 15,
+          "height": 22
+        }
+      }
+    }
+  },
+  "regaliaSets": {
+    "home": {
+      "atlas": "approved",
+      "pieces": [
+        {
+          "x": 17,
+          "y": 17,
+          "sprite": "human-shield",
+          "team": "home"
+        },
+        {
+          "x": 758,
+          "y": 17,
+          "sprite": "human-shield",
+          "team": "home"
+        },
+        {
+          "x": 201,
+          "y": 105,
+          "sprite": "human-standard",
+          "team": "home"
+        },
+        {
+          "x": 382,
+          "y": 105,
+          "sprite": "human-standard",
+          "team": "home"
+        },
+        {
+          "x": 562,
+          "y": 105,
+          "sprite": "human-standard",
+          "team": "home"
+        },
+        {
+          "x": 143,
+          "y": 108,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 238,
+          "y": 108,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 318,
+          "y": 108,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 430,
+          "y": 108,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 513,
+          "y": 108,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 608,
+          "y": 108,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 101,
+          "y": 229,
+          "sprite": "human-pennant-right",
+          "team": "home"
+        },
+        {
+          "x": 662,
+          "y": 229,
+          "sprite": "orc-pennant-left",
+          "team": "away"
+        },
+        {
+          "x": 101,
+          "y": 458,
+          "sprite": "human-pennant-right",
+          "team": "home"
+        },
+        {
+          "x": 662,
+          "y": 458,
+          "sprite": "orc-pennant-left",
+          "team": "away"
+        },
+        {
+          "x": 101,
+          "y": 602,
+          "sprite": "human-pennant-right",
+          "team": "home"
+        },
+        {
+          "x": 662,
+          "y": 602,
+          "sprite": "orc-pennant-left",
+          "team": "away"
+        },
+        {
+          "x": 101,
+          "y": 853,
+          "sprite": "human-pennant-right",
+          "team": "home"
+        },
+        {
+          "x": 662,
+          "y": 853,
+          "sprite": "orc-pennant-left",
+          "team": "away"
+        },
+        {
+          "x": 122,
+          "y": 1052,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 245,
+          "y": 1052,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 503,
+          "y": 1052,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 626,
+          "y": 1052,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 328,
+          "y": 1096,
+          "sprite": "human-shield",
+          "team": "home"
+        },
+        {
+          "x": 444,
+          "y": 1096,
+          "sprite": "human-shield",
+          "team": "home"
+        }
+      ]
+    },
+    "away": {
+      "atlas": "approved",
+      "pieces": [
+        {
+          "x": 17,
+          "y": 17,
+          "sprite": "human-shield",
+          "team": "home"
+        },
+        {
+          "x": 758,
+          "y": 17,
+          "sprite": "human-shield",
+          "team": "home"
+        },
+        {
+          "x": 201,
+          "y": 105,
+          "sprite": "human-standard",
+          "team": "home"
+        },
+        {
+          "x": 382,
+          "y": 105,
+          "sprite": "human-standard",
+          "team": "home"
+        },
+        {
+          "x": 562,
+          "y": 105,
+          "sprite": "human-standard",
+          "team": "home"
+        },
+        {
+          "x": 143,
+          "y": 108,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 238,
+          "y": 108,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 318,
+          "y": 108,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 430,
+          "y": 108,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 513,
+          "y": 108,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 608,
+          "y": 108,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 101,
+          "y": 229,
+          "sprite": "orc-pennant-right",
+          "team": "away"
+        },
+        {
+          "x": 662,
+          "y": 229,
+          "sprite": "human-pennant-left",
+          "team": "home"
+        },
+        {
+          "x": 101,
+          "y": 458,
+          "sprite": "orc-pennant-right",
+          "team": "away"
+        },
+        {
+          "x": 662,
+          "y": 458,
+          "sprite": "human-pennant-left",
+          "team": "home"
+        },
+        {
+          "x": 101,
+          "y": 602,
+          "sprite": "orc-pennant-right",
+          "team": "away"
+        },
+        {
+          "x": 662,
+          "y": 602,
+          "sprite": "human-pennant-left",
+          "team": "home"
+        },
+        {
+          "x": 101,
+          "y": 853,
+          "sprite": "orc-pennant-right",
+          "team": "away"
+        },
+        {
+          "x": 662,
+          "y": 853,
+          "sprite": "human-pennant-left",
+          "team": "home"
+        },
+        {
+          "x": 122,
+          "y": 1052,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 245,
+          "y": 1052,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 503,
+          "y": 1052,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 626,
+          "y": 1052,
+          "sprite": "human-swag",
+          "team": "home"
+        },
+        {
+          "x": 328,
+          "y": 1096,
+          "sprite": "human-shield",
+          "team": "home"
+        },
+        {
+          "x": 444,
+          "y": 1096,
+          "sprite": "human-shield",
+          "team": "home"
+        }
+      ]
+    }
+  },
+  "views": {
+    "home": {
+      "alignment": {
+        "pitchOrigin": [
+          156,
+          169
+        ],
+        "worldOrigin": [
+          26,
+          0
+        ],
+        "worldRight": [
+          0,
+          1
+        ],
+        "worldDown": [
+          -1,
+          0
+        ],
+        "pixelsPerSquare": 32
+      },
+      "layers": "approved",
+      "crowd": "full",
+      "regalia": "home",
+      "kitByBay": {
+        "1": "home",
+        "2": "home",
+        "3": "home",
+        "4": "home",
+        "5": "home",
+        "6": "home",
+        "7": "home",
+        "8": "away",
+        "9": "away",
+        "10": "away",
+        "11": "away",
+        "12": "home",
+        "13": "home",
+        "14": "home",
+        "15": "home"
+      },
+      "endZones": [
+        {
+          "x": 156,
+          "y": 169,
+          "width": 480,
+          "height": 32,
+          "seed": 572,
+          "team": "away"
+        },
+        {
+          "x": 156,
+          "y": 969,
+          "width": 480,
+          "height": 32,
+          "seed": 573,
+          "team": "home"
+        }
+      ]
+    },
+    "away": {
+      "alignment": {
+        "pitchOrigin": [
+          156,
+          169
+        ],
+        "worldOrigin": [
+          0,
+          15
+        ],
+        "worldRight": [
+          0,
+          -1
+        ],
+        "worldDown": [
+          1,
+          0
+        ],
+        "pixelsPerSquare": 32
+      },
+      "layers": "approved",
+      "crowd": "full",
+      "regalia": "away",
+      "kitByBay": {
+        "1": "home",
+        "2": "home",
+        "3": "home",
+        "4": "away",
+        "5": "away",
+        "6": "away",
+        "7": "away",
+        "8": "home",
+        "9": "home",
+        "10": "home",
+        "11": "home",
+        "12": "home",
+        "13": "home",
+        "14": "home",
+        "15": "home"
+      },
+      "endZones": [
+        {
+          "x": 156,
+          "y": 169,
+          "width": 480,
+          "height": 32,
+          "seed": 572,
+          "team": "home"
+        },
+        {
+          "x": 156,
+          "y": 969,
+          "width": 480,
+          "height": 32,
+          "seed": 573,
+          "team": "away"
+        }
+      ]
+    }
+  }
+}

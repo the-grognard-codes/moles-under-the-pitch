@@ -2,7 +2,7 @@ import { teamColorManifest } from './generated-team-colors.ts';
 
 type PaintTarget = Pick<CanvasRenderingContext2D, 'fillStyle' | 'fillRect' | 'clearRect'>;
 type PitchBounds = { x: number; y: number; width: number; height: number };
-type Team = { name: string; primary: string };
+type Team = { name?: string | null; primary: string };
 type Glyph = readonly string[];
 
 const IVORY = '#fdf6e1';
@@ -186,14 +186,18 @@ export function drawGatehouseEndZones(ctx: PaintTarget, pitch: PitchBounds, squa
   if (![pitch.x, pitch.y, pitch.width, pitch.height, square].every(Number.isInteger)
     || square <= 0 || pitch.width <= 0 || pitch.height < square * 2) return;
 
-  const before = ctx.fillStyle;
   for (const [team, y, seed] of [[teams.north, pitch.y, 572], [teams.south, pitch.y + pitch.height - square, 573]] as const) {
     const row = { x: pitch.x, y, width: pitch.width, height: square };
-    const { paint, grain, ink } = paintColors(team.primary);
-    ctx.fillStyle = paint;
-    ctx.fillRect(row.x, row.y, row.width, row.height);
-    weatherGround(ctx, row, grain, seed);
-    drawWord(ctx, row, team.name, ink, seed);
+    drawGatehouseEndZone(ctx, row, team, seed);
   }
+}
+
+export function drawGatehouseEndZone(ctx: PaintTarget, row: PitchBounds, team: Team, seed: number) {
+  const before = ctx.fillStyle;
+  const { paint, grain, ink } = paintColors(team.primary);
+  ctx.fillStyle = paint;
+  ctx.fillRect(row.x, row.y, row.width, row.height);
+  weatherGround(ctx, row, grain, seed);
+  if (team.name != null) drawWord(ctx, row, team.name, ink, seed);
   ctx.fillStyle = before;
 }

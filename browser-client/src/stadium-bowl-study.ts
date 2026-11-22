@@ -31,7 +31,7 @@ export function drawBowl(context: CanvasRenderingContext2D, art: HTMLImageElemen
   drawBowlGround(context);
 }
 
-export function drawBowlGround(context: CanvasRenderingContext2D, fillExterior = false) {
+export function drawBowlGround(context: CanvasRenderingContext2D, fillExterior = false, markings = true) {
   // One deterministic grain pattern for the packed earth and the untrimmed turf.
   let seed = 572;
   function next(limit: number) {
@@ -97,7 +97,7 @@ export function drawBowlGround(context: CanvasRenderingContext2D, fillExterior =
     context.fillStyle = i % 2 ? '#768046' : '#707940';
     context.fillRect(px + next(pitch.width - 3), py + next(pitch.height - 2), 1 + next(3), 1);
   }
-  drawBowlMarkings(context);
+  if (markings) drawBowlMarkings(context);
 }
 
 export function drawBowlMarkings(context: CanvasRenderingContext2D) {

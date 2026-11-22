@@ -10,6 +10,7 @@ declare global {
     initialDice?: DiceMoment | null;
     initialActions?: SetupAction[];
     initialPinnedAction?: SetupAction;
+    initialZoom?: number;
     intents: ({ player: string } | { x: number; y: number })[];
     updatePitchView?: (view: SetupState) => void;
   }
@@ -18,8 +19,9 @@ declare global {
 function App() {
   const [selected, setSelected] = useState('human');
   const [view, setView] = useState(window.initial);
+  const [zoom, setZoom] = useState(window.initialZoom ?? 1);
   window.updatePitchView = setView;
-  return <LivePitch view={view} selectedId={selected} actions={window.initialActions ?? []}
+  return <LivePitch view={view} selectedId={selected} actions={window.initialActions ?? []} zoom={zoom} onZoomChange={setZoom}
     pinnedAction={window.initialPinnedAction} diceMoment={window.initialDice}
     routePreview={{ routeVersion: 2, playerId: 'human', from: { x: 12, y: 7 }, remaining: 6, revision: view.revision, actor: 'home',
       steps: [{ x: 11, y: 7, dodge: 0, rush: 0, dodgeModifier: 0, reactions: [] }, { x: 10, y: 8, dodge: 0, rush: 0, dodgeModifier: 0, reactions: [] }] }}

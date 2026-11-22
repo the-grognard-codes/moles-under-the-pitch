@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Play Old World Classic matches inside the Gatehouse stadium in the 90° camera, with team-coloured stands and painted end zones visible from either coach end.
+
 - Accelerate live playback bursts from eight queued revisions until caught up, retaining every move and roll while animated splashes play at full length. Required choices wait for queued announcements, including held splashes. Touchdown scores appear with their splash, while seeking and recovery show the current score immediately.
 
 - Retain frozen replay events and transcript records as compact JSON between reads, reducing resident match memory without changing recovery or replay formats.

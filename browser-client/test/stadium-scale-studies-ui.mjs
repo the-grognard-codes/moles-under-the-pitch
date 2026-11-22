@@ -367,6 +367,8 @@ const colorPairs = {
   'similar blues': { home: ['navy', 'sky'], away: ['sky', 'navy'] },
 };
 const decorationPaletteLabel = 'End zone and regalia colors';
+const readyGallery = page => page.locator('.gatehouse-overview canvas[data-ready="true"]');
+const composedPixels = page => readyGallery(page).evaluate(canvas => canvas.toDataURL());
 const reservationLegend = [
   'Solid red marks sideline staff.',
   'Dashed blue marks reserve players.',
@@ -557,14 +559,14 @@ async function verifyRegalia(page, stadium, approved, defaultDecorated) {
   await toggle.check();
   for (const [preset, pixels] of Object.entries(expected)) {
     await palette.selectOption(preset);
-    assert.equal(await stadium.evaluate(canvas => canvas.toDataURL()), pixels,
+    assert.equal(await composedPixels(page), pixels,
       preset + ' preserves fixed colors and replaces each exact material shade for its owner');
   }
   await toggle.uncheck();
-  assert.equal(await stadium.evaluate(canvas => canvas.toDataURL()), approved, 'Turning off regalia restores the exact approved bowl');
+  assert.equal(await composedPixels(page), approved, 'Turning off regalia restores the exact approved bowl');
   await toggle.check();
   assert.equal(await palette.inputValue(), 'similar blues');
-  assert.equal(await stadium.evaluate(canvas => canvas.toDataURL()), expected['similar blues']);
+  assert.equal(await composedPixels(page), expected['similar blues']);
   await palette.selectOption('defaults');
   return expected;
 }
@@ -636,19 +638,19 @@ async function verifyEndZones(page, stadium, approved, decorated, defaultKickoff
   assert.equal(await palette.isEnabled(), true);
   for (const [preset, { paintOnly }] of Object.entries(expected)) {
     await palette.selectOption(preset);
-    assert.equal(await stadium.evaluate(canvas => canvas.toDataURL()), paintOnly,
+    assert.equal(await composedPixels(page), paintOnly,
       preset + ' paints the away north and home south strips with native chalk above them');
   }
   await zones.uncheck();
   assert.equal(await palette.isDisabled(), true);
   assert.equal(await stadium.getAttribute('aria-label'), fullKickoffLabel);
-  assert.equal(await stadium.evaluate(canvas => canvas.toDataURL()), approved, 'Both review layers off restores the original kickoff');
+  assert.equal(await composedPixels(page), approved, 'Both review layers off restores the original kickoff');
   await regalia.check();
-  assert.equal(await stadium.evaluate(canvas => canvas.toDataURL()), decorated['similar blues']);
+  assert.equal(await composedPixels(page), decorated['similar blues']);
   await zones.check();
-  assert.equal(await stadium.evaluate(canvas => canvas.toDataURL()), expected['similar blues'].combined);
+  assert.equal(await composedPixels(page), expected['similar blues'].combined);
   await palette.selectOption('defaults');
-  assert.equal(await stadium.evaluate(canvas => canvas.toDataURL()), defaultKickoff);
+  assert.equal(await composedPixels(page), defaultKickoff);
   return defaultKickoff;
 }
 
@@ -667,7 +669,7 @@ async function verifyKickoff(page, original, full) {
   assert.deepEqual(sections.map(({ bayId }) => bayId), full ? layout.bays.map(({ id }) => id) : [1, 2, 3, 12, 13, 14, 15]);
   assert.ok(sections.every(({ stand, bounds }) => stand === bounds.stand));
   await picker.selectOption(full ? 'full-bowl' : 'full-ends');
-  await stadium.waitFor();
+  await readyGallery(page).waitFor();
   const regalia = page.getByRole('checkbox', { name: 'Regalia' });
   const zones = page.getByRole('checkbox', { name: 'End zones' });
   const reservations = page.getByRole('checkbox', { name: 'Apron reservations' });
@@ -681,9 +683,9 @@ async function verifyKickoff(page, original, full) {
     assert.equal(await stadium.getAttribute('aria-label'), fullKickoffLabel +
       '. Cinderclaw Crew in the north end zone and Ironbank Rovers in the south end zone.');
     assert.equal(await page.getByLabel(decorationPaletteLabel).inputValue(), 'defaults');
-    defaultKickoff = await stadium.evaluate(canvas => canvas.toDataURL());
+    defaultKickoff = await composedPixels(page);
     await zones.uncheck();
-    defaultDecorated = await stadium.evaluate(canvas => canvas.toDataURL());
+    defaultDecorated = await composedPixels(page);
     await regalia.uncheck();
   } else {
     assert.equal(await regalia.count(), 0);
@@ -728,7 +730,7 @@ async function verifyKickoff(page, original, full) {
   }
   // Compare the entire native stadium against the architecture, the source
   // insert for every bay, and the two kickoff kits at regulation square scale.
-  const unadorned = await stadium.evaluate(async (canvas, { sections, original, sideColors }) => {
+  const unadorned = await readyGallery(page).evaluate(async (canvas, { sections, original, sideColors }) => {
     async function image(src) {
       const art = new Image();
       art.src = src;
@@ -1275,6 +1277,20 @@ try {
   await page.waitForFunction(src=>document.querySelector('canvas').toDataURL()===src,original);
   const fullBowl = await verifyKickoff(page, original, true);
   assert.deepEqual(await stairwellCrops(canvas), emptyStairs, 'The empty and full stadium share both native stairwell crops');
+  const overhead = page.getByLabel('Overhead end');
+  assert.equal(await overhead.inputValue(), 'home');
+  await page.locator('.gatehouse-overview').screenshot({ path: resolve(captures, 'kickoff-home.png') });
+  await overhead.selectOption('away');
+  await page.locator('.gatehouse-overview[data-overhead-end="away"] canvas[data-ready="true"]').waitFor();
+  assert.equal(await canvas.getAttribute('aria-label'), fullKickoffLabel +
+    '. Ironbank Rovers in the north end zone and Cinderclaw Crew in the south end zone.');
+  await page.getByText('West (away) 57 of 86 occupied', { exact: true }).waitFor();
+  await page.getByText('East (home) 57 of 86 occupied', { exact: true }).waitFor();
+  assert.deepEqual(await stairwellCrops(canvas), emptyStairs, 'The interim away view retains the approved upright stairwells');
+  assert.match(await page.getByRole('link', { name: 'Link to this bay' }).getAttribute('href'), /&end=away#bowl-detail$/);
+  await page.locator('.gatehouse-overview').screenshot({ path: resolve(captures, 'kickoff-away.png') });
+  await overhead.selectOption('home');
+  await page.locator('.gatehouse-overview[data-overhead-end="home"] canvas[data-ready="true"]').waitFor();
   await verifyKickoff(page, original, false);
   await verifyEndStands(page, original);
   await verifyEndPoseShowcase(page, original);

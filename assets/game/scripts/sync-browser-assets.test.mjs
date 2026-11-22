@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { link, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve } from 'node:path';
@@ -44,6 +45,36 @@ test('asset sync preserves live inputs on repeated builds and repairs stale deli
     { cwd: root, windowsHide: true, timeout: 30000 });
   await sync();
   const delivery = join(client, 'public/assets/game');
+
+  await t.test('the approved Gatehouse runtime inventory is delivered without review material', async () => {
+    const canonical = join(gameRoot, 'pitch/stadiums/gatehouse');
+    const runtime = join(delivery, 'pitch/stadiums/gatehouse');
+    const provenance = JSON.parse(await readFile(join(canonical, 'provenance.json'), 'utf8'));
+    const manifest = JSON.parse(await readFile(join(runtime, 'views.json'), 'utf8'));
+    const digest = path => readFile(path).then(bytes => createHash('sha256').update(bytes).digest('hex'));
+    assert.deepEqual((await readdir(runtime)).sort(), [...Object.keys(provenance.runtime), 'provenance.json'].sort());
+    const requested = new Set(['views.json']);
+    for (const view of Object.values(manifest.views)) {
+      const crowd = manifest.crowds[view.crowd];
+      const regalia = manifest.regaliaSets[view.regalia];
+      const atlas = manifest.regaliaAtlases[regalia.atlas];
+      assert.ok(regalia.pieces.length);
+      assert.deepEqual(Object.keys(view.kitByBay).map(Number), crowd.bays.map(bay => bay.id));
+      requested.add(crowd.art);
+      requested.add(crowd.materials);
+      requested.add(atlas.art);
+      requested.add(atlas.materials);
+      for (const layer of manifest.layers[view.layers]) if (layer.kind === 'image') requested.add(layer.art);
+    }
+    assert.deepEqual([...requested].sort(), Object.keys(provenance.runtime).sort());
+    for (const [name, hash] of Object.entries(provenance.runtime)) {
+      assert.equal(await digest(join(runtime, name)), hash, name);
+    }
+    for (const [name, hash] of Object.entries(provenance.sources)) {
+      assert.equal(await digest(join(gameRoot, provenance.sourceRoot, name)), hash, name);
+    }
+    await assert.rejects(stat(join(delivery, 'references/stadiums')), { code: 'ENOENT' });
+  });
 
   await t.test('unaccepted stadium sources are excluded and stale review copies are removed', async () => {
     assert.ok((await stat(join(root, 'assets/game/pitch/stadiums/mockup/architecture-v2.png'))).isFile());
