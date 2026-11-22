@@ -16,6 +16,12 @@ Three pointed lion standards hang from the north wall, and each side bay has a p
 
 ![All four Gatehouse stands at kickoff, with the red away crowd on the right](../../assets/game/references/stadiums/scale-studies/kickoff.webp)
 
+### Pitch apron reservations
+
+Turn on **Apron reservations** in the full stadium or empty stadium gallery. The solid red outlines mark space for coaches, apothecaries and other sideline staff. The dashed blue outlines immediately below them mark space for reserve players. The home team uses the west touchline and the visitors use the east. The guide opens directly at `/stadium-mockup?view=full-bowl&reservations=1`.
+
+Dotted magenta marks the cheerleader areas at the midpoint of each side. The north outline fits around the hanging standard, and the touchline outlines widen between wall fixtures. At the south end, two pads flank the clear approach to the gate. The guide can be inspected at native size or 4× in the nearest seating bay. [Reservation map](../../assets/game/references/stadiums/scale-studies/apron-reservations.webp)
+
 ### Painted end zones
 
 The visiting Cinderclaw Crew defend the north end. The home Ironbank Rovers defend the south end beside the gate. Both team names read upright from the overhead camera. The colours follow the team defending each goal, independently of the home supporters in the stands behind it.

@@ -1,0 +1,23 @@
+{
+  "canvas": {"width": 790, "height": 1188},
+  "staff": [
+    {"id": "west-staff", "side": "west", "owner": "home", "x": 119, "y": 181, "width": 26, "height": 94,
+     "outline": [[0,0],[26,0],[26,94],[12,94],[12,50],[0,50]]},
+    {"id": "east-staff", "side": "east", "owner": "away", "x": 647, "y": 181, "width": 26, "height": 94,
+     "outline": [[0,0],[26,0],[26,50],[14,50],[14,94],[0,94]]}
+  ],
+  "reserves": [
+    {"id": "west-reserves", "side": "west", "owner": "home", "x": 118, "y": 285, "width": 28, "height": 60},
+    {"id": "east-reserves", "side": "east", "owner": "away", "x": 646, "y": 285, "width": 28, "height": 60}
+  ],
+  "cheerleaders": [
+    {"id": "north-cheerleaders", "side": "north", "x": 336, "y": 129, "width": 120, "height": 32,
+     "outline": [[0,0],[44,0],[44,19],[74,19],[74,0],[120,0],[120,32],[0,32]]},
+    {"id": "west-cheerleaders", "side": "west", "x": 123, "y": 525, "width": 25, "height": 120,
+     "outline": [[9,0],[25,0],[25,120],[9,120],[9,71],[0,71],[0,49],[9,49]]},
+    {"id": "east-cheerleaders", "side": "east", "x": 644, "y": 525, "width": 25, "height": 120,
+     "outline": [[0,0],[16,0],[16,49],[25,49],[25,71],[16,71],[16,120],[0,120]]},
+    {"id": "south-cheerleaders-west", "side": "south", "x": 317, "y": 1009, "width": 40, "height": 27},
+    {"id": "south-cheerleaders-east", "side": "south", "x": 435, "y": 1009, "width": 40, "height": 27}
+  ]
+}

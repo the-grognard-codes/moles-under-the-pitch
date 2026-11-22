@@ -366,6 +366,70 @@ const colorPairs = {
   'similar blues': { home: ['navy', 'sky'], away: ['sky', 'navy'] },
 };
 const decorationPaletteLabel = 'End zone and regalia colors';
+const reservationLegend = [
+  'Solid red marks sideline staff.',
+  'Dashed blue marks reserve players.',
+  'Dotted magenta marks cheerleaders.',
+];
+
+async function verifyReservationPixels(stadium, approved) {
+  const areas = await stadium.evaluate(async (canvas, approved) => {
+    const { apronReservations } = await import('/src/stadium-apron-reservations.ts');
+    const { width, height } = canvas;
+    const original = document.createElement('canvas');
+    original.width = width;
+    original.height = height;
+    const ctx = original.getContext('2d');
+    async function read(src) {
+      const image = new Image();
+      image.src = src;
+      await image.decode();
+      ctx.drawImage(image, 0, 0);
+      return ctx.getImageData(0, 0, width, height).data;
+    }
+    const current = canvas.toDataURL();
+    const before = await read(approved);
+    const after = await read(current);
+    const coverage = new Uint8Array(width * height);
+    function inside(outline, x, y) {
+      let contained = false;
+      for (let i = 0, j = outline.length - 1; i < outline.length; j = i++) {
+        const [ax, ay] = outline[i], [bx, by] = outline[j];
+        if ((ay > y) !== (by > y) && x < ax + (y - ay) * (bx - ax) / (by - ay)) contained = !contained;
+      }
+      return contained;
+    }
+    for (const [i, area] of apronReservations.entries()) {
+      for (let dy = 0; dy < area.height; dy++) {
+        for (let dx = 0; dx < area.width; dx++) {
+          if (inside(area.outline, dx + .5, dy + .5)) coverage[(area.y + dy) * width + area.x + dx] = i + 1;
+        }
+      }
+    }
+    const changed = apronReservations.map(() => 0);
+    const strokes = apronReservations.map(() => 0);
+    const strokeColor = { staff: 0xff6459, reserves: 0x62b4ff, cheerleaders: 0xf275ee };
+    for (let i = 0; i < coverage.length; i++) {
+      const index = i * 4;
+      if (before[index] === after[index] && before[index + 1] === after[index + 1] &&
+          before[index + 2] === after[index + 2] && before[index + 3] === after[index + 3]) continue;
+      const x = i % width, y = Math.floor(i / width);
+      if (!coverage[i]) throw Error('Unexpected apron guide pixel at ' + x + ', ' + y);
+      if (x >= 156 && x < 636 && y >= 169 && y < 1001) throw Error('Apron guide paints the pitch at ' + x + ', ' + y);
+      const area = coverage[i] - 1;
+      changed[area]++;
+      const rgb = (after[index] << 16) | (after[index + 1] << 8) | after[index + 2];
+      if (rgb === strokeColor[apronReservations[area].kind]) strokes[area]++;
+    }
+    return apronReservations.map(({ kind, side, width, height }, index) =>
+      ({ kind, side, width, height, changed: changed[index], strokes: strokes[index] }));
+  }, approved);
+  assert.ok(areas.every(area => area.strokes > 0 && area.changed <= area.width * area.height));
+  for (const kind of ['staff', 'reserves', 'cheerleaders']) {
+    assert.deepEqual([...new Set(areas.filter(area => area.kind === kind).map(area => area.side))].sort(),
+      kind === 'cheerleaders' ? ['east', 'north', 'south', 'west'] : ['east', 'west']);
+  }
+}
 
 async function verifyRegalia(page, stadium, approved, defaultDecorated) {
   const toggle = page.getByRole('checkbox', { name: 'Regalia' });
@@ -556,10 +620,14 @@ async function verifyKickoff(page, original, full) {
   await stadium.waitFor();
   const regalia = page.getByRole('checkbox', { name: 'Regalia' });
   const zones = page.getByRole('checkbox', { name: 'End zones' });
+  const reservations = page.getByRole('checkbox', { name: 'Apron reservations' });
+  const legend = page.getByRole('list', { name: 'Apron reservation key' });
   let defaultKickoff, defaultDecorated;
   if (full) {
     assert.equal(await regalia.isChecked(), true);
     assert.equal(await zones.isChecked(), true);
+    assert.equal(await reservations.isChecked(), false);
+    assert.equal(await legend.count(), 0);
     assert.equal(await stadium.getAttribute('aria-label'), fullKickoffLabel +
       '. Cinderclaw Crew in the north end zone and Ironbank Rovers in the south end zone.');
     assert.equal(await page.getByLabel(decorationPaletteLabel).inputValue(), 'defaults');
@@ -570,6 +638,7 @@ async function verifyKickoff(page, original, full) {
   } else {
     assert.equal(await regalia.count(), 0);
     assert.equal(await zones.count(), 0);
+    assert.equal(await reservations.count(), 0);
   }
   assert.equal(await markers.isChecked(), false);
   assert.equal(await page.getByRole('checkbox', { name: 'Front rail' }).count(), 0);
@@ -735,6 +804,14 @@ async function verifyKickoff(page, original, full) {
   assert.equal(await verifyEndMarkers(stadium, sections), true, 'All selected occupied and vacant places are marked');
   await markers.uncheck();
   assert.equal(await stadium.evaluate(c => c.toDataURL()), overview);
+  if (full) {
+    await reservations.check();
+    assert.deepEqual(await legend.getByRole('listitem').allTextContents(), reservationLegend);
+    await verifyReservationPixels(stadium, overview);
+    await reservations.uncheck();
+    assert.equal(await legend.count(), 0);
+    assert.equal(await stadium.evaluate(canvas => canvas.toDataURL()), overview);
+  }
   await page.setViewportSize({ width: 360, height: 800 });
   await bayPicker.selectOption('2');
   assert.equal(await detail.locator('.bay-six-zoom').evaluate(element =>
@@ -752,6 +829,7 @@ async function verifyKickoff(page, original, full) {
     }
   }
   await page.setViewportSize({ width: 1200, height: 960 });
+  return overview;
 }
 
 await mkdir(captures, { recursive: true });
@@ -1140,7 +1218,7 @@ try {
   assert.equal(await benches.isChecked(), true);
   await benches.uncheck();
   await page.waitForFunction(src=>document.querySelector('canvas').toDataURL()===src,original);
-  await verifyKickoff(page, original, true);
+  const fullBowl = await verifyKickoff(page, original, true);
   await verifyKickoff(page, original, false);
   await verifyEndStands(page, original);
   await verifyEndPoseShowcase(page, original);
@@ -1171,6 +1249,32 @@ try {
   assert.equal(await select.inputValue(), 'full-bowl');
   assert.equal(await page.getByLabel('Seating bay').inputValue(), '11');
   await page.waitForFunction(() => window.scrollY > 0);
+  const reservations = page.getByRole('checkbox', { name: 'Apron reservations' });
+  const legend = page.getByRole('list', { name: 'Apron reservation key' });
+  await page.goto(url + '?view=full-bowl&reservations=1&bay=6#bowl-detail');
+  await canvas.waitFor();
+  assert.equal(await reservations.isChecked(), true);
+  assert.equal(await page.getByLabel('Seating bay').inputValue(), '6');
+  assert.match(await page.getByRole('link', { name: 'Link to this bay' }).getAttribute('href'), /&reservations=1#bowl-detail$/);
+  await verifyReservationPixels(canvas, fullBowl);
+  const westCrops = page.locator('#bowl-bay-native-canvas, #bowl-bay-zoom-canvas');
+  const guidedCrops = await westCrops.evaluateAll(crops => crops.map(crop => crop.toDataURL()));
+  assert.equal(guidedCrops.length, 2);
+  await page.setViewportSize({ width: 360, height: 800 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth === window.innerWidth), true);
+  await page.setViewportSize({ width: 1200, height: 960 });
+  await reservations.uncheck();
+  assert.equal(await canvas.evaluate(c => c.toDataURL()), fullBowl);
+  assert.ok((await westCrops.evaluateAll(crops => crops.map(crop => crop.toDataURL())))
+    .every((pixels, i) => pixels !== guidedCrops[i]), 'Both bay crops show the reservations when enabled');
+  await page.goto(url + '?view=empty&reservations=1');
+  await canvas.waitFor();
+  assert.equal(await select.inputValue(), 'empty');
+  assert.equal(await reservations.isChecked(), true);
+  assert.deepEqual(await legend.getByRole('listitem').allTextContents(), reservationLegend);
+  await verifyReservationPixels(canvas, original);
+  await reservations.uncheck();
+  assert.equal(await canvas.evaluate(c => c.toDataURL()), original);
   await page.goto(url+'?view=scale');
   await canvas.waitFor();
   assert.equal(await select.inputValue(), 'b');
@@ -1181,7 +1285,7 @@ try {
   await page.getByText(rosterLabel, { exact: true }).click();
   assert.equal(await page.locator('.bay-six-zoom').evaluate(element =>
     element.scrollWidth > element.clientWidth && document.documentElement.scrollWidth === window.innerWidth), true);
-  console.log('All 15 bays, end-zone and regalia palettes, side kits and facings, 22-player kickoff, approved west and end views, all 12 pose pairs, native and enlarged crops, rails and seat markers passed.');
+  console.log('All 15 bays, end-zone and regalia palettes, apron reservations, side kits and facings, 22-player kickoff, approved west and end views, all 12 pose pairs, native and enlarged crops, rails and seat markers passed.');
 } finally {
   await browser?.close();await server.close();
 }

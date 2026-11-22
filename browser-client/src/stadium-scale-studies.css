@@ -51,7 +51,7 @@
 
 .gatehouse-bay-gallery { max-width: 1028px; }
 .gatehouse-bay-gallery .mockup-controls select { width: auto; max-width: min(280px, 68vw); }
-.gatehouse-bench-key {
+.gatehouse-bench-key, .apron-reservation-key {
   display: flex;
   flex-wrap: wrap;
   gap: 6px 18px;
@@ -61,13 +61,13 @@
   color: #baccbf;
   font-size: .875rem;
 }
-.gatehouse-bench-key li { display: flex; align-items: center; gap: 6px; }
-.gatehouse-bench-key span { width: 12px; height: 12px; }
+.gatehouse-bench-key li, .apron-reservation-key li { display: flex; align-items: center; gap: 6px; }
+.gatehouse-bench-key span, .apron-reservation-key span { width: 12px; height: 12px; }
 .bay-six-review { margin-bottom: 24px; }
 .bay-six-review h2 { margin: 0; }
 .bay-six-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 24px; margin: 6px 0 10px; }
 .bay-six-toolbar p { margin: 0; font-size: .9375rem; }
-.bay-six-toolbar label, .gatehouse-bench-toggle { min-height: 32px; cursor: pointer; }
+.bay-six-toolbar label, .gatehouse-bench-toggle, .gatehouse-apron-toggle { min-height: 32px; cursor: pointer; }
 .gatehouse-bay-gallery input[type=checkbox] { width: auto; margin: 0; accent-color: #f0ca7b; }
 .bay-six-review .bay-six-marker-key { margin-top: 0; font-size: .875rem; }
 .bay-six-marker-key span:first-child { color: #80f5ff; }
@@ -104,6 +104,7 @@
 .gatehouse-overview { max-width: 790px; }
 .kickoff-overview { --toolbar-space: 158px; max-width: min(100%, 790px, max(330px, calc((100svh - var(--toolbar-space)) * .665))); }
 .kickoff-overview[data-full-bowl="true"] { --toolbar-space: 204px; }
+.kickoff-overview[data-reservations="true"] { --toolbar-space: 238px; }
 .kickoff-toolbar { column-gap: 16px; }
 .kickoff-review-controls { min-width: 0; gap: 4px 16px; }
 .kickoff-colors { min-width: 0; flex-wrap: wrap; }

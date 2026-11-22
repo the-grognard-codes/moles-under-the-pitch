@@ -13,6 +13,7 @@ import fullEndPlacements from '../../assets/game/references/stadiums/scale-studi
 import sidePlacements from '../../assets/game/references/stadiums/scale-studies/side-stands/placements.json';
 import type { Point } from './pitch-projection.ts';
 import { playerArtPlacement, resolvePlayerArt } from './player-art.ts';
+import { apronGuideColors, apronReservations, drawApronReservations } from './stadium-apron-reservations.ts';
 import { bowl, drawBowlGround, drawBowlMarkings } from './stadium-bowl-study.ts';
 import { drawGatehouseEndZones } from './stadium-end-zones.ts';
 import { MOCKUP_PLAYER_WIDTH_IN_SQUARES, STILL_LAYOUT, mockupCamera, mockupColorPair, mockupPlayers, type MockupColorPreset, type MockupPlayer } from './stadium-mockup.ts';
@@ -87,6 +88,16 @@ function bowlCrop(left: number, top: number, right: number, bottom: number): Cro
   const x = Math.max(0, left);
   const y = Math.max(0, top);
   return { x, y, width: Math.min(bowl.width, right) - x, height: Math.min(bowl.height, bottom) - y };
+}
+
+function expandCrop(frame: Crop, areas: readonly Crop[]) {
+  if (!areas.length) return frame;
+  return bowlCrop(
+    Math.min(frame.x, ...areas.map(area => area.x)),
+    Math.min(frame.y, ...areas.map(area => area.y)),
+    Math.max(frame.x + frame.width, ...areas.map(area => area.x + area.width)),
+    Math.max(frame.y + frame.height, ...areas.map(area => area.y + area.height)),
+  );
 }
 
 function endFrames(bounds: Crop, north: boolean) {
@@ -265,14 +276,13 @@ async function loadBowlSection(study: BowlPlacement) {
   const root = isSideStand(study.stand) ? sideImageRoot : endImageRoot + 'full-ends/';
   const crowd = await image(studyImages[root + study.crowd], bounds);
   const frames = bowlBayFrames(bounds);
-  const regalia = regaliaBounds(study.bayId);
-  const expanded = regalia.length ? bowlCrop(
-    Math.min(frames.native.x, ...regalia.map(piece => piece.x)),
-    Math.min(frames.native.y, ...regalia.map(piece => piece.y)),
-    Math.max(frames.native.x + frames.native.width, ...regalia.map(piece => piece.x + piece.width)),
-    Math.max(frames.native.y + frames.native.height, ...regalia.map(piece => piece.y + piece.height)),
-  ) : frames.native;
-  return { ...study, bounds, frames, decoratedFrames: { native: expanded, detail: expanded }, crowd };
+  const decorated = expandCrop(frames.native, regaliaBounds(study.bayId));
+  const nearby = apronReservations.filter(area => area.side === study.stand && (isSideStand(study.stand)
+    ? area.y < decorated.y + decorated.height && area.y + area.height > decorated.y
+    : area.x < decorated.x + decorated.width && area.x + area.width > decorated.x));
+  const guided = expandCrop(decorated, nearby);
+  return { ...study, bounds, frames, decoratedFrames: { native: decorated, detail: decorated },
+    guidedFrames: { native: guided, detail: guided }, crowd };
 }
 
 async function loadLayers() {
@@ -408,7 +418,8 @@ export function StadiumScaleStudies() {
   const [view, setView] = useState(() => {
     const requested = endQuery.get('view');
     if (requested === 'scale') return 'b';
-    return requested === 'ends' || requested === 'end-poses' || requested === 'full-ends' ? requested : 'full-bowl';
+    return requested === 'ends' || requested === 'end-poses' || requested === 'full-ends' || requested === 'empty'
+      ? requested : 'full-bowl';
   });
   const [endGroup, setEndGroup] = useState(() =>
     endPoseGroups.find(({ id }) => id === endQuery.get('group'))?.id ?? endPoseGroups[0].id);
@@ -419,6 +430,7 @@ export function StadiumScaleStudies() {
   const [markers, setMarkers] = useState(false);
   const [regalia, setRegalia] = useState(true);
   const [endZones, setEndZones] = useState(true);
+  const [reservations, setReservations] = useState(() => endQuery.get('reservations') === '1');
   const [colorPreset, setColorPreset] = useState<MockupColorPreset>('defaults');
   const canvas = useRef<HTMLCanvasElement>(null);
   const review = useRef<HTMLElement>(null);
@@ -429,6 +441,8 @@ export function StadiumScaleStudies() {
   const masked = view === 'masks';
   const fullEndsView = view === 'full-ends';
   const fullBowlView = view === 'full-bowl';
+  const apronView = fullBowlView || view === 'empty';
+  const showReservations = apronView && reservations;
   const kickoffView = fullBowlView || fullEndsView;
   const detailId = fullEndsView ? 'full-ends-detail' : 'bowl-detail';
   const cropId = fullEndsView ? 'full-end-bay' : 'bowl-bay';
@@ -439,7 +453,9 @@ export function StadiumScaleStudies() {
   const bayId = placements.some(({ bayId }) => bayId === selectedBay) ? selectedBay : placements[0].bayId;
   const kickoffBays = fullEndsView ? layers?.fullEnds : layers?.fullBowl;
   const inspectedBay = kickoffBays?.find(bay => bay.bayId === bayId);
-  const inspectedFrames = fullBowlView ? inspectedBay?.decoratedFrames : inspectedBay?.frames;
+  const inspectedFrames = fullBowlView
+    ? showReservations ? inspectedBay?.guidedFrames : inspectedBay?.decoratedFrames
+    : inspectedBay?.frames;
   const markerToggle = <label><input type="checkbox" checked={markers} onChange={event => setMarkers(event.target.checked)}
     aria-describedby={markers ? 'gatehouse-marker-key' : undefined}/>Seat markers</label>;
   const controls = <div className="mockup-controls">
@@ -476,8 +492,9 @@ export function StadiumScaleStudies() {
       if (markers) {
         for (const { bounds, slots, seats } of kickoffBays) drawSeatMarkers(context, bounds, slots, seats);
       }
-      if (inspectedFrames) drawReviewCrops(review.current, full, cropId, inspectedFrames);
     }
+    if (showReservations) drawApronReservations(context);
+    if (kickoffView && inspectedFrames) drawReviewCrops(review.current, full, cropId, inspectedFrames);
     const variant = layers.studies.find(({ id }) => id === view);
     if (variant) {
       const { player } = layers;
@@ -498,10 +515,10 @@ export function StadiumScaleStudies() {
       }
     }
   }, [layers, view, masked, kickoffView, kickoffBays, cropId, endView, displayedEnds, inspectedFrames,
-    benches, rail, markers, fullBowlView, regalia, endZones, colorPreset]);
+    benches, rail, markers, fullBowlView, regalia, endZones, colorPreset, showReservations]);
 
   const overview = <div className={'scale-study-crop gatehouse-overview' + (kickoffView ? ' kickoff-overview' : '')}
-    data-full-bowl={fullBowlView}>
+    data-full-bowl={fullBowlView} data-reservations={showReservations}>
     <canvas ref={canvas} width={bowl.width} height={bowl.height} data-ready={Boolean(layers)}
       aria-label={fullBowlView ? 'Gatehouse kickoff with 22 players and crowds in all four stands'
         + (endZones ? `. ${endZoneTeams.north} in the north end zone and ${endZoneTeams.south} in the south end zone.` : '')
@@ -530,6 +547,10 @@ export function StadiumScaleStudies() {
           <input type="checkbox" checked={benches} onChange={event => setBenches(event.target.checked)}
             aria-describedby={benches ? 'gatehouse-bench-key' : undefined}/>Bench tops
         </label>
+        {apronView && <label className="gatehouse-apron-toggle">
+          <input type="checkbox" checked={reservations} onChange={event => setReservations(event.target.checked)}
+            aria-describedby={showReservations ? 'apron-staff-description apron-reserves-description apron-cheer-description' : undefined}/>Apron reservations
+        </label>}
       </div>
     </header>
     {masked && <p>Teal marks home seating. Pink marks the east away stand.</p>}
@@ -537,6 +558,14 @@ export function StadiumScaleStudies() {
       {benchColors.slice(0, maxPlanks).map((color, index) => <li key={index}>
         <span aria-hidden="true" style={{ backgroundColor: `rgb(${color.join(' ')})` }}/>Plank {index + 1}
       </li>)}
+    </ul>}
+    {showReservations && <ul className="apron-reservation-key" role="list" aria-label="Apron reservation key">
+      <li id="apron-staff-description"><span style={{ backgroundColor: apronGuideColors.staff }} aria-hidden="true"/>
+        Solid red marks sideline staff.</li>
+      <li id="apron-reserves-description"><span style={{ backgroundColor: apronGuideColors.reserves }} aria-hidden="true"/>
+        Dashed blue marks reserve players.</li>
+      <li id="apron-cheer-description"><span style={{ backgroundColor: apronGuideColors.cheerleaders }} aria-hidden="true"/>
+        Dotted magenta marks cheerleaders.</li>
     </ul>}
     {failed && <p role="alert">The stadium artwork could not be loaded.</p>}
     {!failed && !layers && <p role="status">Loading stadium artwork…</p>}
@@ -578,7 +607,8 @@ export function StadiumScaleStudies() {
             </label>
           </div>
           {inspectedBay && <p><strong>{inspectedBay.seats.length} of {inspectedBay.capacity} occupied</strong></p>}
-          {fullBowlView && <a className="end-stand-reference" href={`?view=full-bowl&bay=${bayId}#${detailId}`}>Link to this bay</a>}
+          {fullBowlView && <a className="end-stand-reference"
+            href={`?view=full-bowl&bay=${bayId}${showReservations ? '&reservations=1' : ''}#${detailId}`}>Link to this bay</a>}
         </div>
         {inspectedFrames && <ReviewCrops key={bayId} id={cropId} frames={inspectedFrames}/>}
       </section>

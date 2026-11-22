@@ -1,5 +1,11 @@
 # Gatehouse gallery artwork
 
+## Pitch apron reservations
+
+The reservation layout records native pixel bounds on the 790 × 1188 Gatehouse canvas. Each area's `x`, `y` is its top-left corner. An optional `outline` lists local corner coordinates clockwise around the usable footprint. An omitted outline means the whole rectangle is available. Width and height extend to exclusive right and bottom edges. Future sideline figures can occupy their assigned footprint. Keep scenery and other groups clear of it. [Editable reservation layout](apron-reservations.json) · [Map](apron-reservations.webp)
+
+The home staff and reserves use the west touchline, mirrored on the east for the visitors. The staff footprints step around the lower part of the first wall pennants. Cheerleader space is centered on each side, with a 78-pixel opening between the two south pads for the gate lane. The `regalia/test_build.py` artwork check verifies the footprints against the fixed stadium, ornaments, grass border, gate lane and each other.
+
 ## Painted end zones
 
 The full-bowl gallery paints two 480 × 32 pixel strips. Their top-left corners are (156, 169) for the north goal and (156, 969) for the south goal on the 790 × 1188 canvas. Each strip covers 15 complete squares. Tiny transparent patches let the original turf show through the team-coloured paint. Nicks in the lettering expose the layer beneath, and the original pitch markings sit above both. A palette change rebuilds the strips with the same wear in the same places. [Native paint and lettering](../../../../../browser-client/src/stadium-end-zones.ts) · [Three palette examples](end-zones.webp)

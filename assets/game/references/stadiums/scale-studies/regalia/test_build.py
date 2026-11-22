@@ -165,6 +165,59 @@ class RegaliaTest(unittest.TestCase):
                         self.assertFalse(any(l <= px < r and t <= py < b for l, t, r, b in passages))
         self.assertEqual({"home", "away"}, {p["owner"] for p in self.layout["placements"]})
 
+    def test_apron_reservations_clear_the_pitch_gate_and_fixed_art(self):
+        plan = read(SEATS / "apron-reservations.json")
+        size = self.architecture.size
+        self.assertEqual(size, (plan["canvas"]["width"], plan["canvas"]["height"]))
+        fixed = self.architecture.copy()
+        for piece in self.layout["placements"]:
+            frame = self.sheet["sprites"][piece["sprite"]]
+            silhouette = self.atlas.crop(frame_bounds(frame)).getchannel("A")
+            fixed.paste(255, (piece["x"], piece["y"]), silhouette)
+        # Include the shaggy grass outside the chalk and the lane from the south gate.
+        blockers = ImageDraw.Draw(fixed)
+        blockers.rectangle((149, 162, 642, 1007), fill=255)
+        blockers.rectangle((357, 1001, 434, 1048), fill=255)
+
+        occupied = Image.new("L", size)
+        for kind in ("staff", "reserves", "cheerleaders"):
+            sides = {}
+            for area in plan[kind]:
+                with self.subTest(area=area["id"]):
+                    x, y, w, h = (area[key] for key in ("x", "y", "width", "height"))
+                    points = area.get("outline", [(0, 0), (w, 0), (w, h), (0, h)])
+                    self.assertTrue(all(0 <= dx <= w and 0 <= dy <= h for dx, dy in points))
+                    self.assertTrue(0 <= x < x + w <= size[0] and 0 <= y < y + h <= size[1])
+                    # Sample at pixel centres. Right and bottom outline coordinates are exclusive.
+                    native = Image.new("L", (2 * w, 2 * h))
+                    ImageDraw.Draw(native).polygon([(2 * dx, 2 * dy) for dx, dy in points], fill=255)
+                    footprint = native.resize((w, h), Image.Resampling.NEAREST)
+                    self.assertEqual((0, 0, w, h), footprint.getbbox())
+                    box = frame_bounds(area)
+                    self.assertIsNone(ImageChops.multiply(fixed.crop(box), footprint).getbbox(), "blocked footprint")
+                    self.assertIsNone(ImageChops.multiply(occupied.crop(box), footprint).getbbox(), "shared footprint")
+                    occupied.paste(255, (x, y), footprint)
+                    side = area["side"]
+                    if side not in sides:
+                        sides[side] = Image.new("L", size)
+                    sides[side].paste(255, (x, y), footprint)
+                    if kind != "cheerleaders":
+                        self.assertEqual({"west": "home", "east": "away"}[side], area["owner"])
+                        self.assertEqual({"west": 132, "east": 660}[side], x + w / 2)
+            expected = {"north", "south", "west", "east"} if kind == "cheerleaders" else {"west", "east"}
+            self.assertEqual(expected, set(sides))
+            # Reflect around the pitch centre x=396 on the slightly asymmetric stadium canvas.
+            west = sides["west"].crop((108, 0, 156, size[1])).transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+            east = sides["east"].crop((636, 0, 684, size[1]))
+            self.assertIsNone(ImageChops.difference(west, east).getbbox())
+            if kind == "cheerleaders":
+                for side, mask in sides.items():
+                    left, top, right, bottom = mask.getbbox()
+                    if side in ("north", "south"):
+                        self.assertEqual(396, (left + right) / 2)
+                    else:
+                        self.assertEqual(585, (top + bottom) / 2)
+
 
 if __name__ == "__main__":
     unittest.main()
