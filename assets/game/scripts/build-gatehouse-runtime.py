@@ -19,6 +19,13 @@ def read(path):
     return json.loads((SOURCE / path).read_text(encoding="utf-8"))
 
 
+def digest(path):
+    data = path.read_bytes()
+    if path.suffix == ".json":
+        data = data.replace(b"\r\n", b"\n")
+    return sha256(data).hexdigest()
+
+
 def write(path, value):
     (TARGET / path).write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8", newline="\n")
 
@@ -127,10 +134,10 @@ def build():
     write("provenance.json", {
         "approval": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/580",
         "sourceRoot": SOURCE.relative_to(GAME).as_posix(),
-        "sources": {source: sha256((SOURCE / source).read_bytes()).hexdigest() for source in
+        "sources": {source: digest(SOURCE / source) for source in
                     sorted(set(sources + list(copies.values()) + ["locker-stairwell.json",
                                                                "regalia/atlas.json", "regalia/layout.json"]))},
-        "runtime": {name: sha256((TARGET / name).read_bytes()).hexdigest() for name in
+        "runtime": {name: digest(TARGET / name) for name in
                     sorted([*copies, "crowd.png", "crowd-materials.png", "views.json"])},
     })
 

@@ -51,7 +51,11 @@ test('asset sync preserves live inputs on repeated builds and repairs stale deli
     const runtime = join(delivery, 'pitch/stadiums/gatehouse');
     const provenance = JSON.parse(await readFile(join(canonical, 'provenance.json'), 'utf8'));
     const manifest = JSON.parse(await readFile(join(runtime, 'views.json'), 'utf8'));
-    const digest = path => readFile(path).then(bytes => createHash('sha256').update(bytes).digest('hex'));
+    const digest = async path => {
+      const bytes = await readFile(path);
+      const content = path.endsWith('.json') ? bytes.toString('utf8').replaceAll('\r\n', '\n') : bytes;
+      return createHash('sha256').update(content).digest('hex');
+    };
     assert.deepEqual((await readdir(runtime)).sort(), [...Object.keys(provenance.runtime), 'provenance.json'].sort());
     const requested = new Set(['views.json']);
     for (const view of Object.values(manifest.views)) {
