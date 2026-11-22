@@ -20,7 +20,9 @@ Three pointed lion standards hang from the north wall, and each side bay has a p
 
 The visiting Cinderclaw Crew defend the north end. The home Ironbank Rovers defend the south end beside the gate. Both team names read upright from the overhead camera. The colours follow the team defending each goal, independently of the home supporters in the stands behind it.
 
-Each end zone is one playable row, 15 squares wide. The paint mixes the team’s primary colour with 27% of the existing turf colour. The renderer picks ivory or charcoal lettering by measuring its contrast against the resulting paint. Across all 16 primaries, including the flecks of turf texture, the lowest contrast is 4.76:1. The two names still distinguish the ends when both kits use the same navy. The regular square divisions and goal lines run over the paint.
+Each end zone is one playable row, 15 squares wide. The paint mixes equal parts team colour and turf colour. Small worn patches expose the underlying grass, and occasional nicks along the edges of the letters reveal the paint beneath. Each end has its own wear pattern that stays in place when the kits change. The square divisions and goal lines run over the paint.
+
+The renderer chooses ivory or charcoal lettering by measuring its contrast against the painted surface. The lowest contrast on intact paint across all 16 primaries is 4.52:1. The names still distinguish the ends when both kits use the same navy.
 
 The three pairs below show the default kits, white/black, and identical navy at native resolution. In each pair the north end is above the south end. Switch off **End zones** in the full-stadium gallery to compare the paint with the original grass.
 

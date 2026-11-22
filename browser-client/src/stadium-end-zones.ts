@@ -1,11 +1,11 @@
 import { teamColorManifest } from './generated-team-colors.ts';
 
-type PaintTarget = Pick<CanvasRenderingContext2D, 'fillStyle' | 'fillRect'>;
+type PaintTarget = Pick<CanvasRenderingContext2D, 'fillStyle' | 'fillRect' | 'clearRect'>;
 type PitchBounds = { x: number; y: number; width: number; height: number };
 type Team = { name: string; primary: string };
 type Glyph = readonly string[];
 
-const IVORY = '#fff9e8';
+const IVORY = '#fdf6e1';
 const CHARCOAL = '#07080b';
 const TURF = '#737c43';
 const GLYPH_HEIGHT = 7;
@@ -63,7 +63,7 @@ function rgb(hex: string) {
 
 function turfPaint(color: string) {
   const turf = rgb(TURF);
-  const channels = rgb(color).map((channel, i) => Math.round(.73 * channel + .27 * turf[i]));
+  const channels = rgb(color).map((channel, i) => Math.round((channel + turf[i]) / 2));
   return '#' + channels.map(channel => channel.toString(16).padStart(2, '0')).join('');
 }
 
@@ -87,14 +87,40 @@ function paintColors(primary: string) {
   return { paint, grain, ink };
 }
 
-function drawGrain(ctx: PaintTarget, row: PitchBounds, color: string, seed: number) {
-  ctx.fillStyle = color;
-  // A repeatable offset keeps the flecks irregular without reading the turf underneath.
-  for (let y = 3; y < row.height - 1; y += 4) {
-    for (let x = 2; x < row.width - 4; x += 9) {
-      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
-      if (seed & 4) ctx.fillRect(row.x + x + (seed & 3), row.y + y, 1 + (seed >>> 31), 1);
-    }
+function fieldRandom(seed: number) {
+  return (limit: number) => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return Math.floor(seed / 4294967296 * limit);
+  };
+}
+
+// The gaps in each scuff leave individual blades of painted grass between the bare ones.
+const scuffs = [
+  ['    #  ', '  ##  #', '#### # ', ' #     '],
+  ['      ## ', '  ###   #', '## ##    '],
+  [' #  ', ' ###', '##  '],
+  ['##    ', ' ### #', '   ## '],
+];
+
+function weatherGround(ctx: PaintTarget, row: PitchBounds, grain: string, seed: number) {
+  const next = fieldRandom(seed);
+  ctx.fillStyle = grain;
+  for (let i = 0; i < Math.floor(row.width * row.height / 60); i++) {
+    const width = 1 + next(Math.min(3, row.width));
+    ctx.fillRect(row.x + next(row.width - width + 1), row.y + next(row.height), width, 1);
+  }
+
+  for (let i = 0; i < Math.floor(row.width * row.height / 1200); i++) {
+    const scuff = scuffs[next(scuffs.length)];
+    const width = scuff[0].length;
+    if (row.width < width || row.height < scuff.length) continue;
+    const left = row.x + next(row.width - width + 1);
+    const top = row.y + next(row.height - scuff.length + 1);
+    scuff.forEach((line, y) => {
+      for (let x = 0; x < width; x++) {
+        if (line[x] === '#') ctx.clearRect(left + x, top + y, 1, 1);
+      }
+    });
   }
 }
 
@@ -117,7 +143,7 @@ function teamWord(name: string, width: number) {
   return wordWidth(initials) <= width ? initials : [mark];
 }
 
-function drawWord(ctx: PaintTarget, row: PitchBounds, name: string, ink: string) {
+function drawWord(ctx: PaintTarget, row: PitchBounds, name: string, ink: string, seed: number) {
   const width = row.width - 2 * Math.min(16, Math.floor(row.width / 8));
   const height = row.height - 2 * Math.min(4, Math.floor(row.height / 8));
   const word = teamWord(name, width);
@@ -131,17 +157,30 @@ function drawWord(ctx: PaintTarget, row: PitchBounds, name: string, ink: string)
 
   let left = row.x + Math.floor((row.width - units * scale) / 2);
   const top = row.y + Math.floor((row.height - GLYPH_HEIGHT * scale) / 2);
+  const next = fieldRandom(seed);
   for (const glyph of word) {
+    // Nick an outside edge while leaving the core of even a one-block stroke intact.
+    const nickY = scale >= 3 && next(3) !== 0 ? next(GLYPH_HEIGHT) : -1;
+    const nickLeft = next(2) === 0;
+    const edge = glyph[nickY] ?? '';
+    const nickX = nickLeft ? edge.indexOf('1') : edge.lastIndexOf('1');
     glyph.forEach((pixels, y) => {
       for (let x = 0; x < pixels.length; x++) {
-        if (pixels[x] === '1') ctx.fillRect(left + x * scale, top + y * scale, scale, scale);
+        if (pixels[x] !== '1') continue;
+        const px = left + x * scale, py = top + y * scale;
+        if (x === nickX && y === nickY) {
+          ctx.fillRect(px, py, scale, scale - 1);
+          ctx.fillRect(px + (nickLeft ? 2 : 0), py + scale - 1, scale - 2, 1);
+        } else {
+          ctx.fillRect(px, py, scale, scale);
+        }
       }
     });
     left += (glyphWidth(glyph) + 1) * scale;
   }
 }
 
-/** Paint the two goal rows before the pitch markings, with both names upright. */
+/** Paint on a separate layer so worn spots reveal the original grass beneath the markings. */
 export function drawGatehouseEndZones(ctx: PaintTarget, pitch: PitchBounds, square: number,
   teams: { north: Team; south: Team }) {
   if (![pitch.x, pitch.y, pitch.width, pitch.height, square].every(Number.isInteger)
@@ -153,8 +192,8 @@ export function drawGatehouseEndZones(ctx: PaintTarget, pitch: PitchBounds, squa
     const { paint, grain, ink } = paintColors(team.primary);
     ctx.fillStyle = paint;
     ctx.fillRect(row.x, row.y, row.width, row.height);
-    drawGrain(ctx, row, grain, seed);
-    drawWord(ctx, row, team.name, ink);
+    weatherGround(ctx, row, grain, seed);
+    drawWord(ctx, row, team.name, ink, seed);
   }
   ctx.fillStyle = before;
 }

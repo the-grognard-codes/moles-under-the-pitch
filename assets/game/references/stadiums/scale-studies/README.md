@@ -2,7 +2,7 @@
 
 ## Painted end zones
 
-The full-bowl gallery paints two 480 × 32 pixel strips. Their top-left corners are (156, 169) for the north goal and (156, 969) for the south goal on the 790 × 1188 canvas. Each strip covers 15 complete squares. Club names and primary kit colours drive the paint, and the original pitch markings sit above it. A palette change rebuilds the two strips together. [Native paint and lettering](../../../../../browser-client/src/stadium-end-zones.ts) · [Three palette examples](end-zones.webp)
+The full-bowl gallery paints two 480 × 32 pixel strips. Their top-left corners are (156, 169) for the north goal and (156, 969) for the south goal on the 790 × 1188 canvas. Each strip covers 15 complete squares. Tiny transparent patches let the original turf show through the team-coloured paint. Nicks in the lettering expose the layer beneath, and the original pitch markings sit above both. A palette change rebuilds the strips with the same wear in the same places. [Native paint and lettering](../../../../../browser-client/src/stadium-end-zones.ts) · [Three palette examples](end-zones.webp)
 
 ## Banners and regalia
 
