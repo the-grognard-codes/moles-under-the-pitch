@@ -1,3 +1,5 @@
+export const LIVE_CATCHUP_THRESHOLD = 8;
+export const LIVE_CATCHUP_RATE = 4;
 export const PLAYER_STEP_MS = 200;
 export const BALL_STEP_MS = 250;
 export const DICE_GROUP_INTERVAL_MS = 1000;
@@ -7,6 +9,7 @@ export const PITCH_DICE_ROLL_MS = 620;
 export const DICE_ENTRANCE_MS = 200;
 export const DICE_EXIT_MS = 200;
 export const ANNOUNCEMENT_GAP_MS = 350;
+export const ANNOUNCEMENT_CHAIN_GAP_MS = 125;
 export const DICE_RETENTION_MS = 2400;
 export const EMPHASIZED_DICE_RETENTION_MS = 4800;
 

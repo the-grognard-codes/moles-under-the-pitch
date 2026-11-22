@@ -39,6 +39,12 @@ canonical art synced into the browser by `npm run assets:sync`.
 
 ## Invariants to check in review
 
+- **The server owns turn boundaries.** The server records a settled touchdown
+  or turnover before raising dependent cleanup decisions. Live clients present
+  the splash before those decisions, independently of engine progression.
+  [ADR 0007](../adr/0007-server-owned-turn-sequence-presentation.md) defines
+  the format-3 transcript policy and the remaining implementation work.
+
 - **Server is authoritative.** Browser input selects among server-offered
   decisions. Presentation and projection code observes state and never decides
   or changes native rules (see the `GameState` observer comments).
@@ -48,15 +54,19 @@ canonical art synced into the browser by `npm run assets:sync`.
 - **One durable boundary per action.** A successful checkpoint commits an action
   and its outcomes together; exact retries read the checkpoint and append
   nothing; storage admission rejects an action before native execution when it
-  cannot reserve room ([ADR 0002](../adr/0002-bounded-match-transcript.md),
-  [ADR 0004](../adr/0004-durable-recovery-journal.md)).
+  cannot reserve room. Staged placements (setup and kick-off-event positioning)
+  have no durable boundary; only their confirming action does
+  ([ADR 0002](../adr/0002-bounded-match-transcript.md),
+  [ADR 0004](../adr/0004-durable-recovery-journal.md),
+  [ADR 0008](../adr/0008-staged-placements.md)).
 - **Recovery never reruns game commands.** It assembles a base checkpoint plus
   bounded continuations and restores through the native restore path; it does
   not rerun commands, dice, clocks or optional-skill decisions (`RecoveryJournal`,
   [ADR 0004](../adr/0004-durable-recovery-journal.md)).
 - **Stored formats stay compatible.** Transcript, recovery, saved-team and
   catalog formats are versioned; V2 replay and recovery must read what earlier
-  builds wrote unless an ADR retires a format.
+  builds wrote unless an ADR retires a format ([ADR 0008](../adr/0008-staged-placements.md)
+  retires the per-placement recovery format).
 - **BB2025 only.** Rules code sits in `bb2025` packages, shared infrastructure
   in `common`; unsupported ruleset input is rejected explicitly.
 - **Identity and scope are server-owned.** Every operation checks token expiry

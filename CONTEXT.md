@@ -33,11 +33,39 @@ A coach's view of the pitch from their own end toward the opposing half. Opposin
 **Top-down view**:
 A view of the pitch directly from above, used to inspect crowded positions while retaining the same square and player identities.
 
+**Staged placement**:
+A player position change during setup or a kick-off event that every viewer sees live, but that is not recorded until the coach confirms the stage. Recovery and replay ignore it.
+_Avoid_: Provisional move (which names client-side movement forecasts)
+
 **Match checkpoint**:
-The durable state from which an unfinished match can resume at its last accepted decision.
+The durable state from which an unfinished match can resume at its last accepted decision. Staged placements are not part of it.
 
 **Match transcript**:
-The ordered, durable record of accepted decisions, revealed outcomes, board checkpoints, and chat for one match.
+The ordered, durable record of accepted decisions, revealed outcomes, board checkpoints, and chat for one match. A confirmed setup or kick-off event appears as its final positions.
 
 **Match replay**:
 A read-only view reconstructed from stored transcript records and board checkpoints after a match finishes.
+
+**Turn play (`turnPlay`)**:
+The playable part of a numbered team turn, including its player activations and pending decisions that determine how play ends.
+
+**Player activation**:
+The part of team-turn play in which one player acts, including the reactions needed to resolve that player's action.
+
+**Turn cleanup (`turnCleanup`)**:
+The decisions and effects that follow a settled touchdown, turnover, or voluntary end of a team turn.
+
+**Drive end (`driveEnd`)**:
+The closing recovery, removals, and expiration of effects after a touchdown or half boundary.
+
+**Half end (`halfEnd`)**:
+The transition after a half and its applicable cleanup, before the following half begins or the match ends.
+
+**Match end (`matchEnd`)**:
+The terminal phase that settles applicable match-ending choices and the final result.
+
+**Drive start (`driveStart` / `kickoff`)**:
+The phase from pre-setup decisions through team setup, the kick-off event, and ball settlement before the first numbered turn.
+
+**Turn start (`turnStart`)**:
+The initialization and start-of-turn choices before the first playable selection of a numbered team turn.
