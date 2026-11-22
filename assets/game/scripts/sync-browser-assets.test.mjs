@@ -40,15 +40,13 @@ test('asset sync preserves live inputs on repeated builds and repairs stale deli
   await linkTree(gameRoot, join(root, 'assets/game'));
   const client = join(root, 'browser-client');
   await mkdir(join(client, 'src'), { recursive: true });
-  const reviewArt = join(root, 'assets/game/pitch/stadiums/mockup');
-  await mkdir(reviewArt, { recursive: true });
-  await writeFile(join(reviewArt, 'unaccepted.png'), 'candidate');
   const sync = (...args) => execute(process.execPath, [join(root, 'assets/game/scripts/sync-browser-assets.mjs'), ...args],
     { cwd: root, windowsHide: true, timeout: 30000 });
   await sync();
   const delivery = join(client, 'public/assets/game');
 
   await t.test('unaccepted stadium sources are excluded and stale review copies are removed', async () => {
+    assert.ok((await stat(join(root, 'assets/game/pitch/stadiums/mockup/architecture-v2.png'))).isFile());
     const staleReview = join(delivery, 'pitch/stadiums/mockup');
     await assert.rejects(stat(staleReview), { code: 'ENOENT' });
     await mkdir(staleReview, { recursive: true });

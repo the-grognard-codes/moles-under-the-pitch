@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFileSync } from 'node:fs';
-import { decodeMatchAnnouncements, syncAnnouncements, announcementDuration, announcementHeadline } from '../src/match-announcements.ts';
+import { decodeMatchAnnouncements, syncAnnouncements, announcementReadingDuration, announcementHeadline } from '../src/match-announcements.ts';
 import { playbackBeats, withConfirmedPlayerChanges, withConfirmedMove, withConfirmedBallChanges } from '../src/pitch-playback.ts';
 import { matchLogLines } from '../src/match-log.ts';
 import type { TranscriptRecord } from '../src/transcript-protocol.ts';
@@ -78,8 +78,8 @@ test('announcements retain readable causes in the log and deduplicate stable ide
   const lines = matchLogLines([input]).filter(line => line.key.includes(state.matchId));
   assert.equal(lines.length, 1);
   assert.equal(lines[0].text, 'Blue Badgers — TURNOVER. Runner failed to pick up the ball.');
-  assert.equal(announcementDuration(turnover, 1), 2000);
-  assert.equal(announcementDuration({ ...turnover, kind: 'turnStart' }, 2), 750);
+  assert.equal(announcementReadingDuration(turnover, 1), 3000);
+  assert.equal(announcementReadingDuration({ ...turnover, kind: 'turnStart' }, 2), 750);
 });
 
 test('native friendly throw collision resolves both players before the turnover splash', () => {
@@ -126,7 +126,7 @@ test('extended authoritative kinds retain ordering and rate-scaled durations', (
   ];
   const native = sync(facts);
   assert.deepEqual(syncAnnouncements(record([native]), native).map(event => event.kind), facts.map(event => event.kind));
-  assert.deepEqual(facts.map(event => announcementDuration(event, 2)), [1250, 1250, 1250, 750, 1500, 1500, 2000]);
+  assert.deepEqual(facts.map(event => announcementReadingDuration(event, 2)), [1150, 1150, 1150, 750, 1500, 1400, 1900]);
   for (const patch of [{ code: 'INTRO' }, { code: 'unknown' }, { headline: '' }, { headline: 7 }]) {
     assert.throws(() => decodeMatchAnnouncements({ version: 1, events: [{ ...facts[0], ...patch }] }));
   }

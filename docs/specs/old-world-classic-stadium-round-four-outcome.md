@@ -1,5 +1,27 @@
 # Old World Classic stadium, round four
 
+## Accepted Gatehouse kickoff gallery
+
+The owner accepted the 790 × 1188 overhead Gatehouse gallery as the basis for live integration. The kickoff shows 22 players and 193 supporters across 15 seating bays. The four east bays hold the visitors, and 64 supporters wear neutral outfits. [Issue #572](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/572) · [PR #580](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/580) · [Final kickoff overview](../../assets/game/references/stadiums/scale-studies/kickoff.webp) · [Seating and colour details](gatehouse-scale-studies.md#full-stadium-at-kickoff)
+
+The weathered end zones use the defending teams’ colours and names, with worn spots exposing grass or paint. The dirt apron reserves space for both teams’ sideline staff and reserve players, plus cheerleaders on all four sides. The south gate lane stays clear. At both diagonal locker-room entrances, the shared stair sprite’s exposed treads widened from about 17 to 20 native pixels across. The flights descend into torchlit landings beneath the northwest and southeast walls. [End zones in three palettes](../../assets/game/references/stadiums/scale-studies/end-zones.webp) · [Apron reservation map](../../assets/game/references/stadiums/scale-studies/apron-reservations.webp) · [Both stair joins at 4×](../../assets/game/references/stadiums/scale-studies/locker-stairwell-detail.webp)
+
+### Review locally
+
+From `browser-client`, run `npm run dev:stadium` and open `/stadium-mockup`. It opens on **Full stadium · Kickoff**. For a closer look, select **Inspect a bay** or open `/stadium-mockup?view=full-bowl&bay=6#bowl-detail` for west bay 6 at native size and 4×.
+
+- Use **Regalia** and **End zones** to toggle each layer independently. Choose a review palette under **End zone and regalia colors**.
+- Use **Seat markers** for hip and boot contacts, knees and vacant seats, and **Bench tops** to inspect the planks.
+- Use **Apron reservations** in the full or empty stadium, or open `/stadium-mockup?view=full-bowl&reservations=1`. The **Gallery view** menu also opens the empty bowl, seating masks and earlier crowd studies. The end-stand kickoff and pose showcase have direct routes at `/stadium-mockup?view=full-ends` and `/stadium-mockup?view=end-poses`.
+
+Run `npm run test:stadium-mockup` from `browser-client` to exercise the current gallery and write browser captures under `.tools/stadium-mockup/`.
+
+### Live match follow-up
+
+The next change is separate live integration for the 90° overhead camera. Cache the stadium artwork, use the actual match teams and kits, and verify the view from both coach ends. Play through a drive manually to check that the stadium, field markings and players remain aligned during normal play.
+
+## Original painting and reconstruction
+
 **Approved still: 02, Gatehouse.** On November 18, 2026, the owner selected the open near gate because it helps orient the viewer. The source for extraction is the approved 1024 × 1536 painting, stored in lossless WebP, SHA-256 `5f212289b0fb4a783176e4e4b93b226f32abfc81376a7c8bf883c0a83e72242c`. [Approval record](https://github.com/the-grognard-codes/fumbbl-rebuild/issues/572#issuecomment-6988171353)
 
 | 01 · Drummers | 02 · Gatehouse | 03 · Lion wall |
@@ -25,11 +47,11 @@ The native frame is 1024 × 1536 at 32 pixels per square. The playable rectangle
 
 The original 640 × 960 neutral-clothing preview is archived alongside its full-size approved painting. [Historical preview](https://github.com/the-grognard-codes/moles-under-the-pitch/blob/8d27925bb2445ff7bc0e01b42be457c7d14b937f/assets/game/references/stadiums/round-four/neutral-crowd-preview.webp)
 
-### Review gallery and validation
+### Historical gallery and validation
 
-From `browser-client`, run `npm run dev:stadium` and open `/stadium-mockup`. Full-resolution stills are also linked above. The gallery exercises both coach ends, pan and zoom, Human and Orc teams and colour pairs. Delivery excludes review assets. The UI drivers write evidence under the ignored `.tools/` directory.
+The original painting gallery formerly used `/stadium-mockup` and exercised both coach ends, pan and zoom, Human and Orc teams and colour pairs. The current dev route opens the kickoff gallery above. The full-resolution stills and comparison captures preserve the earlier review.
 
-The pre-approval checks passed all 555 browser tests and 31 asset checks, TypeScript, the production build, and the gallery, projected-pitch, playback and playback-motion drivers. The gallery driver verified 22 loaded player images and the complete 390-square grid. The native layout reproduced byte for byte. The driver also exercises the approved layered stadium with both teams, both turf presets, five colour pairs, all visibility toggles, both ends, 50%, 100% and 200% zoom, and pan.
+The pre-approval checks passed all 555 browser tests and 31 asset checks, TypeScript, the production build, and the gallery, projected-pitch, playback and playback-motion drivers. The gallery driver verified 22 loaded player images and the complete 390-square grid. The native layout reproduced byte for byte. The driver also exercised the approved layered stadium with both teams, both turf presets, five colour pairs, all visibility toggles, both ends, 50%, 100% and 200% zoom, and pan.
 
 ### Reconstruction review
 
@@ -49,14 +71,14 @@ The intended differences in the other views are visible below. First, the reloca
 
 ![First and final away corner, then balanced and calm turf with players](../../assets/game/references/stadiums/round-four/final-gallery-review.jpg)
 
-The gallery can cross-fade the live render against either the approved full still or the cropped concept. The automated check compares both endpoints and the midpoint. The archived thumbnail shows the midpoint against the approved still. Run `npm run test:stadium-mockup` in `browser-client` to reproduce the full-size browser captures and pixel counts under `.tools/stadium-mockup/`. [Home cross-fade](../../assets/game/references/stadiums/round-four/home-crossfade.jpg)
+The original gallery could cross-fade the reconstructed render against either the approved full still or the cropped concept. The automated check compared both endpoints and the midpoint. The archived thumbnail shows the midpoint against the approved still. [Home cross-fade](../../assets/game/references/stadiums/round-four/home-crossfade.jpg)
 
-**Angled cameras.** Keep the gallery's 30, 40 and 50 degree views on turf. The approved painting uses upright faces and banners on both sidelines. A perspective stadium needs its own visual target before work starts on angled architecture or crowds. Live match rendering continues to use its existing assets.
+**Angled cameras.** The original gallery’s 30, 40 and 50 degree views showed turf. The approved painting uses upright faces and banners on both sidelines. A perspective stadium needs its own visual target before work starts on angled architecture or crowds.
 
-The follow-up gallery shows 22 players and 193 supporters at kickoff. Each of the 15 crowd inserts fits a registered seating bay, with the visiting supporters in the four east bays. A separate overlay adds 25 team-coloured standards, pennants, swags and shields. Each team's primary colour marks the 15 touchdown squares it defends, with a contrasting name painted beneath the grid. The field paint and regalia have independent visibility controls. [Gatehouse scale and colour studies](gatehouse-scale-studies.md) · [End zones in three palettes](../../assets/game/references/stadiums/scale-studies/end-zones.webp)
+## Earlier kickoff proofs
 
-Against the approved kickoff with regalia, the weathered end-zone paint changes 14,301 pixels in the north touchdown row and 13,845 in the south. The worn patches expose 83 pixels of the original grass in the north and 75 in the south. In each club name, 22 formerly inked pixels show the surface beneath. All chalk and every pixel outside the two rows match the approved kickoff. Turning off the paint restores the full 790 × 1188 frame exactly.
+The regalia proof added 25 team-coloured standards, pennants, swags and shields. Against that kickoff, the weathered paint changed 14,301 pixels in the north touchdown row and 13,845 in the south. The worn patches exposed 83 pixels of the original grass in the north and 75 in the south. In each club name, 22 formerly inked pixels showed the surface beneath. All chalk and every pixel outside the two rows matched the prior kickoff. Turning off the paint restored the full 790 × 1188 frame exactly.
 
-The apron layout reserves separate staff and player footprints for each team and cheerleader space on all four sides. Native pixel checks confirm clearance from the pitch, fixed art and south gate lane. Switching the gallery guide off reproduces the approved weathered kickoff exactly. [Reservation guide](gatehouse-scale-studies.md#pitch-apron-reservations)
+Native pixel checks of the apron layout confirmed clearance from the pitch, fixed art and south gate lane. Switching the gallery guide off reproduced the approved weathered kickoff exactly. [Reservation guide](gatehouse-scale-studies.md#pitch-apron-reservations)
 
 The first northwest stairwell proof added 727 pixels to the dirt apron. Replacing its bench and pegs with a passage turning into darkness changed 78 pixels. The placement review then fitted the stairs beneath the northwest wall and added a rotated copy beneath the southeast wall. Chromium measured 825 changed pixels at the northwest corner and 871 at the southeast corner against the single-entrance proof. All other pixels matched in the empty stadium and at kickoff, with the reservation guide both on and off. [Both corner joins at 4×](gatehouse-scale-studies.md#corner-locker-room-stairs)
