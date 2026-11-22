@@ -1,0 +1,8 @@
+{
+  "width": 46,
+  "height": 37,
+  "placements": [
+    { "corner": "northwest", "x": 106, "y": 122, "width": 44, "height": 35, "rotate180": false },
+    { "corner": "southeast", "x": 631, "y": 1005, "width": 52, "height": 42, "rotate180": true }
+  ]
+}

@@ -37,16 +37,16 @@ visible markings. Production scenery, projection and match mounting are untouche
 - `StadiumMockupSurface.tsx`, `StadiumMockupTurf.tsx`: clipped rendering.
 - `StadiumMockupCloth.tsx`, `use-stadium-mockup-colors.ts`,
   `StadiumMockupLife.tsx`: palette ramps, bounded gestures, torch/pennant motion.
-- `dev-entry.tsx`: DEV-only lazy `/stadium-mockup` route. No production entry import.
+- `dev-entry.tsx` loads the archived round-three gallery at `/stadium-mockup-round-three` in development.
 - `assets/game/scripts/build-stadium-mockup.mjs`: source/hash/provenance checks
   and deterministic material indices, called by the existing asset sync pipeline.
 - [Canonical inventory and material contract](../../assets/game/pitch/stadiums/mockup/README.md),
-  original PNGs, masks and provenance; synchronized browser delivery copies.
+  original PNGs, masks and provenance used by the development gallery.
 - `browser-client/test/stadium-mockup*.{ts,mjs}`: unit, material, gallery and
   actual live-render geometry comparisons.
 
 Run `npm ci`, then `npm run dev -- --port <free-port>` in `browser-client` and
-open `/stadium-mockup`. The visitor and cloth palettes change independently of
+open `/stadium-mockup-round-three`. The visitor and cloth palettes change independently of
 the architecture. Venue replacement currently means selecting another authored
 bundle in the module factory; no second League is implemented or exposed in UI.
 
@@ -94,7 +94,7 @@ exactly. No historical screenshots are relabelled as a later implementation.
   passed, **585** delivery assets checked.
 - TypeScript and production Vite build passed. Mockup identifiers and atlas
   names are absent from `dist-play/game.js` and `game.css`.
-- `stadium-mockup-ui.mjs`: 16 captured cameras with all 390 cells and player
+- `stadium-mockup-round-three-ui.mjs`: 16 captured cameras with all 390 cells and player
   anchors compared to production projection; 24 additional zoom combinations,
   colour/layer/visitor controls, reduced motion and 390px layout checks.
 - `stadium-mockup-parity.mjs`: actual live grid homographies, player anchors and

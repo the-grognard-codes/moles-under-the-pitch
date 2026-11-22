@@ -44,7 +44,17 @@ test('asset sync preserves live inputs on repeated builds and repairs stale deli
     { cwd: root, windowsHide: true, timeout: 30000 });
   await sync();
   const delivery = join(client, 'public/assets/game');
-  await assert.rejects(stat(join(delivery, 'pitch/stadiums/mockup')), { code: 'ENOENT' });
+
+  await t.test('unaccepted stadium sources are excluded and stale review copies are removed', async () => {
+    assert.ok((await stat(join(root, 'assets/game/pitch/stadiums/mockup/architecture-v2.png'))).isFile());
+    const staleReview = join(delivery, 'pitch/stadiums/mockup');
+    await assert.rejects(stat(staleReview), { code: 'ENOENT' });
+    await mkdir(staleReview, { recursive: true });
+    await writeFile(join(staleReview, 'unaccepted.png'), 'stale candidate');
+    await assert.rejects(sync('--check'), /out of sync/);
+    await sync();
+    await assert.rejects(stat(join(staleReview, 'unaccepted.png')), { code: 'ENOENT' });
+  });
 
   await t.test('unchanged sync leaves every generated catalog and delivered asset untouched', async () => {
     const paths = [...await filesUnder(join(client, 'src')), ...await filesUnder(delivery)];

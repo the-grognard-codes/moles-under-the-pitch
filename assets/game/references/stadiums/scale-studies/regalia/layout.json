@@ -1,0 +1,30 @@
+{
+  "canvas": {"width": 790, "height": 1188},
+  "placements": [
+    {"id": "northwest-tower", "sprite": "human-shield", "owner": "home", "x": 17, "y": 17, "bayIds": [1]},
+    {"id": "northeast-tower", "sprite": "human-shield", "owner": "home", "x": 758, "y": 17, "bayIds": [3]},
+    {"id": "north-standard-west", "sprite": "human-standard", "owner": "home", "x": 201, "y": 105, "bayIds": [1,2]},
+    {"id": "north-standard-center", "sprite": "human-standard", "owner": "home", "x": 382, "y": 105, "bayIds": [2]},
+    {"id": "north-standard-east", "sprite": "human-standard", "owner": "home", "x": 562, "y": 105, "bayIds": [2,3]},
+    {"id": "north-swag-1", "sprite": "human-swag", "owner": "home", "x": 143, "y": 108, "bayIds": [1]},
+    {"id": "north-swag-2", "sprite": "human-swag", "owner": "home", "x": 238, "y": 108, "bayIds": [2]},
+    {"id": "north-swag-3", "sprite": "human-swag", "owner": "home", "x": 318, "y": 108, "bayIds": [2]},
+    {"id": "north-swag-4", "sprite": "human-swag", "owner": "home", "x": 430, "y": 108, "bayIds": [2]},
+    {"id": "north-swag-5", "sprite": "human-swag", "owner": "home", "x": 513, "y": 108, "bayIds": [2]},
+    {"id": "north-swag-6", "sprite": "human-swag", "owner": "home", "x": 608, "y": 108, "bayIds": [3]},
+    {"id": "west-pennant-1", "sprite": "human-pennant-right", "owner": "home", "x": 101, "y": 229, "bayIds": [4]},
+    {"id": "east-pennant-1", "sprite": "orc-pennant-left", "owner": "away", "x": 662, "y": 229, "bayIds": [8]},
+    {"id": "west-pennant-2", "sprite": "human-pennant-right", "owner": "home", "x": 101, "y": 458, "bayIds": [5]},
+    {"id": "east-pennant-2", "sprite": "orc-pennant-left", "owner": "away", "x": 662, "y": 458, "bayIds": [9]},
+    {"id": "west-pennant-3", "sprite": "human-pennant-right", "owner": "home", "x": 101, "y": 602, "bayIds": [6]},
+    {"id": "east-pennant-3", "sprite": "orc-pennant-left", "owner": "away", "x": 662, "y": 602, "bayIds": [10]},
+    {"id": "west-pennant-4", "sprite": "human-pennant-right", "owner": "home", "x": 101, "y": 853, "bayIds": [7]},
+    {"id": "east-pennant-4", "sprite": "orc-pennant-left", "owner": "away", "x": 662, "y": 853, "bayIds": [11]},
+    {"id": "south-swag-1", "sprite": "human-swag", "owner": "home", "x": 122, "y": 1052, "bayIds": [12]},
+    {"id": "south-swag-2", "sprite": "human-swag", "owner": "home", "x": 245, "y": 1052, "bayIds": [13]},
+    {"id": "south-swag-3", "sprite": "human-swag", "owner": "home", "x": 503, "y": 1052, "bayIds": [14]},
+    {"id": "south-swag-4", "sprite": "human-swag", "owner": "home", "x": 626, "y": 1052, "bayIds": [15]},
+    {"id": "gate-shield-west", "sprite": "human-shield", "owner": "home", "x": 328, "y": 1096, "bayIds": [13]},
+    {"id": "gate-shield-east", "sprite": "human-shield", "owner": "home", "x": 444, "y": 1096, "bayIds": [14]}
+  ]
+}

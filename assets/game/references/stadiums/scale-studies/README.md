@@ -1,0 +1,148 @@
+# Gatehouse gallery artwork
+
+## Locker-room stairs
+
+The northwest and southeast entrances share one 46 × 37 px ground sprite. Its exposed flight measures about 20 px across, rim to rim. On the 790 × 1188 canvas, the northwest copy occupies 44 × 35 px at (106, 122). The southeast copy occupies 52 × 42 px at (631, 1005) and turns 180° to meet its wider diagonal wall. Use nearest-neighbour scaling and draw both copies before the masonry. The wall covers the far edge of each landing across the full bevel, including the partially transparent stone edges. [Native sprite](locker-stairwell.png) · [Corner placements](locker-stairwell.json) · [Both wall joins at 4×](locker-stairwell-detail.webp)
+
+## Pitch apron reservations
+
+The reservation layout records native pixel bounds on the 790 × 1188 Gatehouse canvas. Each area's `x`, `y` is its top-left corner. An optional `outline` lists local corner coordinates clockwise around the usable footprint. An omitted outline means the whole rectangle is available. Width and height extend to exclusive right and bottom edges. Future sideline figures can occupy their assigned footprint. Keep scenery and other groups clear of it. [Editable reservation layout](apron-reservations.json) · [Map](apron-reservations.webp)
+
+The home staff and reserves use the west touchline, mirrored on the east for the visitors. The staff footprints step around the lower part of the first wall pennants. Cheerleader space is centered on each side, with a 78-pixel opening between the two south pads for the gate lane. The `regalia/test_build.py` artwork check verifies the footprints against the fixed stadium, ornaments, grass border, gate lane and each other.
+
+## Painted end zones
+
+The full-bowl gallery paints two 480 × 32 pixel strips. Their top-left corners are (156, 169) for the north goal and (156, 969) for the south goal on the 790 × 1188 canvas. Each strip covers 15 complete squares. Tiny transparent patches let the original turf show through the team-coloured paint. Nicks in the lettering expose the layer beneath, and the original pitch markings sit above both. A palette change rebuilds the strips with the same wear in the same places. [Native paint and lettering](../../../../../browser-client/src/stadium-end-zones.ts) · [Three palette examples](end-zones.webp)
+
+## Banners and regalia
+
+The ornaments use a 172 × 74 pixel sheet and a grayscale material mask of exactly the same size. Every pixel starts with an authored material and shade. Values 1–16 select the primary cloth ramp, and 17–32 select the secondary ramp for crests, trim and stitching. A zero leaves the artwork’s own colour and alpha intact, including the bronze fittings, wooden rods and shadows. [Sprite sheet](regalia/atlas.png) · [Material mask](regalia/materials.png) · [Native frame rectangles](regalia/atlas.json)
+
+Each placement names its sprite, its home or away owner, and its top-left pixel on the 790 × 1188 stadium. The bay IDs identify which inspection views should include the whole ornament. The west and east poles point in toward the pitch. Their brackets switch sides while the heraldry stays upright. The full-bowl gallery flattens the placements onto one reusable transparent canvas and repaints it when the selected colours change. The **Regalia** toggle exposes the crowd underneath. [Placement layout](regalia/layout.json) · [Lossless detail crops](regalia/details.webp)
+
+Run these commands from the repository root with Pillow to regenerate and verify the artwork. The checks cover both material ramps, fixed crossbars, continuous silhouettes, mounting points, and clearance from seating, stairs, braziers and the pitch.
+
+```text
+python -B assets/game/references/stadiums/scale-studies/regalia/build.py
+python -B assets/game/references/stadiums/scale-studies/regalia/test_build.py
+```
+
+## Populated side stands
+
+West bays 4–7 and east bays 8–11 each have a single transparent indexed PNG aligned to that bay’s native bounds. Each side holds 57 supporters in 86 places, including 19 neutral outfits. The west crowd uses the right-facing side drawings. The east crowd mirrors the individual figures, their knees, both boot contacts and the calf cutouts against the actual east bench geometry. West uses navy and gold and east uses red and gold. Only indices 1–32 carry kit colours. [Editable side seat plan](side-stands/layout.json) · [Side inserts and placements](side-stands/placements.json) · [Full kickoff preview](kickoff.webp)
+
+Each row in the seat plan names a physical plank and lists its permanent bay-local anchors. The `occupants` keys are indices into that list. A standing supporter may use a separate `standingContacts` entry for their boots while keeping their original seat. Leave the preceding seat on their plank vacant. The builder checks the full source silhouette against the bay before exposing any timber behind a calf. In the [side pose landmarks](bay-six/pose-landmarks.json), `face` and `gesture` bound the pixels to keep visible, measured in the original 48 × 48 cell as `[left, top, right, bottom]` with exclusive right and bottom edges. The east inserts reflect these rectangles with their sprites.
+
+```text
+python -B assets/game/references/stadiums/scale-studies/side-stands/build.py
+python -B assets/game/references/stadiums/scale-studies/side-stands/test_build.py
+```
+
+## Populated end stands
+
+The seven end bays each have one transparent indexed crowd PNG, registered at that bay’s native top-left corner on the empty stadium. The seat plan records bay-local hip or boot anchors, the plank under each place, and the occupants. North uses the front drawings and south uses the rear drawings. The PNGs use the Human home navy and gold ramps at indices 1–32 and retain the artist sheet’s fixed colours at 33 and above. [Authored seat plan](end-stands/full-ends/layout.json) · [Gallery placements and image names](end-stands/full-ends/placements.json)
+
+The two ends have 79 supporters in 119 places, including 26 in neutral clothing. Run the following commands from the repository root with Pillow to reproduce the inserts. The checks cover the raw sprite against the bay mask, contact with the timber, face and gesture visibility, a vacant place above each standing supporter, and repeated neighbours across stairs. [Earlier end-stand kickoff](https://github.com/the-grognard-codes/moles-under-the-pitch/blob/3904fe1c2affb2c1b64e9c984ec2cd67ed55040d/assets/game/references/stadiums/scale-studies/end-stands/full-ends/kickoff.webp)
+
+```text
+python -B assets/game/references/stadiums/scale-studies/end-stands/full-ends/build.py
+python -B assets/game/references/stadiums/scale-studies/end-stands/full-ends/test_build.py
+```
+
+## Gatehouse bench-top template
+
+The [bench layout](gatehouse-benches.json) records 64 plank tops across all 15 seating bays. Each plank has a stable numeric ID and a name within its bay. The last digit is the plank number, so plank 62 is plank 2 in bay 6. Its rectangles are measured in native pixels from the bay’s top-left corner and stored as `[x, y, width, height]`. Their union, intersected with the approved seating mask for that bay, defines the usable timber surface. Keep the same plank IDs and surfaces when drawing a new stadium skin for this layout.
+
+For a compatible stadium skin, leave room for seated heads and raised hands on the rear wall of each north bay. These three insert canvases begin at stadium y=8 and are 92 px tall. The back-row hip anchors sit at local y=24, or stadium y=32. Follow the [seating mask](empty-seating.png) where it tapers beside the arches and corner walls. Only the painted timber can support a seated or standing figure.
+
+Enable **Bench tops** in the gallery to show the surfaces beneath the crowd. Colours repeat by plank number within each bay. The exported mask identifies each individual plank across the stadium. The west-bay crowd builder uses the same template to register each hip and check that both boot contacts of a standing supporter land on one plank. Spectator silhouettes may extend past the wood anywhere the seating-section mask permits.
+
+To obtain a native 790 × 1188 grayscale PNG for an art editor, run the following from the repository root with Pillow. A pixel value of 0 means no support. Every other value is a plank ID from the layout.
+
+```text
+python -B assets/game/references/stadiums/scale-studies/build-empty-seating.py --export-bench-mask gatehouse-plank-ids.png
+```
+
+## North and south supporter angles
+
+The native sheet has 24 indexed 48 × 48 cells in one strip. Its first six preserve the approved dwarf with the horn, the clapping supporter and the halfling with the pie. Their three north-stand front views measure 35, 37 and 33 pixels tall, and their south-stand rear views measure 28, 30 and 26. The remaining nine poses each occupy two consecutive cells, front then back. The seven new seated pairs measure 37 and 30 pixels. The standing tambourine player and dwarf measure 43 and 39 pixels respectively in both views. [Native sheet](end-stands/supporters.png) · [Generation prompts and cell order](end-stands/generation.json)
+
+The full artist sheet pairs the front row of each group with the backs directly beneath it. The top half shows the approved trio and the group with the lookout. The bottom half shows the group with the elf and the group with both standing figures. The primary and secondary cloth use the west cast’s 1–16 and 17–32 palette indices. The halfling, elder and chestnut seller have fixed wardrobes. Props, hair, skin and footwear keep their colours across kits. [Full cast](end-stands/cast-angles.webp) · [Approved trio at original resolution](end-stands/artist-reference.webp)
+
+The seat plans give anchors relative to each bay. The landmarks locate each seated hip and knee, or both soles for a standing supporter, as well as the head and visible gestures. A seated rear sprite ends in one continuous curve resting on the measured plank top, including with the handrail hidden. A standing figure shows its full legs from either end, with both soles on the same plank. Each group exports one transparent crowd image per end, sharing the original rail. [Approved seats](end-stands/layout.json) · [Additional groups](end-stands/pose-layout.json) · [Landmarks](end-stands/pose-landmarks.json)
+
+Run these commands from the repository root with Pillow to reproduce and check both bay inserts.
+
+```text
+python -B assets/game/references/stadiums/scale-studies/end-stands/build.py
+python -B assets/game/references/stadiums/scale-studies/end-stands/test_build.py
+```
+
+## West bay 6 supporter proofs
+
+The [crowd builder](bay-six/build.py) assigns three permanent seats to each of planks 61, 62 and 63. At 100%, 66% and 33% attendance, each bench holds three, two and one supporter respectively. The same nine anchors also locate empty seats in the gallery. Returning supporters keep their seat and wardrobe. A supporter can stand when the next seat above them on their plank is vacant. When that seat fills, they sit. One third of the occupied seats have fixed neutral outfits at every attendance. Each layout exports as one transparent section image.
+
+Bay 6 is a 65 × 74 px west stand at native (22, 589). Its occupied bench tops span local x=0–9, 19–27 and 38–47. On the wall bench the hip sits 5–6 px from the back. At least seven consecutive pixels of upper thigh and hip rest over the wood, and the calves hang beyond the lip. On the other two benches the hip meets the back and the knee projects up to two pixels past the front.
+
+The west-facing cast contains ten people, each drawn seated, plus standing poses for the tambourine player and the dwarf. Use the transparent [artist reference](bay-six/cast-reference.webp) for another angle. Its twelve 480 × 480 px cells run left to right in four columns across three rows. The [indexed game sheet](bay-six/supporters.png) uses the same order in a single row of twelve 48 × 48 px cells. The [pose list](bay-six/poses.json) identifies each cell, gesture and wardrobe. Keep the same supporter ID across stances and viewing angles.
+
+| Reference row | First | Second | Third | Fourth |
+| --- | --- | --- | --- | --- |
+| Top | Seated tambourine player, dark braid with ivory streak | Same player standing | Seated dwarf, copper beard and ivory horn | Same dwarf standing |
+| Middle | Barefoot halfling with hand pie | Silver-streaked bun, clapping hands | Grey-templed lookout shading his eyes | Blonde elf reading a match programme |
+| Bottom | White-haired elder with carved tankard | Copper-haired whistle player | Moustached chestnut seller | Cropped dark hair, headband and raised fist |
+
+Palette index 0 is transparent. The seven team wardrobes use indices 1–16 for primary cloth and 17–32 for secondary cloth. The halfling, elder and chestnut seller use only fixed indices above 32 for their opaque pixels. Skin, hair, footwear, metal, food and instruments also use fixed indices. The tambourine player has light olive-brown skin, the clapping supporter medium brown, and the lookout deep brown. Grey ankle boots, chestnut leather, buckled shoes and the halfling’s bare feet give the seated figures distinct silhouettes. The previous cast is available as a [style and seating reference](https://github.com/the-grognard-codes/moles-under-the-pitch/blob/4ac8a97059b19587b87ad966d8e6575e3bf62935/assets/game/references/stadiums/scale-studies/bay-six/supporters.png).
+
+The [pose landmarks](bay-six/pose-landmarks.json) are measured in pixels from the top left of each source cell. A seated pose has a contact point under the hip and a second point at the near knee, about one plank width toward the pitch. Two `footFronts` mark visible toe segments for checking the timber overlap. A standing pose has a point on each sole. To register a figure, subtract its local contact point from the intended contact on the timber. All three layouts use the same native artwork.
+
+Run `python -B assets/game/references/stadiums/scale-studies/bay-six/build.py` with Pillow to rebuild the proofs. The gallery’s [pose inspection sheet](bay-six/supporter-kits.png) shows the team wardrobe in its top row and the neutral wardrobe in its bottom row. Both use the same source cells and clothing ramps as the assembled section. In the [seat list](bay-six/seats.json), `slot` identifies the physical place on the plank across all views. The seat’s `x` and `y` give the actual hip or boot contact for its current pose. Both use bay-local pixels. The complete silhouette must fit the approved bay before compositing. Nearer spectators can obscure figures behind them. The front rail exports as its own layer.
+
+Each seated pose also marks the backs of its calves and heels in `behindSeat` rectangles, in source-cell pixels as `[x, y, width, height]`. After the full silhouette passes the bay check, the builder makes those pixels transparent wherever they meet that supporter’s own plank. It then draws the supporter into the section image. This lets another spectator or the stadium’s painted wood show through. Keep the front of each shin and boot visible when authoring a new pose.
+
+Run `python -B assets/game/references/stadiums/scale-studies/bay-six/test_build.py` to check bench contacts, both boot silhouettes, plank cutouts, and the bay boundary for pixels hidden by timber or another supporter.
+
+## Empty Gatehouse seating bays
+
+The [bay dimension manifest](empty-seating.json) gives each bay's exact bounds and permitted pixel count from the [seating mask](empty-seating.png). Both the mask and [empty stadium artwork](empty-gatehouse.webp) register at (0, 0) on the 790 × 1188 px native gallery canvas. Coordinates measure from the upper-left corner, with x increasing right and y increasing down. Mask value 0 reserves the aisles, entrances, fixtures and space outside the seating. The IDs are 1–3 north, 4–7 west, 8–11 east and 12–15 south.
+
+Check each original, untrimmed PNG at its intended native origin before assembling the insert. Use single-frame PNGs with 8 bits per channel or fewer so the checker reads every alpha value exactly. In `--check-placement`, `X` and `Y` give the native coordinates of the source PNG's upper-left pixel. Transparent margins can extend past the bay or stadium edges. Any nonzero alpha, including partial transparency, must land on that bay's mask ID.
+
+Export one transparent PNG per bay with the exact `width` and `height` from its manifest entry. The insert's upper-left pixel registers at that bay's `(x, y)` at native scale. `--check-insert` verifies the final canvas size and coverage, including the brazier cutouts and the wedges inside irregular bounds.
+
+Run these checks from the repository root with Pillow. Substitute the target bay ID, source origin, and file paths for your artwork. Both PNG checks report the native coordinates of visible alpha outside the bay and leave the input assets untouched.
+
+```text
+python assets/game/references/stadiums/scale-studies/build-empty-seating.py --check
+python assets/game/references/stadiums/scale-studies/build-empty-seating.py --check-placement 2 240 24 north-center-source.png
+python assets/game/references/stadiums/scale-studies/build-empty-seating.py --check-insert 2 north-center.png
+```
+
+## Earlier inward-facing Gatehouse study
+
+This study uses the editable native-resolution [terraces](gatehouse-terraces.png) and [spectator sheet](spectator-wardrobe.png). Both are indexed PNGs. Index 0 is transparent, 1–16 shade the primary fabric, 17–32 shade secondary fabric, and the other indices hold fixed colours. Preserve these assignments when editing an individual pixel. The sheet contains twelve poses in three directions, with reflected profiles for the east stand.
+
+Run `python assets/game/references/stadiums/scale-studies/build-gatehouse.py` with Pillow to seat the crowd and export the lossless foreground and matching material plane. Each bay has a repeatable mix of fixed neutral outfits and team wardrobes. Opaque hands, hair and carried objects replace any material underneath them. In the output mask, zero keeps the underlying pixel fixed, 1–32 are home cloth, and 33–64 are away cloth. The pitch renderer draws the ground through the open south doors.
+
+## Earlier mask-first sideline study
+
+The 112 × 416 px strip depicts a west sideline with the pitch beginning at local x=112. A pitch square spans 32 px. Most spectator heads are 8–12 px across, the complete fan silhouettes are 16–17 px tall, and the field-side barrels are 9 × 10 px. The two dugouts are each roughly two squares long.
+
+[The drawing script](draw-mask-first-sideline.py) is the original artwork. It draws the stone, timber, dirt, props and spectators on a single native-resolution indexed plane. Spectator poses are hand-drawn rows of pixel tokens. Each point in a garment is assigned a material and shade in the pose itself. A fixed per-person rule assigns one outfit in each three-fan row to a neutral ramp. The four bays each have 12 fans, four of whom wear fixed clothing. Both output planes come directly from the drawing indices and share the same binary alpha.
+
+| File | Contents |
+| --- | --- |
+| `mask-first-sideline.png` | Full RGBA strip with a muted reference kit |
+| `mask-first-sideline.materials.png` | Full material data |
+| `mask-first-sideline.cutout.png` | Transparent inspection view of the fans, standards, braziers and barrels at the same coordinates |
+| `mask-first-sideline.cutout.materials.png` | Material data for the inspection view |
+| `mask-first-sideline.rear.png` | Fixed 160 × 416 px concourse that joins the west edge in the wider comparison |
+
+The material PNGs use red 0 for fixed color, red 1 for the primary kit, and red 2 for the secondary kit. Green is 0 for fixed color and 1–4 for kit shades from darkest to lightest. Blue is 0 throughout. Each transparent pixel is zero in all four channels. Skin, hair, outlines, props and neutral garments always use their reference colors.
+
+From the repository root, run the following with Python 3.10+ and Pillow 12.1+. The check rerenders all five assets, verifies exact decoded pixels and alpha, and checks tint ownership, shade coverage and the neutral count in each bay.
+
+```text
+python assets/game/references/stadiums/scale-studies/draw-mask-first-sideline.py
+python assets/game/references/stadiums/scale-studies/draw-mask-first-sideline.py --check
+```

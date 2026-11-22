@@ -151,9 +151,10 @@ for (const [sourcePath, deliveryPath] of inputs) {
   const files = (await stat(source)).isDirectory() ? await filesUnder(source) : [source];
   for (const file of files) {
     const suffix = file === source ? '' : relative(source, file);
-    // Authoring instructions and source calls belong in the repository, not public delivery.
-    if (sourcePath === 'pitch' && (suffix.split(/[\\/]/).includes('source') || file.endsWith('README.md')
-      || suffix.replaceAll('\\', '/').startsWith('stadiums/mockup/'))) continue;
+    if (sourcePath === 'pitch') {
+      const parts = suffix.split(/[\\/]/);
+      if (parts.includes('source') || parts.includes('mockup') || file.endsWith('README.md')) continue;
+    }
     const target = resolve(deliveryRoot, deliveryPath, suffix);
     expected.set(target, file);
   }

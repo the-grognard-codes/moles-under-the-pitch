@@ -6,7 +6,7 @@ import { createServer } from 'vite';
 import { setCameraAngle } from './camera-controls.mjs';
 import { travelToFocus } from './projected-pitch-helper.mjs';
 import { PitchProjection } from '../src/pitch-projection.ts';
-import { MOCKUP_PLAYERS } from '../src/stadium-mockup.ts';
+import { MOCKUP_PLAYERS } from '../src/stadium-mockup-round-three.ts';
 
 const initial = JSON.parse(await readFile(new URL('./fixtures/m5a-blitz-projections.json', import.meta.url), 'utf8'))[0].actor;
 const server = await createServer({ root: fileURLToPath(new URL('../', import.meta.url)), server: { host: '127.0.0.1', port: 0 } });
@@ -15,7 +15,7 @@ const browser = await chromium.launch({ headless: true, executablePath: process.
 const base = `http://127.0.0.1:${server.httpServer.address().port}`;
 try {
   const gallery = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
-  await gallery.goto(base + '/stadium-mockup');
+  await gallery.goto(base + '/stadium-mockup-round-three');
   await gallery.locator('[data-colors-ready=true]').waitFor();
   for (const end of ['home', 'away']) {
     const live = await browser.newPage({ viewport: { width: 1280, height: 900 } });

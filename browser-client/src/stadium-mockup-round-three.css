@@ -1,0 +1,34 @@
+.stadium-mockup-round-three { color: var(--text, #ede7dc); background: var(--bg, #151d23); min-height: 100vh; padding: 16px; }
+.stadium-mockup-round-three header { display: flex; align-items: baseline; gap: 24px; flex-wrap: wrap; }
+.stadium-mockup-round-three h1 { font-size: 1.7rem; margin: 0; }
+.stadium-mockup-round-three p { margin: 8px 0 14px; max-width: 75ch; }
+.stadium-mockup-round-three :where(.mockup-controls, .mockup-layers) { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
+.stadium-mockup-round-three .mockup-controls label { display: flex; gap: 6px; align-items: center; white-space: nowrap; font-size: .875rem; }
+.stadium-mockup-round-three :is(.mockup-controls, .mockup-layers) input[type=checkbox] { width: auto; margin: 0; }
+.stadium-mockup-round-three .mockup-controls select { max-width: 180px; min-height: 36px; }
+.stadium-mockup-round-three .mockup-controls input[type=range] { width: 100px; }
+.stadium-mockup-round-three .mockup-layers { border: 1px solid #62655e; margin: 12px 0; padding: 8px 12px; }
+.stadium-mockup-round-three .mockup-layers label { display: flex; align-items: center; gap: 6px; text-transform: capitalize; }
+.stadium-mockup-round-three :focus-visible { outline: 2px solid #f0ca7b; outline-offset: 3px; }
+.stadium-mockup-round-three .mockup-status { color: #ebcf95; }
+.stadium-mockup-round-three .mockup-comparison { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.stadium-mockup-round-three .mockup-comparison.comparing { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.stadium-mockup-round-three .mockup-stage { position: relative; aspect-ratio: 16 / 10; overflow: hidden; background: #252c22; isolation: isolate; }
+.stadium-mockup-round-three :where(.mockup-ground, .mockup-structure, .mockup-seams) { position: absolute; inset: 0; pointer-events: none; }
+.stadium-mockup-round-three .mockup-ground { z-index: 1; }
+.stadium-mockup-round-three .mockup-stage .pitch-stadium-plate { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.stadium-mockup-round-three .mockup-structure { z-index: 2; }
+.stadium-mockup-round-three .mockup-cloth { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.stadium-mockup-round-three .mockup-life { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.stadium-mockup-round-three .mockup-flame { animation: mockup-torch 1.4s steps(3, end) infinite; }
+.stadium-mockup-round-three .mockup-pennant { animation: mockup-wind 4.8s steps(3, end) infinite; }
+@keyframes mockup-torch { 0%, 100% { filter: brightness(.94); } 45% { filter: brightness(1.12); } }
+@keyframes mockup-wind { 0%, 100% { transform: skewY(-1deg); } 50% { transform: skewY(1deg); } }
+.stadium-mockup-round-three .mockup-player { position: absolute; image-rendering: pixelated; max-width: none; z-index: 3; }
+.stadium-mockup-round-three .mockup-seams { z-index: 4; }
+.stadium-mockup-round-three .mockup-comparison figure { margin: 0; }
+.stadium-mockup-round-three .mockup-comparison figure img { width: 100%; display: block; }
+.stadium-mockup-round-three .mockup-comparison figcaption { padding: 8px 0; }
+.stadium-mockup-round-three .mockup-stage[data-motion=false] *, .stadium-mockup-round-three .mockup-stage[data-motion=false] *::after { animation: none !important; }
+@media (max-width: 760px) { .stadium-mockup-round-three .mockup-comparison.comparing { grid-template-columns: minmax(0, 1fr); } .stadium-mockup-round-three { padding: 10px; } }
+@media (prefers-reduced-motion: reduce) { .stadium-mockup-round-three .mockup-stage * { animation: none !important; } }

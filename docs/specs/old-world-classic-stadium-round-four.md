@@ -1,8 +1,8 @@
 # Feature: Old World Classic stadium, round four — paint first, overhead only
 
-Date: 2026-11-17. Status: owner confirmed the overhead-only scope and the approval gate; ready for agent.
+Date: 2026-11-17. The owner selected Gatehouse as the visual baseline for live overhead integration. The completed development gallery is in PR #580 for merge review. [Final gallery and validation](old-world-classic-stadium-round-four-outcome.md) · [Pull request](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/580)
 Supersedes the method of [#566](https://github.com/the-grognard-codes/fumbbl-rebuild/issues/566)
-and draft PR [#571](https://github.com/the-grognard-codes/fumbbl-rebuild/pull/571); see the
+and historical PR [#571](https://github.com/the-grognard-codes/fumbbl-rebuild/pull/571); see the
 [two-axis review on #571](https://github.com/the-grognard-codes/fumbbl-rebuild/pull/571#issuecomment-6938352174).
 Concept images: [`assets/game/references/stadiums/concept-round-3/`](../../assets/game/references/stadiums/concept-round-3/README.md).
 Tracker: [#572](https://github.com/the-grognard-codes/fumbbl-rebuild/issues/572).
