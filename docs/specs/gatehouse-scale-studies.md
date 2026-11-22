@@ -18,7 +18,7 @@ Three pointed lion standards hang from the north wall, and each side bay has a p
 
 ### Northwest locker-room stairs
 
-Players enter from the dirt at the southeast lip of the stairwell. The stone steps descend diagonally toward the northwest corner, where a small torch lights the locker-room landing. A strip of earth separates the opening from the stadium wall. The stairs occupy the same spot in the empty stadium and at kickoff.
+Players enter from the dirt at the southeast lip of the stairwell. The steps descend toward the northwest corner, where a small wall torch lights the last tread. The passage turns left into darkness on its way to the locker room. A strip of earth separates the opening from the stadium wall. The stairs occupy the same spot in the empty stadium and at kickoff.
 
 ![Four-times native crop of the Gatehouse stairwell between the corner wall and the painted end zone](../../assets/game/references/stadiums/scale-studies/locker-stairwell-detail.webp)
 

@@ -2,7 +2,7 @@
 
 ## Locker-room stairs
 
-The northwest stairwell is a 45 × 36 px static ground sprite, registered at (111, 123) on the 790 × 1188 canvas. The pale threshold faces the field to the southeast. Each tread descends toward the torch in the northwest recess. Draw the sprite once over the dirt before placing the stadium walls. Its transparent margins expose the original apron. [Native sprite](locker-stairwell.png) · [Placement](locker-stairwell.json) · [Gallery detail at 4×](locker-stairwell-detail.webp)
+The northwest stairwell is a 45 × 36 px static ground sprite, registered at (111, 123) on the 790 × 1188 canvas. The pale threshold faces the field to the southeast. At the foot of the stairs, the torch lights a bare stone landing. The passage turns left behind the wall and fades into darkness. Draw the sprite once over the dirt before placing the stadium walls. Its transparent margins expose the original apron. [Native sprite](locker-stairwell.png) · [Placement](locker-stairwell.json) · [Gallery detail at 4×](locker-stairwell-detail.webp)
 
 ## Pitch apron reservations
 
