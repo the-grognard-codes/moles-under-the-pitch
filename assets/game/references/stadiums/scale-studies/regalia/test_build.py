@@ -10,6 +10,8 @@ import build
 HERE = build.HERE
 SEATS = HERE.parent
 APRON_GROUPS = ("staff", "reserves", "cheerleaders")
+# Native scan windows for the two beveled faces, plus the direction toward the apron.
+LOCKER_WALLS = {"northwest": ((100, 122, 124, 133), 1), "southeast": ((660, 1033, 689, 1046), -1)}
 # Native rectangles with exclusive right and bottom edges. These openings and
 # unlit bowls must remain clear, including when no supporters are present.
 OPENINGS = (
@@ -166,15 +168,17 @@ class RegaliaTest(unittest.TestCase):
                         self.assertFalse(any(l <= px < r and t <= py < b for l, t, r, b in passages))
         self.assertEqual({"home", "away"}, {p["owner"] for p in self.layout["placements"]})
 
-    def apron_blockers(self):
-        fixed = self.architecture.point(lambda alpha: 255 if alpha else 0)
+    def apron_blockers(self, include_architecture=True):
+        fixed = (self.architecture.point(lambda alpha: 255 if alpha else 0) if include_architecture
+                 else Image.new("L", self.architecture.size))
         for piece in self.layout["placements"]:
             frame = self.sheet["sprites"][piece["sprite"]]
             silhouette = self.atlas.crop(frame_bounds(frame)).getchannel("A").point(lambda alpha: 255 if alpha else 0)
             fixed.paste(255, (piece["x"], piece["y"]), silhouette)
-        # Include the shaggy grass outside the chalk and the lane from the south gate.
+        # Grass grows along each touchline and goal line, leaving the outer dirt corners.
         blockers = ImageDraw.Draw(fixed)
-        blockers.rectangle((149, 162, 642, 1007), fill=255)
+        blockers.rectangle((149, 169, 642, 1001), fill=255)
+        blockers.rectangle((156, 162, 635, 1008), fill=255)
         blockers.rectangle((357, 1001, 434, 1048), fill=255)
         return fixed
 
@@ -228,33 +232,68 @@ class RegaliaTest(unittest.TestCase):
                     else:
                         self.assertEqual(585, (top + bottom) / 2)
 
-    def test_locker_stairwell_alpha_clears_existing_apron_art(self):
-        frame = read(SEATS / "locker-stairwell.json")
-        self.assertTrue(all(type(frame[k]) is int for k in ("x", "y", "width", "height")))
-        x, y, right, bottom = frame_bounds(frame)
-        width, height = self.architecture.size
-        self.assertTrue(0 <= x < right <= width and 0 <= y < bottom <= height)
+    def test_locker_stairwells_meet_the_walls_and_clear_other_apron_art(self):
+        manifest = read(SEATS / "locker-stairwell.json")
+        placements = manifest["placements"]
+        self.assertCountEqual(LOCKER_WALLS, [placement["corner"] for placement in placements])
         with (SEATS / "locker-stairwell.png").open("rb") as source, Image.open(source) as artwork:
             self.assertEqual("PNG", artwork.format)
             self.assertEqual(1, getattr(artwork, "n_frames", 1))
-            self.assertEqual((frame["width"], frame["height"]), artwork.size)
+            self.assertEqual((manifest["width"], manifest["height"]), artwork.size)
             # Pillow can discard small nonzero alpha values when decoding 16-bit RGBA.
             source.seek(24)  # PNG IHDR bit depth.
             self.assertLessEqual(source.read(1)[0], 8)
-            visible = artwork.convert("RGBA").getchannel("A").point(lambda alpha: 255 if alpha else 0)
-        self.assertIsNotNone(visible.getbbox(), "empty stairwell sprite")
+            alpha = artwork.convert("RGBA").getchannel("A").point(lambda opacity: 255 if opacity else 0)
+        self.assertIsNotNone(alpha.getbbox(), "empty stairwell sprite")
 
         plan = read(SEATS / "apron-reservations.json")
         reservations = Image.new("L", self.architecture.size)
         for kind in APRON_GROUPS:
             for area in plan[kind]:
                 reservations.paste(255, (area["x"], area["y"]), self.reservation_footprint(area))
-        for label, blockers in (("architecture, regalia or turf", self.apron_blockers()),
-                                ("a reserved apron footprint", reservations)):
-            overlap = ImageChops.multiply(blockers.crop((x, y, right, bottom)), visible).getbbox()
-            if overlap:
-                l, t, r, b = overlap
-                self.fail(f"Stairwell covers {label} within native bounds {(x + l, y + t, x + r, y + b)}")
+        blockers = (("regalia or turf", self.apron_blockers(include_architecture=False)),
+                    ("a reserved apron footprint", reservations))
+        width, height = self.architecture.size
+        for placement in placements:
+            corner = placement["corner"]
+            with self.subTest(corner=corner):
+                self.assertTrue(all(type(placement[k]) is int for k in ("x", "y", "width", "height")))
+                self.assertIs(placement["rotate180"], corner == "southeast")
+                x, y, right, bottom = frame_bounds(placement)
+                self.assertTrue(0 <= x < right <= width and 0 <= y < bottom <= height)
+                visible = alpha.resize((right - x, bottom - y), Image.Resampling.NEAREST)
+                if placement["rotate180"]:
+                    visible = visible.transpose(Image.Transpose.ROTATE_180)
+                for label, blocked in blockers:
+                    overlap = ImageChops.multiply(blocked.crop((x, y, right, bottom)), visible).getbbox()
+                    if overlap:
+                        l, t, r, b = overlap
+                        self.fail(f"Stairwell covers {label} within native bounds {(x + l, y + t, x + r, y + b)}")
+
+                world = Image.new("L", self.architecture.size)
+                world.paste(visible, (x, y))
+                self.check_locker_wall_seam(corner, world)
+
+    def check_locker_wall_seam(self, corner, stair):
+        (left, top, right, bottom), toward_apron = LOCKER_WALLS[corner]
+        extent = stair.getbbox()
+        self.assertIsNotNone(extent, "empty placed stairwell")
+        edge = max if toward_apron == 1 else min
+        for y in range(min(top, extent[1]), max(bottom, extent[3])):
+            wall_row = self.architecture.crop((left, y, right, y + 1)).tobytes()
+            wall_x = edge((left + x for x, alpha in enumerate(wall_row) if alpha), default=None)
+            if top <= y < bottom:
+                self.assertIsNotNone(wall_x, f"Missing wall at native y={y}")
+                apron_x = wall_x + toward_apron
+                self.assertEqual(0, self.architecture.getpixel((apron_x, y)))
+                solid_x = edge(left + x for x, alpha in enumerate(wall_row) if alpha == 255)
+                # Cross the antialiased wall fringe, from opaque backing to the first dirt pixel.
+                for x in range(solid_x, apron_x + toward_apron, toward_apron):
+                    self.assertEqual(255, stair.getpixel((x, y)), f"Stairwell seam has a gap at native ({x}, {y})")
+            elif wall_x is not None and not top - 2 <= y < bottom + 2:
+                apron = (wall_x + toward_apron, y)
+                if not self.architecture.getpixel(apron) and stair.getpixel(apron):
+                    self.assertFalse(stair.getpixel((wall_x, y)), f"Stairwell joins beyond its stone lip at {apron}")
 
 
 if __name__ == "__main__":

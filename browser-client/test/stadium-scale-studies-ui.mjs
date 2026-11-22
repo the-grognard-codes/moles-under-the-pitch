@@ -373,34 +373,53 @@ const reservationLegend = [
   'Dotted magenta marks cheerleaders.',
 ];
 
-function stairwellCrop(stadium, sprite) {
-  return stadium.evaluate(async (canvas, { placement: { x, y, width, height }, sprite }) => {
-    const crop = document.createElement('canvas');
-    crop.width = width;
-    crop.height = height;
-    const context = crop.getContext('2d');
-    context.drawImage(canvas, x, y, width, height, 0, 0, width, height);
-    const visible = context.getImageData(0, 0, width, height).data;
-    if (sprite) {
+function stairwellCrops(stadium, proof) {
+  return stadium.evaluate(async (canvas, { layout, proof }) => {
+    async function decode(src) {
       const image = new Image();
-      image.src = 'data:image/png;base64,' + sprite;
+      image.src = src;
       await image.decode();
-      if (image.width !== width || image.height !== height) throw Error('Stairwell is not native-size');
-      context.clearRect(0, 0, width, height);
-      context.drawImage(image, 0, 0);
-      const pixels = context.getImageData(0, 0, width, height).data;
-      let opaque = 0;
-      for (let i = 0; i < pixels.length; i += 4) {
-        if (pixels[i + 3] !== 255) continue;
-        opaque++;
-        if (pixels[i] !== visible[i] || pixels[i + 1] !== visible[i + 1] || pixels[i + 2] !== visible[i + 2]) {
-          throw Error('The empty stadium is missing an opaque stairwell pixel at local index ' + i / 4);
-        }
-      }
-      if (!opaque) throw Error('The stairwell sprite needs opaque pixels');
+      return image;
     }
-    return Array.from(visible);
-  }, { placement: lockerStairwell, sprite });
+    const [sprite, walls] = proof ? await Promise.all(proof.map(decode)) : [];
+    if (sprite && (sprite.width !== layout.width || sprite.height !== layout.height)) throw Error('Invalid native stair sprite size');
+    return layout.placements.map(({ corner, x, y, width, height, rotate180 }) => {
+      const crop = document.createElement('canvas');
+      crop.width = width;
+      crop.height = height;
+      const ctx = crop.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      function read(source, sx, sy, sw, sh) {
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(source, sx, sy, sw, sh, 0, 0, width, height);
+        return ctx.getImageData(0, 0, width, height).data;
+      }
+      const visible = read(canvas, x, y, width, height);
+      if (sprite && walls) {
+        const stairs = read(sprite, 0, 0, layout.width, layout.height);
+        const architecture = read(walls, x, y, width, height);
+        let exposed = 0, covered = 0;
+        for (let i = 0; i < visible.length; i += 4) {
+          const stairIndex = rotate180 ? visible.length - 4 - i : i;
+          const wallAlpha = architecture[i + 3];
+          if (stairs[stairIndex + 3] !== 255) continue;
+          // Canvas quantizes the premultiplied channels at the translucent wall edge.
+          const rounding = wallAlpha > 0 && wallAlpha < 255 ? 1 : 0;
+          for (let channel = 0; channel < 3; channel++) {
+            const expected = Math.round((architecture[i + channel] * wallAlpha +
+              stairs[stairIndex + channel] * (255 - wallAlpha)) / 255);
+            if (Math.abs(expected - visible[i + channel]) > rounding) {
+              throw Error(corner + ' has an incorrect stair or wall pixel at local index ' + i / 4);
+            }
+          }
+          if (wallAlpha === 255) covered++;
+          if (wallAlpha === 0) exposed++;
+        }
+        if (!exposed || !covered) throw Error(corner + ' needs exposed steps and steps hidden by the architecture');
+      }
+      return Array.from(visible);
+    });
+  }, { layout: lockerStairwell, proof });
 }
 
 async function verifyReservationPixels(stadium, approved) {
@@ -909,7 +928,11 @@ try {
   await page.getByLabel('Empty Gatehouse stadium').waitFor();
   await canvas.screenshot({ path: resolve(captures, 'layout-base.png') });
   const original = await canvas.evaluate(c => c.toDataURL());
-  const emptyStairwell = await stairwellCrop(canvas, await readFile(resolve(artwork, 'locker-stairwell.png'), 'base64'));
+  assert.deepEqual(Object.fromEntries(lockerStairwell.placements.map(({ corner, rotate180 }) => [corner, rotate180])),
+    { northwest: false, southeast: true });
+  const stairwellProof = await Promise.all([['locker-stairwell.png', 'image/png'], ['empty-gatehouse.webp', 'image/webp']]
+    .map(async ([file, mime]) => 'data:' + mime + ';base64,' + await readFile(resolve(artwork, file), 'base64')));
+  const emptyStairs = await stairwellCrops(canvas, stairwellProof);
   await benches.check();
   await benchKey.waitFor();
   const colors = await benchKey.locator('li span').evaluateAll(spans => spans.map(span =>
@@ -1251,7 +1274,7 @@ try {
   await benches.uncheck();
   await page.waitForFunction(src=>document.querySelector('canvas').toDataURL()===src,original);
   const fullBowl = await verifyKickoff(page, original, true);
-  assert.deepEqual(await stairwellCrop(canvas), emptyStairwell, 'The empty and full stadium share the native stairwell crop');
+  assert.deepEqual(await stairwellCrops(canvas), emptyStairs, 'The empty and full stadium share both native stairwell crops');
   await verifyKickoff(page, original, false);
   await verifyEndStands(page, original);
   await verifyEndPoseShowcase(page, original);
@@ -1290,6 +1313,7 @@ try {
   assert.equal(await page.getByLabel('Seating bay').inputValue(), '6');
   assert.match(await page.getByRole('link', { name: 'Link to this bay' }).getAttribute('href'), /&reservations=1#bowl-detail$/);
   await verifyReservationPixels(canvas, fullBowl);
+  assert.deepEqual(await stairwellCrops(canvas), emptyStairs, 'The kickoff guide preserves both stairwell crops');
   const westCrops = page.locator('#bowl-bay-native-canvas, #bowl-bay-zoom-canvas');
   const guidedCrops = await westCrops.evaluateAll(crops => crops.map(crop => crop.toDataURL()));
   assert.equal(guidedCrops.length, 2);
@@ -1306,6 +1330,7 @@ try {
   assert.equal(await reservations.isChecked(), true);
   assert.deepEqual(await legend.getByRole('listitem').allTextContents(), reservationLegend);
   await verifyReservationPixels(canvas, original);
+  assert.deepEqual(await stairwellCrops(canvas), emptyStairs, 'The empty guide preserves both stairwell crops');
   await reservations.uncheck();
   assert.equal(await canvas.evaluate(c => c.toDataURL()), original);
   await page.goto(url+'?view=scale');
@@ -1318,7 +1343,7 @@ try {
   await page.getByText(rosterLabel, { exact: true }).click();
   assert.equal(await page.locator('.bay-six-zoom').evaluate(element =>
     element.scrollWidth > element.clientWidth && document.documentElement.scrollWidth === window.innerWidth), true);
-  console.log('All 15 bays, native locker stairwell, end-zone and regalia palettes, apron reservations, side kits and facings, 22-player kickoff, approved west and end views, all 12 pose pairs, native and enlarged crops, rails and seat markers passed.');
+  console.log('All 15 bays, both corner locker stairs, end-zone and regalia palettes, apron reservations, side kits and facings, 22-player kickoff, approved west and end views, all 12 pose pairs, native and enlarged crops, rails and seat markers passed.');
 } finally {
   await browser?.close();await server.close();
 }

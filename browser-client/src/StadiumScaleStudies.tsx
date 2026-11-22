@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import architectureUrl from '../../assets/game/references/stadiums/scale-studies/empty-gatehouse.webp';
 import lockerStairwellUrl from '../../assets/game/references/stadiums/scale-studies/locker-stairwell.png';
-import lockerStairwellPlacement from '../../assets/game/references/stadiums/scale-studies/locker-stairwell.json';
+import lockerStairwellLayout from '../../assets/game/references/stadiums/scale-studies/locker-stairwell.json';
 import seatingUrl from '../../assets/game/references/stadiums/scale-studies/empty-seating.png';
 import seatingLayout from '../../assets/game/references/stadiums/scale-studies/empty-seating.json';
 import benchLayout from '../../assets/game/references/stadiums/scale-studies/gatehouse-benches.json';
@@ -290,7 +290,7 @@ async function loadBowlSection(study: BowlPlacement) {
 async function loadLayers() {
   const [architecture, lockerStairwell, seating, player, atlas, studies, showcases, fullBowl, kickoff, regalia] = await Promise.all([
     image(architectureUrl, bowl),
-    image(lockerStairwellUrl, lockerStairwellPlacement),
+    image(lockerStairwellUrl, lockerStairwellLayout),
     image(seatingUrl, bowl),
     loadScalePlayer(mockupPlayers('human')[0]),
     image(studyImages[studyImageRoot + 'supporter-kits.png'],
@@ -313,7 +313,18 @@ async function loadLayers() {
   const stadium = drawingSurface();
   const baseContext = stadium.getContext('2d')!;
   drawBowlGround(baseContext, true);
-  baseContext.drawImage(lockerStairwell, lockerStairwellPlacement.x, lockerStairwellPlacement.y);
+  baseContext.imageSmoothingEnabled = false;
+  for (const { x, y, width, height, rotate180 } of lockerStairwellLayout.placements) {
+    if (rotate180) {
+      baseContext.save();
+      baseContext.translate(x + width, y + height);
+      baseContext.scale(-1, -1);
+      baseContext.drawImage(lockerStairwell, 0, 0, width, height);
+      baseContext.restore();
+    } else {
+      baseContext.drawImage(lockerStairwell, x, y, width, height);
+    }
+  }
   baseContext.drawImage(architecture, 0, 0);
 
   const overlay = drawingSurface();
