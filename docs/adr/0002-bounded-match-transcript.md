@@ -1,5 +1,10 @@
 # A bounded transcript shares the authoritative match checkpoint
 
+**Format amendment (2026-11-21).** [ADR 0007](0007-server-owned-turn-sequence-presentation.md)
+replaces the embedded format-2 policy below with format 3 for readers and
+writers when implemented. It retains the checkpoint, digest and admission
+contract defined here.
+
 Status: accepted on 2026-09-27 for [issue #42](https://github.com/the-grognard-codes/fumbbl-rebuild/issues/42). The format-2 transcript records canonical accepted inputs, ordered native public reports and model changes, authoritative snapshots, server-timed chat, and a terminal digest. New matches keep this bounded, versioned transcript in the same compare-and-swap recovery artifact as the native engine checkpoint; a new schema marker identifies format 2. This makes a successful checkpoint the one durable boundary for an action and its outcomes. Exact retries read that checkpoint and append nothing. The completed result retains the public transcript and digest within the existing 16 MiB result limit; conservative storage admission must reject an action before native execution when it cannot reserve room for the resulting record. Active format-1 matches are not upgraded, and format-1 replay artifacts are removed as part of the build-phase migration.
 
 Native `ServerCommandModelSync` commands from the engine game log are the source for public reports, dice, and confirmed movement transitions. Store them in canonical home orientation alongside the originating revision; derive readable log lines and replay frames from these records without running the engine again. Keep immutable account, match-team, player, and side IDs in records and resolve display names on read. Use a server UTC epoch-millisecond clock, and index every accepted revision for the initial implementation. The server pages transcript reads and enforces the existing artifact limits; live publications may be lost because authorized readers can catch up from the checkpoint. Spectator chat uses the same persisted sequence and access check but never invokes a game command.
