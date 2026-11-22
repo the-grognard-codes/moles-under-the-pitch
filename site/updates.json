@@ -72,6 +72,46 @@
     "mergedAt": "2026-11-16T05:20:42Z"
   },
   {
+    "number": 542,
+    "title": "Retain first-use and warm checkpoint measurements",
+    "summary": "Added validated checkpoint measurement analysis with sample-qualified statistics, recovery checks and fixture sizes. The in-memory workload retains unsuccessful spike-reproduction evidence; intermittent live SQL and completion delays remain unresolved.",
+    "category": "Developer tools",
+    "url": "https://github.com/the-grognard-codes/fumbbl-rebuild/pull/542",
+    "mergedAt": "2026-11-15T08:19:46Z"
+  },
+  {
+    "number": 538,
+    "title": "Keep long-match game logs within a fixed DOM bound",
+    "summary": "The match log mounts at most 100 rows while Earlier, Later and Latest controls keep every event reachable. Historical reading stays stable as events arrive, and settled log dice use simpler faces. Matched live pan-latency measurements remain pending.",
+    "category": "Gameplay",
+    "url": "https://github.com/the-grognard-codes/fumbbl-rebuild/pull/538",
+    "mergedAt": "2026-11-15T08:07:10Z"
+  },
+  {
+    "number": 539,
+    "title": "Verify recovery after journal compaction failures",
+    "summary": "Added native-history tests for compaction conflicts and storage failures after genuine journal appends. They verify unchanged durable history, exact restoration, one successful retry and duplicate handling after restart.",
+    "category": "Developer tools",
+    "url": "https://github.com/the-grognard-codes/fumbbl-rebuild/pull/539",
+    "mergedAt": "2026-11-15T07:55:08Z"
+  },
+  {
+    "number": 540,
+    "title": "Recognize loopback health probes and bound server restarts",
+    "summary": "Local health checks now accept numeric IPv4 and IPv6 loopback addresses. The local dev server retries a failed process up to three times. Unknown request log labels stay separate from protocol names, and valid match identifiers use canonical log context.",
+    "category": "Platform",
+    "url": "https://github.com/the-grognard-codes/fumbbl-rebuild/pull/540",
+    "mergedAt": "2026-11-15T07:44:12Z"
+  },
+  {
+    "number": 537,
+    "title": "Publish final scores while result saving recovers",
+    "summary": "The server can publish the durable final match state while it retries recoverable result writes. Computer coaches use one retry schedule, and terminal result failures release resident memory and appear in lifecycle metrics. Later soaks confirmed durable result recording. Final-state broadcast and completion timing remain under investigation.",
+    "category": "Gameplay",
+    "url": "https://github.com/the-grognard-codes/fumbbl-rebuild/pull/537",
+    "mergedAt": "2026-11-15T07:33:21Z"
+  },
+  {
     "number": 534,
     "title": "Keep durable matches loadable after persistence deadlines",
     "summary": "Loading a match rebuilds it from the last durable revision. A refused action checkpoint leaves that revision intact, and a final result can finish saving after the final checkpoint is secure.",
