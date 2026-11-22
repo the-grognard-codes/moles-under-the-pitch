@@ -1,5 +1,9 @@
 # Gatehouse gallery artwork
 
+## Locker-room stairs
+
+The northwest stairwell is a 45 × 36 px static ground sprite, registered at (111, 123) on the 790 × 1188 canvas. The pale threshold faces the field to the southeast. Each tread descends toward the torch in the northwest recess. Draw the sprite once over the dirt before placing the stadium walls. Its transparent margins expose the original apron. [Native sprite](locker-stairwell.png) · [Placement](locker-stairwell.json) · [Gallery detail at 4×](locker-stairwell-detail.webp)
+
 ## Pitch apron reservations
 
 The reservation layout records native pixel bounds on the 790 × 1188 Gatehouse canvas. Each area's `x`, `y` is its top-left corner. An optional `outline` lists local corner coordinates clockwise around the usable footprint. An omitted outline means the whole rectangle is available. Width and height extend to exclusive right and bottom edges. Future sideline figures can occupy their assigned footprint. Keep scenery and other groups clear of it. [Editable reservation layout](apron-reservations.json) · [Map](apron-reservations.webp)

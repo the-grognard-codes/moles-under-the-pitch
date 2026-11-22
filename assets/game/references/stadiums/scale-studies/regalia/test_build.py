@@ -9,6 +9,7 @@ import build
 
 HERE = build.HERE
 SEATS = HERE.parent
+APRON_GROUPS = ("staff", "reserves", "cheerleaders")
 # Native rectangles with exclusive right and bottom edges. These openings and
 # unlit bowls must remain clear, including when no supporters are present.
 OPENINGS = (
@@ -165,34 +166,43 @@ class RegaliaTest(unittest.TestCase):
                         self.assertFalse(any(l <= px < r and t <= py < b for l, t, r, b in passages))
         self.assertEqual({"home", "away"}, {p["owner"] for p in self.layout["placements"]})
 
-    def test_apron_reservations_clear_the_pitch_gate_and_fixed_art(self):
-        plan = read(SEATS / "apron-reservations.json")
-        size = self.architecture.size
-        self.assertEqual(size, (plan["canvas"]["width"], plan["canvas"]["height"]))
-        fixed = self.architecture.copy()
+    def apron_blockers(self):
+        fixed = self.architecture.point(lambda alpha: 255 if alpha else 0)
         for piece in self.layout["placements"]:
             frame = self.sheet["sprites"][piece["sprite"]]
-            silhouette = self.atlas.crop(frame_bounds(frame)).getchannel("A")
+            silhouette = self.atlas.crop(frame_bounds(frame)).getchannel("A").point(lambda alpha: 255 if alpha else 0)
             fixed.paste(255, (piece["x"], piece["y"]), silhouette)
         # Include the shaggy grass outside the chalk and the lane from the south gate.
         blockers = ImageDraw.Draw(fixed)
         blockers.rectangle((149, 162, 642, 1007), fill=255)
         blockers.rectangle((357, 1001, 434, 1048), fill=255)
+        return fixed
 
+    def reservation_footprint(self, area):
+        x, y, w, h = (area[key] for key in ("x", "y", "width", "height"))
+        width, height = self.architecture.size
+        points = area.get("outline", [(0, 0), (w, 0), (w, h), (0, h)])
+        self.assertTrue(all(0 <= dx <= w and 0 <= dy <= h for dx, dy in points))
+        self.assertTrue(0 <= x < x + w <= width and 0 <= y < y + h <= height)
+        # Sample at pixel centres. Right and bottom outline coordinates are exclusive.
+        native = Image.new("L", (2 * w, 2 * h))
+        ImageDraw.Draw(native).polygon([(2 * dx, 2 * dy) for dx, dy in points], fill=255)
+        footprint = native.resize((w, h), Image.Resampling.NEAREST)
+        self.assertEqual((0, 0, w, h), footprint.getbbox())
+        return footprint
+
+    def test_apron_reservations_clear_the_pitch_gate_and_fixed_art(self):
+        plan = read(SEATS / "apron-reservations.json")
+        size = self.architecture.size
+        self.assertEqual(size, (plan["canvas"]["width"], plan["canvas"]["height"]))
+        fixed = self.apron_blockers()
         occupied = Image.new("L", size)
-        for kind in ("staff", "reserves", "cheerleaders"):
+        for kind in APRON_GROUPS:
             sides = {}
             for area in plan[kind]:
                 with self.subTest(area=area["id"]):
-                    x, y, w, h = (area[key] for key in ("x", "y", "width", "height"))
-                    points = area.get("outline", [(0, 0), (w, 0), (w, h), (0, h)])
-                    self.assertTrue(all(0 <= dx <= w and 0 <= dy <= h for dx, dy in points))
-                    self.assertTrue(0 <= x < x + w <= size[0] and 0 <= y < y + h <= size[1])
-                    # Sample at pixel centres. Right and bottom outline coordinates are exclusive.
-                    native = Image.new("L", (2 * w, 2 * h))
-                    ImageDraw.Draw(native).polygon([(2 * dx, 2 * dy) for dx, dy in points], fill=255)
-                    footprint = native.resize((w, h), Image.Resampling.NEAREST)
-                    self.assertEqual((0, 0, w, h), footprint.getbbox())
+                    x, y, w = (area[key] for key in ("x", "y", "width"))
+                    footprint = self.reservation_footprint(area)
                     box = frame_bounds(area)
                     self.assertIsNone(ImageChops.multiply(fixed.crop(box), footprint).getbbox(), "blocked footprint")
                     self.assertIsNone(ImageChops.multiply(occupied.crop(box), footprint).getbbox(), "shared footprint")
@@ -217,6 +227,34 @@ class RegaliaTest(unittest.TestCase):
                         self.assertEqual(396, (left + right) / 2)
                     else:
                         self.assertEqual(585, (top + bottom) / 2)
+
+    def test_locker_stairwell_alpha_clears_existing_apron_art(self):
+        frame = read(SEATS / "locker-stairwell.json")
+        self.assertTrue(all(type(frame[k]) is int for k in ("x", "y", "width", "height")))
+        x, y, right, bottom = frame_bounds(frame)
+        width, height = self.architecture.size
+        self.assertTrue(0 <= x < right <= width and 0 <= y < bottom <= height)
+        with (SEATS / "locker-stairwell.png").open("rb") as source, Image.open(source) as artwork:
+            self.assertEqual("PNG", artwork.format)
+            self.assertEqual(1, getattr(artwork, "n_frames", 1))
+            self.assertEqual((frame["width"], frame["height"]), artwork.size)
+            # Pillow can discard small nonzero alpha values when decoding 16-bit RGBA.
+            source.seek(24)  # PNG IHDR bit depth.
+            self.assertLessEqual(source.read(1)[0], 8)
+            visible = artwork.convert("RGBA").getchannel("A").point(lambda alpha: 255 if alpha else 0)
+        self.assertIsNotNone(visible.getbbox(), "empty stairwell sprite")
+
+        plan = read(SEATS / "apron-reservations.json")
+        reservations = Image.new("L", self.architecture.size)
+        for kind in APRON_GROUPS:
+            for area in plan[kind]:
+                reservations.paste(255, (area["x"], area["y"]), self.reservation_footprint(area))
+        for label, blockers in (("architecture, regalia or turf", self.apron_blockers()),
+                                ("a reserved apron footprint", reservations)):
+            overlap = ImageChops.multiply(blockers.crop((x, y, right, bottom)), visible).getbbox()
+            if overlap:
+                l, t, r, b = overlap
+                self.fail(f"Stairwell covers {label} within native bounds {(x + l, y + t, x + r, y + b)}")
 
 
 if __name__ == "__main__":

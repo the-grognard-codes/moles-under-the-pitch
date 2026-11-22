@@ -16,6 +16,12 @@ Three pointed lion standards hang from the north wall, and each side bay has a p
 
 ![All four Gatehouse stands at kickoff, with the red away crowd on the right](../../assets/game/references/stadiums/scale-studies/kickoff.webp)
 
+### Northwest locker-room stairs
+
+Players enter from the dirt at the southeast lip of the stairwell. The stone steps descend diagonally toward the northwest corner, where a small torch lights the locker-room landing. A strip of earth separates the opening from the stadium wall. The stairs occupy the same spot in the empty stadium and at kickoff.
+
+![Four-times native crop of the Gatehouse stairwell between the corner wall and the painted end zone](../../assets/game/references/stadiums/scale-studies/locker-stairwell-detail.webp)
+
 ### Pitch apron reservations
 
 Turn on **Apron reservations** in the full stadium or empty stadium gallery. The solid red outlines mark space for coaches, apothecaries and other sideline staff. The dashed blue outlines immediately below them mark space for reserve players. The home team uses the west touchline and the visitors use the east. The guide opens directly at `/stadium-mockup?view=full-bowl&reservations=1`.

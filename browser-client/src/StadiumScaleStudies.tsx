@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import architectureUrl from '../../assets/game/references/stadiums/scale-studies/empty-gatehouse.webp';
+import lockerStairwellUrl from '../../assets/game/references/stadiums/scale-studies/locker-stairwell.png';
+import lockerStairwellPlacement from '../../assets/game/references/stadiums/scale-studies/locker-stairwell.json';
 import seatingUrl from '../../assets/game/references/stadiums/scale-studies/empty-seating.png';
 import seatingLayout from '../../assets/game/references/stadiums/scale-studies/empty-seating.json';
 import benchLayout from '../../assets/game/references/stadiums/scale-studies/gatehouse-benches.json';
@@ -286,8 +288,9 @@ async function loadBowlSection(study: BowlPlacement) {
 }
 
 async function loadLayers() {
-  const [architecture, seating, player, atlas, studies, showcases, fullBowl, kickoff, regalia] = await Promise.all([
+  const [architecture, lockerStairwell, seating, player, atlas, studies, showcases, fullBowl, kickoff, regalia] = await Promise.all([
     image(architectureUrl, bowl),
+    image(lockerStairwellUrl, lockerStairwellPlacement),
     image(seatingUrl, bowl),
     loadScalePlayer(mockupPlayers('human')[0]),
     image(studyImages[studyImageRoot + 'supporter-kits.png'],
@@ -310,6 +313,7 @@ async function loadLayers() {
   const stadium = drawingSurface();
   const baseContext = stadium.getContext('2d')!;
   drawBowlGround(baseContext, true);
+  baseContext.drawImage(lockerStairwell, lockerStairwellPlacement.x, lockerStairwellPlacement.y);
   baseContext.drawImage(architecture, 0, 0);
 
   const overlay = drawingSurface();

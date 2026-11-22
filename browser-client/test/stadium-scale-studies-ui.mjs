@@ -15,6 +15,7 @@ const fullEndPlacements = JSON.parse(await readFile(resolve(artwork, 'end-stands
 const sidePlacements = JSON.parse(await readFile(resolve(artwork, 'side-stands/placements.json'), 'utf8'));
 const regaliaAtlas = JSON.parse(await readFile(resolve(artwork, 'regalia/atlas.json'), 'utf8'));
 const regaliaLayout = JSON.parse(await readFile(resolve(artwork, 'regalia/layout.json'), 'utf8'));
+const lockerStairwell = JSON.parse(await readFile(resolve(artwork, 'locker-stairwell.json'), 'utf8'));
 const [atlasPng, authoringPng] = await Promise.all(['supporter-kits.png', 'supporters.png'].map(file =>
   readFile(resolve(artwork, 'bay-six', file), 'base64')));
 const { ramps } = JSON.parse(await readFile(resolve(artwork, '../../../team-colors/v1/delivery/manifest.json'), 'utf8'));
@@ -371,6 +372,36 @@ const reservationLegend = [
   'Dashed blue marks reserve players.',
   'Dotted magenta marks cheerleaders.',
 ];
+
+function stairwellCrop(stadium, sprite) {
+  return stadium.evaluate(async (canvas, { placement: { x, y, width, height }, sprite }) => {
+    const crop = document.createElement('canvas');
+    crop.width = width;
+    crop.height = height;
+    const context = crop.getContext('2d');
+    context.drawImage(canvas, x, y, width, height, 0, 0, width, height);
+    const visible = context.getImageData(0, 0, width, height).data;
+    if (sprite) {
+      const image = new Image();
+      image.src = 'data:image/png;base64,' + sprite;
+      await image.decode();
+      if (image.width !== width || image.height !== height) throw Error('Stairwell is not native-size');
+      context.clearRect(0, 0, width, height);
+      context.drawImage(image, 0, 0);
+      const pixels = context.getImageData(0, 0, width, height).data;
+      let opaque = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (pixels[i + 3] !== 255) continue;
+        opaque++;
+        if (pixels[i] !== visible[i] || pixels[i + 1] !== visible[i + 1] || pixels[i + 2] !== visible[i + 2]) {
+          throw Error('The empty stadium is missing an opaque stairwell pixel at local index ' + i / 4);
+        }
+      }
+      if (!opaque) throw Error('The stairwell sprite needs opaque pixels');
+    }
+    return Array.from(visible);
+  }, { placement: lockerStairwell, sprite });
+}
 
 async function verifyReservationPixels(stadium, approved) {
   const areas = await stadium.evaluate(async (canvas, approved) => {
@@ -878,6 +909,7 @@ try {
   await page.getByLabel('Empty Gatehouse stadium').waitFor();
   await canvas.screenshot({ path: resolve(captures, 'layout-base.png') });
   const original = await canvas.evaluate(c => c.toDataURL());
+  const emptyStairwell = await stairwellCrop(canvas, await readFile(resolve(artwork, 'locker-stairwell.png'), 'base64'));
   await benches.check();
   await benchKey.waitFor();
   const colors = await benchKey.locator('li span').evaluateAll(spans => spans.map(span =>
@@ -1219,6 +1251,7 @@ try {
   await benches.uncheck();
   await page.waitForFunction(src=>document.querySelector('canvas').toDataURL()===src,original);
   const fullBowl = await verifyKickoff(page, original, true);
+  assert.deepEqual(await stairwellCrop(canvas), emptyStairwell, 'The empty and full stadium share the native stairwell crop');
   await verifyKickoff(page, original, false);
   await verifyEndStands(page, original);
   await verifyEndPoseShowcase(page, original);
@@ -1285,7 +1318,7 @@ try {
   await page.getByText(rosterLabel, { exact: true }).click();
   assert.equal(await page.locator('.bay-six-zoom').evaluate(element =>
     element.scrollWidth > element.clientWidth && document.documentElement.scrollWidth === window.innerWidth), true);
-  console.log('All 15 bays, end-zone and regalia palettes, apron reservations, side kits and facings, 22-player kickoff, approved west and end views, all 12 pose pairs, native and enlarged crops, rails and seat markers passed.');
+  console.log('All 15 bays, native locker stairwell, end-zone and regalia palettes, apron reservations, side kits and facings, 22-player kickoff, approved west and end views, all 12 pose pairs, native and enlarged crops, rails and seat markers passed.');
 } finally {
   await browser?.close();await server.close();
 }
