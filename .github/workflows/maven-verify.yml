@@ -22,6 +22,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Classify pull request changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      java: ${{ steps.classify.outputs.java || 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name == 'pull_request'
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          sparse-checkout: /tools/validation/java-pr-changes.mjs
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v4
+        if: github.event_name == 'pull_request'
+        with:
+          node-version: '26'
+      - name: Classify the complete pull request diff
+        id: classify
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch --unshallow --no-tags --filter=blob:none origin "$PR_BASE_SHA" "$PR_HEAD_SHA"
+          node tools/validation/java-pr-changes.mjs
+
   full-browser:
     if: github.event_name == 'workflow_dispatch' && inputs.full_browser_validation
     uses: ./.github/workflows/browser-validation.yml
@@ -38,12 +65,14 @@ jobs:
         with:
           node-version: '26'
       - run: node --test tools/test/dev-local.test.mjs tools/test/dev-local-clear-games.test.mjs tools/test/dev-local-install-formations.test.mjs tools/test/review-mount-source.test.mjs tools/test/match-review-start.test.mjs tools/test/review-current-matches-index.test.mjs tools/test/game-service-start.test.mjs
-      - run: node --test tools/test/validation.test.mjs tools/test/browser-local.test.mjs tools/test/deploy.test.mjs tools/test/compare-browser-workloads.test.mjs tools/test/capture-analysis.test.mjs
+      - run: node --test tools/test/validation.test.mjs tools/test/java-pr-changes.test.mjs tools/test/browser-local.test.mjs tools/test/deploy.test.mjs tools/test/compare-browser-workloads.test.mjs tools/test/capture-analysis.test.mjs
       - run: npm test --prefix computer-player
 
   baseline:
     # Preserve the required-check context while validating the supported runtime.
     name: Validate
+    needs: [changes]
+    if: ${{ !cancelled() && !(github.event_name == 'pull_request' && needs.changes.result == 'success' && needs.changes.outputs.java == 'false') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -82,6 +111,8 @@ jobs:
 
   target-shards:
     name: Java 21 state tests (${{ matrix.shard }}/4)
+    needs: [changes]
+    if: ${{ !cancelled() && !(github.event_name == 'pull_request' && needs.changes.result == 'success' && needs.changes.outputs.java == 'false') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
@@ -156,25 +187,41 @@ jobs:
           retention-days: 14
 
   target:
-    # Preserve the established required-check context; all matrix children must pass.
+    # The required check handles an intentional docs-only skip or validates all four shards.
     name: Java 21 target verification
-    needs: [target-shards]
+    needs: [changes, target-shards]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    env:
+      DOCS_ONLY: ${{ github.event_name == 'pull_request' && needs.changes.result == 'success' && needs.changes.outputs.java == 'false' }}
     steps:
+      - name: Confirm the intentional documentation-only skip
+        if: env.DOCS_ONLY == 'true'
+        env:
+          SHARD_RESULT: ${{ needs.target-shards.result }}
+        run: |
+          if [[ "$SHARD_RESULT" != skipped ]]; then
+            echo "::error::Expected the Java shards to be skipped, got $SHARD_RESULT."
+            exit 1
+          fi
+          echo "Java verification intentionally skipped for a documentation-only pull request."
       - uses: actions/checkout@v4
+        if: env.DOCS_ONLY != 'true'
       - uses: actions/setup-node@v4
+        if: env.DOCS_ONLY != 'true'
         with:
           node-version: '26'
       - uses: actions/download-artifact@v4
+        if: env.DOCS_ONLY != 'true'
         with:
           pattern: java-native-*
           path: .tools/validation-reports
           merge-multiple: true
       - name: Require successful jobs and complete native execution
+        if: env.DOCS_ONLY != 'true'
         env:
-          VALIDATION_NEEDS: ${{ toJSON(needs) }}
+          VALIDATION_NEEDS: ${{ format('{{"target-shards":{0}}}', toJSON(needs.target-shards)) }}
         run: node tools/validation/coverage-gate.mjs native .tools/validation-reports
 
   static-checks:
@@ -220,6 +267,8 @@ jobs:
 
   game-session:
     name: Firebase game session service
+    needs: [changes]
+    if: ${{ !cancelled() && !(github.event_name == 'pull_request' && needs.changes.result == 'success' && needs.changes.outputs.java == 'false') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
