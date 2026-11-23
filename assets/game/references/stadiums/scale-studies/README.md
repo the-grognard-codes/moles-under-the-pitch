@@ -2,7 +2,7 @@
 
 ## Locker-room stairs
 
-The northwest and southeast entrances share one 46 × 37 px ground sprite. Its exposed flight measures about 20 px across, rim to rim. On the 790 × 1188 canvas, the northwest copy occupies 44 × 35 px at (106, 122). The southeast copy occupies 52 × 42 px at (631, 1005) and turns 180° to meet its wider diagonal wall. Use nearest-neighbour scaling and draw both copies before the masonry. The wall covers the far edge of each landing across the full bevel, including the partially transparent stone edges. [Native sprite](locker-stairwell.png) · [Corner placements](locker-stairwell.json) · [Both wall joins at 4×](locker-stairwell-detail.webp)
+The northwest and southeast entrances share one 45 × 36 px ground sprite. On the 790 × 1188 canvas, the northwest copy occupies 43 × 34 px at (106, 122). The southeast copy occupies 51 × 41 px at (632, 1006) and turns 180° to meet its wider diagonal wall. Use nearest-neighbour scaling and draw both copies before the masonry. The wall covers the far edge of each landing across the full bevel, including the partially transparent stone edges. [Native sprite](locker-stairwell.png) · [Corner placements](locker-stairwell.json) · [Both wall joins at 4×](locker-stairwell-detail.webp)
 
 ## Pitch apron reservations
 

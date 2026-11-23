@@ -1,0 +1,41 @@
+{
+  "approval": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/580",
+  "sourceRoot": "references/stadiums/scale-studies",
+  "sources": {
+    "empty-gatehouse.webp": "937a8ddcf0601602a01aa0c8b215c92edc0bfb4dc122e1db8305b92e3e7e949b",
+    "empty-seating.json": "6be590e9da321b547a4319b04775ea324548d579e050f6910ed9a3506d097ea6",
+    "empty-seating.png": "7e1ee65c18bd72d0f2308177cb338f95a4038b31af9f7752e13dac72506bf89a",
+    "end-stands/full-ends/bay-01.png": "1e23d867269b36f249d820865f189ccff1e94945b308618b5b4209258f0e8f01",
+    "end-stands/full-ends/bay-02.png": "fa843561095e43ba6851467c3b48185f07284cd4348b2a20e8e0150c05cd516f",
+    "end-stands/full-ends/bay-03.png": "1afba6eb2f455d48398d8830069cdb54389495d234413b4d1859658836c958f2",
+    "end-stands/full-ends/bay-12.png": "b45b6b424630262556edfc7dbaf2207d0677b7cb86a9fd67505773573b524867",
+    "end-stands/full-ends/bay-13.png": "6e14d2cdd7523c9b334b0ca3329a9ea516091525c211d8db523b1117b29184de",
+    "end-stands/full-ends/bay-14.png": "7f76ad59f856cefe986efa69380ed87077ad35d20bfb33cd16af4c35e185dfba",
+    "end-stands/full-ends/bay-15.png": "2b78e965706917e8c59e93632127fb7185816a73deed0ed451e103bfd22f5cd7",
+    "end-stands/full-ends/placements.json": "02cdbb5adc6da931e667d0f9c2edc5b938b6a3363c37722fa2178940c2307b57",
+    "locker-stairwell.json": "5419e1b725b6e3bcbd2a3a422b1911ad63f5086f905497cc69a0f5965c3d3969",
+    "locker-stairwell.png": "38a12d3290abb36c903a6a28ee671c1d0e83fbaa5baf4628ff509e0ce4348098",
+    "regalia/atlas.json": "ee0e9f79f3f169c82bd942fa89f29ce827b99f1afe86c8e6e861f8ca900f7afb",
+    "regalia/atlas.png": "f5357b48b2feffaa3a4db909d0964d6c53a95732b6260fb47b7a7db1dfb0a6a5",
+    "regalia/layout.json": "9144c86a958f8f30f8b5a970f3ae0ffbdd34b6dd33af3f2baa0c1ea564cf72d4",
+    "regalia/materials.png": "fe50830f2ca09d8402af71310f36bff6e63fd27542600aab540ce323cb2f470a",
+    "side-stands/bay-04.png": "cba2f895bab3c9873d0583a6018e385dd57dc7ba410381f447ad931291a8cc93",
+    "side-stands/bay-05.png": "03cd96b0212f090645284ac93c189a74f68df5505f3fae57a8a683779d3902c4",
+    "side-stands/bay-06.png": "8d4855afc5057c49ac8c6edec93f33c5ad47f4dcaf400629f3c45b229a9e88cf",
+    "side-stands/bay-07.png": "2707f6fd9747a18ec14d41bc3fffda0813ecca18700b1f7569f1e90cf5ce1ee8",
+    "side-stands/bay-08.png": "fee3bb1220ee812c8b28382eca63c778f6a1f5db68c07068508d6f528e8e5825",
+    "side-stands/bay-09.png": "8203d5d32a228096a40f7f789abc6ea26f35da47acebbdd1a03c76fe1bef5ca5",
+    "side-stands/bay-10.png": "1953cc7e40c877c0e91c6e4cff42b942d0300b87bda6247b60a82139c5e602db",
+    "side-stands/bay-11.png": "bb9720111d1eb19052010c89cc45d51474524f9aebdb9aac4f4d75e81568f1aa",
+    "side-stands/placements.json": "c4c957bfc2495489b9254f434584a3aa4290e9a57b7c393113244613a864dc0c"
+  },
+  "runtime": {
+    "architecture.webp": "937a8ddcf0601602a01aa0c8b215c92edc0bfb4dc122e1db8305b92e3e7e949b",
+    "crowd-materials.png": "8aa253802c72a0bca22d7bc2d48c5ee94ceee9c900aab206f04070cf42d7d326",
+    "crowd.png": "e5aadd17d41fc43ac818e3c61828fea5d1614b87a9a5fdcac59f5f28032769a8",
+    "regalia-materials.png": "41b2524ade0929508e9500c92114286e666d5f0d89b1e3722506c7930eef1e45",
+    "regalia.png": "f5357b48b2feffaa3a4db909d0964d6c53a95732b6260fb47b7a7db1dfb0a6a5",
+    "stairs.png": "38a12d3290abb36c903a6a28ee671c1d0e83fbaa5baf4628ff509e0ce4348098",
+    "views.json": "a762fd7185abb921658e84700caeb6c3ec9fe23a4633e988352338909cbb2fd6"
+  }
+}

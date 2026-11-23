@@ -18,6 +18,7 @@ import { diceDirectionAngles } from './dice-direction-presentation.ts';
 import { CircularSkillPrompt } from './CircularSkillPrompt.tsx';
 import './ui-round-four.css';
 import { PitchScenery } from './PitchScenery.tsx';
+import { LiveGatehouse, useLiveGatehouse } from './LiveGatehouse.tsx';
 import { PitchGrid } from './PitchGrid.tsx';
 import { PitchProjection, type Point, type PitchDirection, type PitchProjectionMode, type PerspectiveElevation } from './pitch-projection.ts';
 import { resolvePlayerArt, resolvePlayerPortrait, playerArtPlacement, type PlayerFacing } from './player-art.ts';
@@ -208,6 +209,7 @@ export function LivePitch({ view, selectedId, selectedIds = [], actions, pinnedA
   const camera = useMemo(() => new PitchProjection({ ...size, ...travel, end, mode, zoom, perspectiveElevation }),
     [size, travel, end, mode, zoom, perspectiveElevation]);
   const cameraRef = useRef(camera); cameraRef.current = camera;
+  const gatehouse = useLiveGatehouse(view, camera);
   const specialTargeting = !!decision || !!view.prompt || !!view.reaction && !isOnTheBallMovement(view, actions) || !!view.kickPreview
     || view.phase === 'PRE_MATCH' || view.phase === 'READY_FOR_KICKOFF' || !!pushChoices.length || jumpOptions !== null
     || actions.some(action => ['followUp', 'push', 'hitAndRun', 'kickoffMove', 'reactiveSquare'].includes(action.kind));
@@ -408,7 +410,8 @@ export function LivePitch({ view, selectedId, selectedIds = [], actions, pinnedA
           if (id && square) onDropPlayer(id, square.x, square.y); onEndDrag?.(); }}
         onClick={event => { if (!readOnly) { const square = point(event.clientX, event.clientY);
           if (square) chooseSquare(square.x, square.y, event.detail > 0 ? event.timeStamp : undefined); } }}>
-        {!backgroundFailed && <PitchScenery camera={camera} onError={onBackgroundError}/>}
+        {gatehouse ? <LiveGatehouse art={gatehouse} camera={camera}/> :
+          !backgroundFailed && <PitchScenery camera={camera} onError={onBackgroundError}/>}
         <PitchGrid camera={camera} passing={passing}/>
         <svg data-pitch-ground="true" viewBox={`0 0 ${size.width} ${size.height}`} aria-hidden="true">
           <defs><marker id={`${markerId}-route-arrow`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="9" markerHeight="9" orient="auto" markerUnits="userSpaceOnUse"><path d="M1 1 9 5 1 9Z" className="live-route-arrowhead"/></marker></defs>
@@ -556,7 +559,7 @@ export function LivePitch({ view, selectedId, selectedIds = [], actions, pinnedA
           selectingDestination={selectingDestination} onDestinationStage={selecting => setDestinationStage(selecting ? decision.key : null)}
           layoutKey={`${camera.focus}:${camera.transverseFocus}:${camera.zoom}:${camera.end}:${camera.mode}`}
           onAction={onDecisionAction}/>}
-        {backgroundFailed && <span className="live-pitch-error">Pitch texture unavailable; plain field shown.</span>}
+        {backgroundFailed && !gatehouse && <span className="live-pitch-error">Pitch texture unavailable; plain field shown.</span>}
       </div>
       {splash && <MatchSplash {...splash} cameraEnd={camera.end}/>}
     </div>
