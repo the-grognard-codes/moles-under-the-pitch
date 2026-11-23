@@ -58,16 +58,24 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ steps.toolchain.outputs.java-version }}
+      - name: Cache project-local Maven archive
+        uses: actions/cache@v4
+        with:
+          path: .tools/downloads
+          key: ${{ runner.os }}-maven-archive-${{ hashFiles('tools/target-build-toolchain.json') }}
       - name: Bootstrap project Maven with Java 21
         shell: pwsh
         run: ./tools/bootstrap.ps1 -JavaHome $env:JAVA_HOME
+      - name: Restore project-local Maven repository
+        # Let the full reactor builds in the shards populate the shared cache.
+        uses: actions/cache/restore@v4
+        with:
+          path: .tools/repository
+          key: ${{ runner.os }}-java21-${{ hashFiles('tools/target-build-toolchain.json', '**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-java21-
       - name: Check bootstrap and build tooling
         shell: pwsh
         run: ./tools/test-tooling.ps1
-      - uses: actions/cache@v4
-        with:
-          path: .tools/repository
-          key: ${{ runner.os }}-browser-runtime-${{ hashFiles('tools/target-build-toolchain.json', '**/pom.xml') }}
       - name: Check browser startup, queue and endpoint boundaries
         shell: pwsh
         run: ./tools/target-build.ps1 test -JavaHome $env:JAVA_HOME -Module ffb-server -Test 'BrowserRuntimeSelectionTest,BrowserEngineQueueTest,BrowserJettyContractTest,BrowserV2RouteTest'
@@ -98,6 +106,12 @@ jobs:
           distribution: temurin
           java-version: ${{ steps.toolchain.outputs.java-version }}
 
+      - name: Cache project-local Maven archive
+        uses: actions/cache@v4
+        with:
+          path: .tools/downloads
+          key: ${{ runner.os }}-maven-archive-${{ hashFiles('tools/target-build-toolchain.json') }}
+
       - name: Set up project-local Maven
         shell: pwsh
         run: ./tools/bootstrap.ps1 -JavaHome $env:JAVA_HOME
@@ -107,6 +121,7 @@ jobs:
         with:
           path: .tools/repository
           key: ${{ runner.os }}-java21-${{ hashFiles('tools/target-build-toolchain.json', '**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-java21-
 
       - name: Reject disabled target tests
         shell: pwsh
