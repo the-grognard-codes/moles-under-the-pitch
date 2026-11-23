@@ -10,7 +10,7 @@ Created and verified **69,836 file copies in 620 provenance tar.gz archives**. S
 
 - Project-root `cold-storage` is a Windows directory symbolic link to `\\192.168.1.250\gdrive\coding\cold-storage`.
 - `.gitignore` ignores both the link and a directory at that root path. The link is not tracked; Git does not traverse it for content.
-- Batch: `cold-storage/fumbbl-rebuild/2026-11-09/batch-20261109T050910Z/`.
+- Current batch location is `cold-storage/moles-under-the-pitch/2026-11-09/batch-20261109T050910Z/`. The original publication records use the directory name `fumbbl-rebuild`.
 - The older Drive-linked `archive/` and its contents were left intact and were not traversed.
 
 ## Stored groups
