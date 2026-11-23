@@ -110,9 +110,4 @@ This pivot increases camera, hit-testing, occlusion, and sprite-art work. The de
 
 ## Amendments
 
-- **2026-11-23: the DOM/SVG renderer selection is final.** The maintainer confirmed the selection ([decision](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/612#issuecomment-7092566289)), so it is no longer conditional on integrated acceptance. Three passages no longer apply:
-  - the condition in [What changes](#what-changes);
-  - the statement that PixiJS remains a viable alternative;
-  - the rule for reopening the selection, in [Feasibility with the selected renderers](#feasibility-with-the-selected-renderers).
-
-  Changing the renderer now needs a new ADR. The integration checks above still govern the camera and interaction work.
+- **2026-11-23.** The [maintainer decision relayed in the PR](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/612#issuecomment-7092566289) finalized DOM/SVG for the playable pitch and closed the integrated-acceptance condition in [What changes](#what-changes). The [feasibility discussion](#feasibility-with-the-selected-renderers) remains the technical record of the alternatives and evidence that could prompt investigation. Adopting a different production renderer requires a replacement ADR. The camera and interaction checks still apply.

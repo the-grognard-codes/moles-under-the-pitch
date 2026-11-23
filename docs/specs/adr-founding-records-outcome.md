@@ -13,8 +13,8 @@
 
 The four original decision bodies match the accepted September 6 revision after normalizing link destinations. Historical code and evidence links in those bodies resolve at that revision. The renderer amendment and subsequent acceptance, Java 21 baseline, V1 retirement, and the publication, recovery and worker decisions are dated separately.
 
-The [architecture map](../agents/architecture-map.md#foundations) identifies the live DOM/SVG pitch and distinguishes the deferred long-term hosting decision from current deployment. The [ADR template](../agents/adr-template.md#locations-and-lifecycle) assigns numbers at merge and records acceptance separately.
+The [architecture map](../agents/architecture-map.md#foundations) identifies the live DOM/SVG pitch and distinguishes the deferred long-term hosting decision from current deployment. The [ADR template](../agents/adr-template.md#locations-and-lifecycle) finalizes the number when the draft becomes accepted. The numbered, accepted revision goes through review and checks before merge.
 
 Validation covered unique numbers 0001 through 0013, the team-record rename and its references, relative links and fragments in changed Markdown files, and whitespace. Historical references to the former notes series remain in the archive and the original request. All changed files are documentation.
 
-[Issue #611](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611) and [issue #550](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/550) own the subsequent architecture decisions.
+[Issue #611](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611) and [issue #550](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/550) own the subsequent architecture decisions. The #550 handoff has been updated to keep a proposal on its branch and cite the promoted application-seams record after #610 lands.

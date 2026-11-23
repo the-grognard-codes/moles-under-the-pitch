@@ -2,11 +2,11 @@
 
 Status: accepted by the owner on 2026-09-06. [Acceptance and source](../../.notes/overhaul-analysis/04-technology-and-decisions.md#adr-002-typescript-react-dom-interface-pixijs-board-vite) · [September 6 revision](https://github.com/the-grognard-codes/moles-under-the-pitch/blob/120dd9953a71d7b0bff031c751feffae7f55b5f8/.notes/overhaul-analysis/04-technology-and-decisions.md#adr-002-typescript-react-dom-interface-pixijs-board-vite)
 
-## Amendments and follow-up
+Promotion issue: [#610](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/610)
 
-- 2026-09-25. After the renderer parity review, the owner provisionally selected DOM/SVG for the pitch, pending integrated acceptance. TypeScript, React and Vite remain in use. The local Pixi parity route remains comparison evidence, not the product renderer. [Renderer parity decision](../../.notes/overhaul-analysis/m5-renderer-parity-review-2026-09-24.md)
-- 2026-10-04. Local live-match acceptance passed with the DOM/SVG pitch, as [ADR 0003](0003-coach-oriented-angled-pitch.md#feasibility-with-the-selected-renderers) records. [Acceptance report](../specs/coach-oriented-match-ui-acceptance.md)
-- 2026-11-23. The maintainer confirmed DOM/SVG as final, closing the provisional conditions of the 2026-09-25 selection. [Decision](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/612#issuecomment-7092566289) · [ADR 0003 amendment](0003-coach-oriented-angled-pitch.md#amendments)
+Promotion request: [Founding ADR consolidation](../specs/adr-founding-records.md)
+
+DOM/SVG replaced the original PixiJS pitch choice. See [amendments and follow-up](#amendments-and-follow-up).
 
 ## Original decision, 2026-09-06
 
@@ -26,3 +26,9 @@ Pixi's current docs recommend WebGL for production, describe WebGPU as experimen
 Phaser is a browser-oriented 2D framework with JavaScript/TypeScript support and WebGL/Canvas rendering. Pin a specific supported major before prototyping; do not copy the notes' Phaser 3 assumption as an audit conclusion. [Phaser introduction](https://docs.phaser.io/phaser/getting-started/what-is-phaser). React's component/event/state model fits the roster builder and panels; choosing it here is a maintainability judgment, not a performance finding. [React guide](https://react.dev/learn).
 
 Use Node 24 LTS for the proposed frontend toolchain rather than an obsolete Node minimum. Vite documents minimum Node requirements, while Node's lifecycle page identifies supported release lines; revalidate both when pinning the implementation lockfile. Node is not a required game-server process in this design. [Vite requirements](https://vite.dev/guide/); [Node release status](https://nodejs.org/en/about/previous-releases).
+
+## Amendments and follow-up
+
+- 2026-09-25. After the renderer parity review, the owner provisionally selected DOM/SVG for the pitch, pending integrated acceptance. TypeScript, React and Vite remain in use. The local Pixi parity route remains comparison evidence, not the product renderer. [Renderer parity decision](../../.notes/overhaul-analysis/m5-renderer-parity-review-2026-09-24.md)
+- 2026-10-04. Local live-match acceptance passed with the DOM/SVG pitch, as [ADR 0003](0003-coach-oriented-angled-pitch.md#feasibility-with-the-selected-renderers) records. [Acceptance report](../specs/coach-oriented-match-ui-acceptance.md)
+- 2026-11-23. The maintainer decision relayed in the PR made DOM/SVG final and closed the integrated-acceptance condition. [Decision](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/612#issuecomment-7092566289) · [ADR 0003 amendment](0003-coach-oriented-angled-pitch.md#amendments)
