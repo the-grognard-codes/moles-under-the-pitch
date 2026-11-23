@@ -8,7 +8,7 @@ purposes live in [Readme.md](../../Readme.md); vocabulary lives in
 ## Foundations
 
 - [ADR 0010](../adr/0010-java-backend.md) retains the Java rules engine. Java 21 is the sole build and runtime baseline.
-- [ADR 0011](../adr/0011-browser-stack.md) selects TypeScript, React and Vite. Its September 25 amendment selects DOM/SVG for the pitch used in [ADR 0003](../adr/0003-coach-oriented-angled-pitch.md).
+- [ADR 0011](../adr/0011-browser-stack.md) selects TypeScript, React and Vite. Its amendments select DOM/SVG for the pitch used in [ADR 0003](../adr/0003-coach-oriented-angled-pitch.md), and that selection has been final since 2026-11-23.
 - [ADR 0012](../adr/0012-versioned-browser-protocol.md) defines the versioned JSON/WebSocket boundary. V2 is the sole browser runtime.
 - [ADR 0013](../adr/0013-application-seams.md) keeps application services around the BB2025 engine. Its dated follow-ups link the publication, persistence and worker decisions.
 

@@ -4,8 +4,9 @@ Status: accepted by the owner on 2026-09-06. [Acceptance and source](../../.note
 
 ## Amendments and follow-up
 
-- 2026-09-25. The owner selected DOM/SVG for the playable board after the renderer parity review. TypeScript, React and Vite remain in use. [Renderer parity decision](../../.notes/overhaul-analysis/m5-renderer-parity-review-2026-09-24.md)
-- 2026-10-04. Live-match acceptance confirmed DOM/SVG for the coach-oriented pitch specified by [ADR 0003](0003-coach-oriented-angled-pitch.md). [Acceptance report](../specs/coach-oriented-match-ui-acceptance.md)
+- 2026-09-25. After the renderer parity review, the owner provisionally selected DOM/SVG for the pitch, pending integrated acceptance. TypeScript, React and Vite remain in use. The local Pixi parity route remains comparison evidence, not the product renderer. [Renderer parity decision](../../.notes/overhaul-analysis/m5-renderer-parity-review-2026-09-24.md)
+- 2026-10-04. Local live-match acceptance passed with the DOM/SVG pitch, as [ADR 0003](0003-coach-oriented-angled-pitch.md#feasibility-with-the-selected-renderers) records. [Acceptance report](../specs/coach-oriented-match-ui-acceptance.md)
+- 2026-11-23. The maintainer confirmed DOM/SVG as final, closing the provisional conditions of the 2026-09-25 selection. [Decision](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/612#issuecomment-7092566289) · [ADR 0003 amendment](0003-coach-oriented-angled-pitch.md#amendments)
 
 ## Original decision, 2026-09-06
 
