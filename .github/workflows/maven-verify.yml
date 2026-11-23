@@ -4,9 +4,11 @@ on:
   pull_request:
     branches:
       - main
+      - codex/622-probe-base
   push:
     branches:
       - main
+      - codex/622-probe-base
   workflow_dispatch:
     inputs:
       full_browser_validation:
