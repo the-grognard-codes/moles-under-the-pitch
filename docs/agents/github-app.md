@@ -5,6 +5,11 @@ Claude acts as `grognard-claude[bot]`. GitHub attributes pushes, PRs, and
 comments to the app that performed them. The maintainer can formally approve
 PRs opened by either bot.
 
+If app authentication fails, diagnose and retry with the app. Using the
+maintainer's GitHub identity for a write, including through the connected
+GitHub account, requires an explicit request for that action. A publishing
+handoff authorizes the work under the configured app identity.
+
 One app can serve every repository on the account. The tooling lives in this
 repository, but once set up it works for Codex in any repository the app is installed on.
 
