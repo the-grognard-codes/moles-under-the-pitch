@@ -117,3 +117,4 @@
     </build>
 
 </project>
+<!-- Temporary CI probe for Maven dependency cache restoration after a POM-only change. -->
