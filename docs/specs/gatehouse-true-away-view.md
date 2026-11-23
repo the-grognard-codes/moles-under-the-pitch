@@ -1,5 +1,7 @@
 # Feature: Turn the Gatehouse stadium with the pitch in the away overhead view
 
+Issue: #618
+
 ## Abstract
 
 From the away coach end at 90° overhead, show the Gatehouse turned with the pitch, so the gate is at the top of the screen. This replaces the D1 interim that shipped in PR #609, which keeps the architecture in the home orientation and swaps only the kits and regalia.

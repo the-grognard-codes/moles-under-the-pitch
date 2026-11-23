@@ -1,5 +1,7 @@
 # Feature: A repository skill for creating stadiums in batches
 
+Issue: #619
+
 ## Abstract
 
 Capture stadium creation as a repeatable process in a repository skill under `.agents/skills/`, alongside `team-pixel-sprites`. 6–7 more stadiums are planned. The skill should let several of them be produced in one batch, and the Gatehouse should be rebuilt through it as the reference example.

@@ -7,8 +7,8 @@ Issue: #605
 Implemented in [PR #609](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/609) (merge `6c049da0f`, 2026-11-22). This spec is kept as the record of the decisions behind it. The line references below describe `main` before that change.
 
 - **The away overhead end (the 180° view) uses the D1 interim.** `assets/game/pitch/stadiums/gatehouse/views.json` has `home` and `away` entries. The `away` entry reuses the `approved` layers and the `full` crowd, so the gate stays at the bottom of the screen. It rotates the world alignment (`worldOrigin [0, 15]`, `worldRight [0, -1]`, `worldDown [1, 0]`) so the stadium still registers to the turned grid. It also swaps `kitByBay` between the west bays (4–7) and east bays (8–11), and switches to the `away` regalia set. The visitors therefore sit at screen-left, with upright lettering. The browser code reads this manifest (`browser-client/src/gatehouse-stadium.ts`) and has no per-end branches, as requirements 10–11 require.
-- **The full away view is still open.** It replaces the interim by changing the `away` manifest entry and its art. See [`gatehouse-true-away-view.md`](gatehouse-true-away-view.md).
-- **The stadium creation skill is still open.** 6–7 more stadiums are planned. See [`stadium-creation-skill.md`](stadium-creation-skill.md).
+- **The full away view is still open.** It replaces the interim by changing the `away` manifest entry and its art. See #618 ([`gatehouse-true-away-view.md`](gatehouse-true-away-view.md)).
+- **The stadium creation skill is still open.** 6–7 more stadiums are planned. See #619 ([`stadium-creation-skill.md`](stadium-creation-skill.md)).
 
 ## Abstract
 
@@ -53,7 +53,7 @@ Line references are to `origin/main` at `5f6779969`.
 
 ## Follow-up work
 
-These are separate issues, listed so this implementation leaves room for them. Their specs are [`gatehouse-true-away-view.md`](gatehouse-true-away-view.md) and [`stadium-creation-skill.md`](stadium-creation-skill.md).
+These are separate issues, listed so this implementation leaves room for them. They are tracked in #618 ([`gatehouse-true-away-view.md`](gatehouse-true-away-view.md)) and #619 ([`stadium-creation-skill.md`](stadium-creation-skill.md)).
 
 - **True away view for the Gatehouse.** This is the full fix from D1. Repaint the raised parts (north doorways, south gate arch, end-stand bench risers, braziers) for the opposite viewing direction. Re-seat the side-stand crowds against the rotated benches, swap the end stands to their front and rear poses, and get owner approval in the gallery. Requirements 10–13 make the live switch a change to the `away` manifest entry alone.
 - **A stadium creation skill for batch production.** 6–7 more stadiums are planned, so stadium creation must be a repeatable process, captured as a repository skill in `.agents/skills/` alongside `team-pixel-sprites`. The skill should define:
