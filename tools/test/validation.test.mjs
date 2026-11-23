@@ -76,6 +76,20 @@ test('only existing exact opt-in skip identities and reasons may pass coverage',
   assert.throws(() => validateReports(value, { ...configuration, allowedSkips }), /accounting mismatch/);
 });
 
+test('coverage accepts zero cases only with a manifest-approved missing opt-in variable', () => {
+  const value = reports();
+  const suite = value[0].suites[0];
+  suite.tests = 0;
+  const config = { ...configuration, allowedEmptySuites: { suite1: ['FIXTURE_OPT_IN'] } };
+  assert.throws(() => validateReports(value, config), /empty suite/);
+  suite.missingEnvironmentVariable = 'UNRELATED_VARIABLE';
+  assert.throws(() => validateReports(value, config), /empty suite/);
+  suite.missingEnvironmentVariable = 'FIXTURE_OPT_IN';
+  assert.equal(validateReports(value, config).length, 4);
+  suite.failures = 1;
+  assert.throws(() => validateReports(value, config), /failed tests/);
+});
+
 test('aggregate job gate rejects skipped, cancelled, failed, and absent dependencies', () => {
   assertDependencies({ build: { result: 'success' }, browser: { result: 'success' } }, ['build', 'browser']);
   for (const result of ['failure', 'cancelled', 'skipped', undefined]) {
@@ -144,15 +158,16 @@ test('project browser inventory covers every harness with an explicit CI or stan
   await loadBrowserManifest(root);
 });
 
-test('actual CI gate accepts complete reports and rejects missing artifacts or failed matrix dependencies', async () => {
+test('actual CI gate requires current native reports, all server suites, and successful matrix jobs', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'validation-gate-'));
   try {
     const native = JSON.parse(await readFile(join(root, 'tools/validation/native-shards.json'), 'utf8'));
-    for (const [index, ids] of native.shards.entries()) {
-      const report = { schemaVersion: 1, family: 'native', shard: index + 1, commit: 'current', passed: true,
-        suites: ids.map(id => ({ id, tests: 1, durationMs: 0, failures: 0, errors: 0, skipped: 0 })) };
-      await writeFile(join(directory, `native-${index + 1}.json`), JSON.stringify(report));
-    }
+    const nativeReports = native.shards.map((ids, index) => ({
+      schemaVersion: 2, family: 'native', shard: index + 1, commit: 'current', passed: true,
+      suites: ids.map(id => ({ id, tests: 1, durationMs: 0, failures: 0, errors: 0, skipped: 0 })),
+    }));
+    const writeReport = report => writeFile(join(directory, `native-${report.shard}.json`), JSON.stringify(report));
+    await Promise.all(nativeReports.map(writeReport));
     const runGate = result => spawnSync(process.execPath, ['tools/validation/coverage-gate.mjs', 'native', directory], {
       cwd: root, encoding: 'utf8', windowsHide: true,
       env: { ...process.env, GITHUB_SHA: 'current', GITHUB_STEP_SUMMARY: '',
@@ -162,6 +177,16 @@ test('actual CI gate accepts complete reports and rejects missing artifacts or f
     assert.equal(passed.status, 0, passed.stderr);
     assert.match(passed.stdout, /PASS complete native validation coverage/);
     assert.match(runGate('cancelled').stderr, /Required job target-shards: cancelled/);
+    const first = nativeReports[0];
+    await writeReport({ ...first, schemaVersion: 1 });
+    assert.match(runGate('success').stderr, /invalid, failed, or stale report/);
+    await writeReport(first);
+    const serverSuite = 'com.fumbbl.ffb.server.match.SetupSessionMovementTest';
+    const serverReport = nativeReports.find(report => report.suites.some(suite => suite.id === serverSuite));
+    assert.ok(serverReport);
+    await writeReport({ ...serverReport, suites: serverReport.suites.filter(suite => suite.id !== serverSuite) });
+    assert.ok(runGate('success').stderr.includes(`missing=${serverSuite}`));
+    await writeReport(serverReport);
     await rm(join(directory, 'native-4.json'));
     const missing = runGate('success');
     assert.equal(missing.status, 1);

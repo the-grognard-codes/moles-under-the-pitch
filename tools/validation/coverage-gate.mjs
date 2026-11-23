@@ -22,9 +22,10 @@ if (family !== 'native') {
   configurations.push({ family: 'interaction', shards: manifest.interactionShards }, { family: 'hosted', shards: [manifest.hosted] });
 } else {
   const manifest = JSON.parse(await readFile(join(repository, 'tools/validation/native-shards.json'), 'utf8'));
-  if (manifest.schemaVersion !== 1) throw new Error('Unsupported native manifest');
+  if (manifest.schemaVersion !== 2) throw new Error('Unsupported native manifest');
   assertShards(manifest.shards, 'Native manifest');
-  configurations.push({ family: 'native', shards: manifest.shards, allowedSkips: manifest.allowedSkips });
+  configurations.push({ family: 'native', shards: manifest.shards, schemaVersion: manifest.schemaVersion,
+    allowedSkips: manifest.allowedSkips, allowedEmptySuites: manifest.allowedEmptySuites });
 }
 const reportDirectory = resolve(repository, directory);
 const files = (await readdir(reportDirectory)).filter(name => name.endsWith('.json'));

@@ -52,18 +52,23 @@ export function assertDependencies(needs, expected) {
   }
 }
 
-export function validateReports(reports, { family, shards, commit, allowedSkips = {} }) {
+export function validateReports(reports, {
+  family, shards, commit, schemaVersion = 1, allowedSkips = {}, allowedEmptySuites = {},
+}) {
   assertExact(reports.map(report => report.shard), shards.map((_, index) => index + 1), `${family} reports`);
   for (const report of reports) {
-    if (report.schemaVersion !== 1 || report.family !== family || report.commit !== commit || report.passed !== true) {
+    if (report.schemaVersion !== schemaVersion || report.family !== family || report.commit !== commit || report.passed !== true) {
       throw new Error(`${family} shard ${report.shard}: invalid, failed, or stale report`);
     }
     if (!Array.isArray(report.suites)) throw new Error(`${family}: missing execution records`);
     assertExact(report.suites.map(suite => suite.id), shards[report.shard - 1], `${family} shard ${report.shard} execution`);
     for (const suite of report.suites) {
-      if (!Number.isFinite(suite.durationMs) || suite.durationMs < 0 || !Number.isInteger(suite.tests) || suite.tests < 1 ||
+      if (!Number.isFinite(suite.durationMs) || suite.durationMs < 0 || !Number.isInteger(suite.tests) || suite.tests < 0 ||
           suite.failures !== 0 || suite.errors !== 0 || !Number.isInteger(suite.skipped) || suite.skipped < 0) {
-        throw new Error(`${suite.id}: invalid metrics, empty suite, or failed tests`);
+        throw new Error(`${suite.id}: invalid metrics or failed tests`);
+      }
+      if (suite.tests === 0 && !allowedEmptySuites[suite.id]?.includes(suite.missingEnvironmentVariable)) {
+        throw new Error(`${suite.id}: empty suite without a missing opt-in variable`);
       }
       const skippedTests = suite.skippedTests ?? [];
       if (!Array.isArray(skippedTests) || skippedTests.length !== suite.skipped || suite.skipped > suite.tests) {
@@ -82,10 +87,10 @@ export function validateReports(reports, { family, shards, commit, allowedSkips 
 }
 
 export async function summarize(suites, output) {
-  const lines = ['## Validation suite timings', '', '| Family | Shard | Suite | Seconds | Tests | Opt-in skips |',
-    '| --- | ---: | --- | ---: | ---: | ---: |'];
+  const lines = ['## Validation suite timings', '', '| Family | Shard | Suite | Seconds | Tests | Opt-in skips | Missing opt-in variable |',
+    '| --- | ---: | --- | ---: | ---: | ---: | --- |'];
   for (const suite of suites.toSorted((a, b) => b.durationMs - a.durationMs)) {
-    lines.push(`| ${suite.family} | ${suite.shard} | ${suite.id} | ${(suite.durationMs / 1000).toFixed(2)} | ${suite.tests} | ${suite.skipped} |`);
+    lines.push(`| ${suite.family} | ${suite.shard} | ${suite.id} | ${(suite.durationMs / 1000).toFixed(2)} | ${suite.tests} | ${suite.skipped} | ${suite.missingEnvironmentVariable ?? ''} |`);
   }
   const summary = `${lines.join('\n')}\n`;
   console.log(summary);
