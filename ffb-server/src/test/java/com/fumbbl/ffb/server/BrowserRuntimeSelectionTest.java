@@ -34,3 +34,4 @@ class BrowserRuntimeSelectionTest {
 		assertThrows(IllegalArgumentException.class, () -> new FantasyFootballServer(ServerMode.STANDALONE, properties));
 	}
 }
+// Temporary issue 622 validation probe.
