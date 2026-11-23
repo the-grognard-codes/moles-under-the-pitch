@@ -13,8 +13,8 @@
     "end-stands/full-ends/bay-14.png": "7f76ad59f856cefe986efa69380ed87077ad35d20bfb33cd16af4c35e185dfba",
     "end-stands/full-ends/bay-15.png": "2b78e965706917e8c59e93632127fb7185816a73deed0ed451e103bfd22f5cd7",
     "end-stands/full-ends/placements.json": "02cdbb5adc6da931e667d0f9c2edc5b938b6a3363c37722fa2178940c2307b57",
-    "locker-stairwell.json": "9b1cf329d13175c09dd28915d161959a991606370652a3087ca12e5652b0168a",
-    "locker-stairwell.png": "4adf6e74a4a94dad4af1eb8f27c27f9b48993454eb56faf4a9142f968f75128a",
+    "locker-stairwell.json": "5419e1b725b6e3bcbd2a3a422b1911ad63f5086f905497cc69a0f5965c3d3969",
+    "locker-stairwell.png": "38a12d3290abb36c903a6a28ee671c1d0e83fbaa5baf4628ff509e0ce4348098",
     "regalia/atlas.json": "ee0e9f79f3f169c82bd942fa89f29ce827b99f1afe86c8e6e861f8ca900f7afb",
     "regalia/atlas.png": "f5357b48b2feffaa3a4db909d0964d6c53a95732b6260fb47b7a7db1dfb0a6a5",
     "regalia/layout.json": "9144c86a958f8f30f8b5a970f3ae0ffbdd34b6dd33af3f2baa0c1ea564cf72d4",
@@ -31,11 +31,11 @@
   },
   "runtime": {
     "architecture.webp": "937a8ddcf0601602a01aa0c8b215c92edc0bfb4dc122e1db8305b92e3e7e949b",
-    "crowd-materials.png": "9b7f2c6373220589dbd3eb40499a6eb7a8f2791d11f022f67c35ce378c17e406",
+    "crowd-materials.png": "8aa253802c72a0bca22d7bc2d48c5ee94ceee9c900aab206f04070cf42d7d326",
     "crowd.png": "e5aadd17d41fc43ac818e3c61828fea5d1614b87a9a5fdcac59f5f28032769a8",
-    "regalia-materials.png": "fe50830f2ca09d8402af71310f36bff6e63fd27542600aab540ce323cb2f470a",
+    "regalia-materials.png": "41b2524ade0929508e9500c92114286e666d5f0d89b1e3722506c7930eef1e45",
     "regalia.png": "f5357b48b2feffaa3a4db909d0964d6c53a95732b6260fb47b7a7db1dfb0a6a5",
-    "stairs.png": "4adf6e74a4a94dad4af1eb8f27c27f9b48993454eb56faf4a9142f968f75128a",
-    "views.json": "3ef784fb5101c4cf958d7e4193bdc09702a193b623f41f4764c81a396d4224b7"
+    "stairs.png": "38a12d3290abb36c903a6a28ee671c1d0e83fbaa5baf4628ff509e0ce4348098",
+    "views.json": "a762fd7185abb921658e84700caeb6c3ec9fe23a4633e988352338909cbb2fd6"
   }
 }

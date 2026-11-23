@@ -30,6 +30,15 @@ def write(path, value):
     (TARGET / path).write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8", newline="\n")
 
 
+# The gallery lights cloth more brightly than the pitch sprites. Match their
+# primary midtones while retaining the darkest fold and the brightest glint.
+PRIMARY_SHADES = (0, 1, 2, 2, 3, 3, 4, 5, 5, 6, 7, 8, 9, 11, 12, 14, 16)
+
+
+def pitch_cloth_mask(mask):
+    return mask.point([*PRIMARY_SHADES, *range(17, 256)])
+
+
 def crowd_atlas(seating, size):
     art = Image.new("RGBA", size)
     materials = Image.new("L", size)
@@ -62,7 +71,7 @@ def crowd_atlas(seating, size):
     if sorted(bay["id"] for bay in bays) != sorted(rectangles):
         raise ValueError("Expected exactly one insert in each approved seating bay")
     art.save(TARGET / "crowd.png", optimize=True)
-    materials.save(TARGET / "crowd-materials.png", optimize=True)
+    pitch_cloth_mask(materials).save(TARGET / "crowd-materials.png", optimize=True)
     return sorted(bays, key=lambda bay: bay["id"]), sources
 
 
@@ -116,7 +125,11 @@ def build():
         "regalia-materials.png": "regalia/materials.png",
     }
     for destination, source in copies.items():
-        copyfile(SOURCE / source, TARGET / destination)
+        if destination == "regalia-materials.png":
+            mask = Image.open(SOURCE / source).convert("L")
+            pitch_cloth_mask(mask).save(TARGET / destination, optimize=True)
+        else:
+            copyfile(SOURCE / source, TARGET / destination)
     layers = [{"kind": "ground"}]
     for placement in stairs["placements"]:
         position = {key: placement[key] for key in ("x", "y", "width", "height", "rotate180")}
