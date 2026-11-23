@@ -45,6 +45,7 @@ This sets the server-to-client model for the rest of the project. The target is 
   - ADR 0007 (presentation markers, transcript format 3)
   - ADR 0008 (staged placements)
   - the founding versioned browser protocol decision (notes ADR-003, promoted to `docs/adr` by #610 in PR #612)
+  - the founding application-seams decision (notes ADR-004, promoted the same way). It put match storage behind a repository interface and anticipated "a future canonical event log".
 - **Limits of the evidence:** the split of the 39 MiB by field is estimated, not measured. The size of the native snapshot alone, and its growth over a match, are not measured. Soak figures come from computer-driven matches of about 113 decisions each.
 
 ## Maintainer decisions (2026-11-22)
@@ -69,8 +70,12 @@ This sets the server-to-client model for the rest of the project. The target is 
    - the time to write that snapshot plus append one record in MariaDB, early and late in a match;
    - the time to restore from the compact snapshot.
 3. **Proposed ADR**, `docs/adr/<slug>.md`, status `proposed`. It is numbered when the maintainer accepts it, before merge, under the rule set by #610. It states:
-   - which records it **supersedes**: ADR 0002, ADR 0004, and the snapshot and resync parts of the promoted versioned browser protocol record;
-   - which it **amends**: ADR 0001 (publication sends records plus a per-role envelope) and ADR 0007 (format 3 moves to 4, with markers in the record);
+   - which records it **supersedes wholly**: ADR 0002 and ADR 0004. Their governing choice, where durable match state lives and what a stored record is, changes. A partial supersession of 0002, which 0004, 0007 and 0008 have already amended, would leave readers combining four or five records to find the rule in force. The ADR therefore restates every surviving guarantee itself (see "Carried-forward guarantees" below).
+   - which it **amends**:
+     - ADR 0001: publication sends records plus a per-role envelope.
+     - ADR 0007: format 3 moves to 4, with the markers in the record.
+     - The promoted versioned browser protocol record (0012 in #612): full-snapshot recovery and full resync for slow clients become a snapshot plus revisioned deltas. Its governing choice, versioned JSON over WebSockets, still holds, so under #610's template rule this is an amendment, not a supersession.
+   - which it **extends with a dated history entry**: the promoted application-seams record (0013 in #612). The new storage sits behind that record's repository boundary, and the format-4 record is the "future canonical event log" it anticipated.
    - that ADR 0006 is unchanged.
 4. **Candidate tickets** in the ADR or an outcome note, not filed until acceptance:
    - storage: the current-state row, revision records, the receipt and chat rows; full time marks the match finished; the journal and compaction are deleted;
@@ -93,7 +98,7 @@ This sets the server-to-client model for the rest of the project. The target is 
   - Restore reads no history.
 - **Exact-request receipt:** its window (for example, the last accepted request per role), and how a retry from outside the window is rejected.
 - **Format-4 record:**
-  - fields;
+  - fields, recording domain facts only: the accepted decision, dice, resolved effects, presentation markers, and patches to public entities. Never browser commands or diffs of the rendered view. The application-seams record says "Do not equate recorded UI commands with a stable domain-event schema";
   - the shape of the public patch (for example, whole-entity replacement keyed by player, ball and team ID);
   - the digest's definition;
   - keyframe cadence.
@@ -104,6 +109,29 @@ This sets the server-to-client model for the rest of the project. The target is 
 - **Server memory:** no history stays resident beyond the tail. State the consequences for `MatchMemoryBudget` and for #543's frozen history.
 - **Ruleset neutrality:** record and patch shapes in shared protocol code carry no BB2025-specific types, consistent with #550's ruleset-separation principle.
 - **Compatibility:** retire the old formats (decision 5); new version markers; refuse old data explicitly.
+- **Carried-forward guarantees.** Because 0002 and 0004 are superseded wholly, the ADR classifies each of their rules, so that none is lost by accident.
+  - **Keep, restated in the new ADR:**
+    - One durable boundary per action. An action is accepted and published only after commit.
+    - An exact retry appends nothing. The bounded receipt now provides this.
+    - Storage admission rejects an action before native execution, never after.
+    - Recovery never reruns commands, dice, clocks or optional decisions.
+    - Log lines and replay derive from recorded native outcomes, in canonical home orientation, without running the engine again.
+    - Records keep immutable account, match-team, player and side IDs, and names resolve on read. Time comes from the server's UTC epoch-millisecond clock.
+    - Reads are paged. Live delivery may drop a frame, because authorized readers can catch up.
+    - Spectator chat uses the same persisted sequence and access check, and never invokes a game command.
+    - Staged placements create no record (ADR 0008's amendments to 0002 and 0004).
+    - Missing durable records never silently roll a match back. This was the reason for 0004's separate head and base generations. Now, restore checks that the snapshot's revision matches the newest stored record, and treats a gap as `RECOVERY_CORRUPT`.
+    - Computer-coach availability (0004's schema marker 10, `computer_work_until_epoch_ms`) is committed in the same transaction as the move. It moves to the current-state row.
+    - The computer coach's cold load path keeps working. `RecoveryCheckpoint.computerReply` reads stored per-role views from the checkpoint, so the snapshot either keeps those views or the ADR says how they are rebuilt.
+  - **Replace:**
+    - the single-blob artifact;
+    - the base-plus-journal layout, with its separate generations and compaction;
+    - the completed-result size limits;
+    - recovery version 7.
+  - **Retire:**
+    - freezing each native log command's JSON for recovery, since the native log is no longer persisted;
+    - readers for older formats (decision 5);
+    - the format-1 cleanup.
 - **Budget:** targets for durable write, restore, publication and full time, set from the measurement, all flat in match length.
 - **Revisit conditions:** for example, storage cost per match, row counts, or measured payload sizes that justify binary encoding.
 
@@ -149,14 +177,20 @@ This sets the server-to-client model for the rest of the project. The target is 
 
 - The measurement outcome exists, is reproducible from a committed script, and contains no credentials or private data.
 - The ADR is drafted as `proposed` and covers every item under "Required decision content".
-- It names the records it supersedes and amends, and states its consistency with ADRs 0006, 0007 and 0008 and with #550's ruleset principle.
+- It names the records it supersedes, amends and extends, and states its consistency with ADRs 0006, 0007 and 0008 and with #550's ruleset principle.
+- It contains the carried-forward classification of every rule in ADRs 0002 and 0004.
 - The open decisions are either resolved with the maintainer's recorded approval, or listed as open.
 - The candidate tickets are listed. Links are checked, and every cited symbol exists at the reviewed revision.
 
 ### Accepted
 
 - The maintainer's approval is recorded with a date.
-- The architecture map's invariants on durable boundaries, recovery and stored formats are updated, and the superseded records are marked `superseded` with a link.
+- In the same PR, under #610's template:
+  - ADRs 0002 and 0004 are marked `superseded`, with links both ways;
+  - ADRs 0001 and 0007 and the versioned browser protocol record carry dated amendments;
+  - the application-seams record carries a dated history entry;
+  - the architecture map's invariants on durable boundaries, recovery and stored formats are updated.
+- No accepted ADR gains a forward pointer to this decision before acceptance.
 - The follow-up tickets are filed.
 - #593, #594 and #596 are closed as *not planned*, each with a link to the ADR.
 
