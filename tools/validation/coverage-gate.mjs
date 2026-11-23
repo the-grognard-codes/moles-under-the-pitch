@@ -1,7 +1,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertDependencies, assertExact, assertShards, loadBrowserManifest, summarize, validateReports } from './coverage.mjs';
+import { BROWSER_REPORT_SCHEMA_VERSION, assertDependencies, assertExact, assertShards, loadBrowserManifest, summarize, validateReports } from './coverage.mjs';
 
 const repository = fileURLToPath(new URL('../../', import.meta.url));
 const [family, directory, ...extra] = process.argv.slice(2);
@@ -19,7 +19,10 @@ assertDependencies(needs, dependencies[family]);
 const configurations = [];
 if (family !== 'native') {
   const manifest = await loadBrowserManifest(repository);
-  configurations.push({ family: 'interaction', shards: manifest.interactionShards }, { family: 'hosted', shards: [manifest.hosted] });
+  configurations.push(
+    { family: 'interaction', shards: manifest.interactionShards, schemaVersion: BROWSER_REPORT_SCHEMA_VERSION },
+    { family: 'hosted', shards: [manifest.hosted], schemaVersion: BROWSER_REPORT_SCHEMA_VERSION },
+  );
 } else {
   const manifest = JSON.parse(await readFile(join(repository, 'tools/validation/native-shards.json'), 'utf8'));
   if (manifest.schemaVersion !== 2) throw new Error('Unsupported native manifest');

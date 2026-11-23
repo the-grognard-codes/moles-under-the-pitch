@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,9 +12,9 @@ import { checkoutBrowserCommit, resolveBrowserCommit } from '../validation/resol
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const shards = [['suite1'], ['suite2'], ['suite3'], ['suite4']];
-const reports = () => shards.map((suites, index) => ({ schemaVersion: 1, family: 'native', shard: index + 1,
+const reports = () => shards.map((suites, index) => ({ schemaVersion: 2, family: 'native', shard: index + 1,
   commit: 'current', passed: true, suites: suites.map(id => ({ id, tests: 2, durationMs: 10, failures: 0, errors: 0, skipped: 0 })) }));
-const configuration = { family: 'native', shards, commit: 'current' };
+const configuration = { family: 'native', shards, commit: 'current', schemaVersion: 2 };
 const tap = '# tests 2\n# pass 2\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n';
 
 test('browser source resolver accepts only its own workflow source or exact verified main history', () => {
@@ -44,6 +45,7 @@ test('browser checkout occurs only after source validation and uses the verified
 
 test('coverage rejects missing, duplicate, misassigned, stale, failed, and empty executions', () => {
   assert.equal(validateReports(reports(), configuration).length, 4);
+  assert.throws(() => validateReports(reports(), { ...configuration, schemaVersion: undefined }), /schemaVersion/);
   for (const mutate of [
     value => value.pop(),
     value => value.push(value[0]),
@@ -181,9 +183,10 @@ test('actual CI gate requires current native reports, all server suites, and suc
     await writeReport({ ...first, schemaVersion: 1 });
     assert.match(runGate('success').stderr, /invalid, failed, or stale report/);
     await writeReport(first);
-    const serverSuite = 'com.fumbbl.ffb.server.match.SetupSessionMovementTest';
+    const serverSource = join(root, 'ffb-server', 'src', 'test', 'java');
+    const serverSuite = native.shards.flat().find(id => existsSync(join(serverSource, `${id.replaceAll('.', '/')}.java`)));
+    assert.ok(serverSuite, 'native manifest must contain a suite from ffb-server');
     const serverReport = nativeReports.find(report => report.suites.some(suite => suite.id === serverSuite));
-    assert.ok(serverReport);
     await writeReport({ ...serverReport, suites: serverReport.suites.filter(suite => suite.id !== serverSuite) });
     assert.ok(runGate('success').stderr.includes(`missing=${serverSuite}`));
     await writeReport(serverReport);
@@ -220,6 +223,7 @@ test('release browser gate uses the release commit and rejects stale, partial, o
     const passed = runGate();
     assert.equal(passed.status, 0, passed.stderr);
     assert.match(passed.stdout, /PASS complete browser validation coverage for release/);
+    assert.doesNotMatch(passed.stdout, /Missing opt-in variable/);
     assert.equal(runGate('workflow-main').status, 1);
     assert.match(runGate('release', 'cancelled').stderr, /Required job browser-interactions: cancelled/);
     await rm(join(directory, 'interaction-4.json'));

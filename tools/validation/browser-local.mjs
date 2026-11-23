@@ -4,7 +4,7 @@ import { availableParallelism } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 
-import { loadBrowserManifest, validateReports } from './coverage.mjs';
+import { BROWSER_REPORT_SCHEMA_VERSION, loadBrowserManifest, validateReports } from './coverage.mjs';
 
 const npm = process.platform === 'win32'
   ? { file: process.execPath, args: [join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js')] }
@@ -76,8 +76,9 @@ export async function validateLocalBrowser(root, { run = execute, runShard = exe
   if (failure) throw failure;
   const readReports = async (family, count) => Promise.all(Array.from({ length: count }, async (_, index) =>
     JSON.parse(await readFile(join(reportDirectory, `${family}-${index + 1}.json`), 'utf8'))));
-  validateReports(await readReports('hosted', 1), { family: 'hosted', shards: [manifest.hosted], commit });
-  validateReports(await readReports('interaction', 4), { family: 'interaction', shards: manifest.interactionShards, commit });
+  const schemaVersion = BROWSER_REPORT_SCHEMA_VERSION;
+  validateReports(await readReports('hosted', 1), { family: 'hosted', shards: [manifest.hosted], commit, schemaVersion });
+  validateReports(await readReports('interaction', 4), { family: 'interaction', shards: manifest.interactionShards, commit, schemaVersion });
   const durationMs = performance.now() - started;
   console.log(`Browser validation passed for ${commit} in ${(durationMs / 1000).toFixed(1)}s with ${workers} workers; reports: ${reportDirectory}`);
   return { commit, reportDirectory, durationMs };

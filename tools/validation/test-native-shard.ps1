@@ -63,37 +63,21 @@ function Assert-Validation([bool]$Pass, [string]$ExpectedText) {
     $script:checks++
 }
 
+function Assert-ManifestRejected([scriptblock]$Change, [string]$ExpectedText) {
+    $manifest = $original | ConvertTo-Json -Depth 10 | ConvertFrom-Json
+    & $Change $manifest
+    Write-Manifest $manifest
+    Assert-Validation $false $ExpectedText
+}
+
 Write-Manifest $original
 Assert-Validation $true 'Validated native shard 1: 3 suites.'
 
-$changed = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$changed.shards[1][0] = $serverClasses[0]
-Write-Manifest $changed
-Assert-Validation $false 'Duplicate native class registration'
-
-Write-Manifest $original
-$changed = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$changed.shards[0][0] = 'com.fumbbl.ffb.test.DoesNotExistTest'
-Write-Manifest $changed
-Assert-Validation $false 'Unknown native class registration'
-
-Write-Manifest $original
-$changed = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$changed.shards[0] = @($serverClasses[0], $stateClasses[0])
-Write-Manifest $changed
-Assert-Validation $false "Missing native class registration: $extraServer"
-
-Write-Manifest $original
-$changed = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$changed.shards[1] = @($stateClasses[1])
-Write-Manifest $changed
-Assert-Validation $false 'Native shard 2 has no classes from ffb-server'
-
-Write-Manifest $original
-$changed = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$changed.schemaVersion = 1
-Write-Manifest $changed
-Assert-Validation $false 'Native shard manifest schemaVersion must be 2'
+Assert-ManifestRejected { param($m) $m.shards[1][0] = $serverClasses[0] } 'Duplicate native class registration'
+Assert-ManifestRejected { param($m) $m.shards[0][0] = 'com.fumbbl.ffb.test.DoesNotExistTest' } 'Unknown native class registration'
+Assert-ManifestRejected { param($m) $m.shards[0] = @($serverClasses[0], $stateClasses[0]) } "Missing native class registration: $extraServer"
+Assert-ManifestRejected { param($m) $m.shards[1] = @($stateClasses[1]) } 'Native shard 2 has no classes from ffb-server'
+Assert-ManifestRejected { param($m) $m.schemaVersion = 1 } 'Native shard manifest schemaVersion must be 2'
 
 Write-Manifest $original
 New-TestSource $serverSources 'com.fumbbl.ffb.server.NewTest'
@@ -142,16 +126,11 @@ try {
 }
 Set-Content -LiteralPath $extraPath -Value ($plainXml -f $extraServer) -Encoding UTF8
 
-$changed = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$changed.allowedSkips.PSObject.Properties.Remove($serverClasses[0])
-Write-Manifest $changed
-Assert-Validation $false 'Unexpected native skip'
-
-Write-Manifest $original
-$changed = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-$changed.allowedSkips.PSObject.Properties[$serverClasses[0]].Value.optIn = 'changed reason'
-Write-Manifest $changed
-Assert-Validation $false 'Unexpected native skip'
+Assert-ManifestRejected { param($m) $m.allowedSkips.PSObject.Properties.Remove($serverClasses[0]) } 'Unexpected native skip'
+Assert-ManifestRejected {
+    param($m)
+    $m.allowedSkips.PSObject.Properties[$serverClasses[0]].Value.optIn = 'changed reason'
+} 'Unexpected native skip'
 
 Write-Manifest $original
 [xml]$xml = $originalXml

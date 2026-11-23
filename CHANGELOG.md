@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Run each server and state-test class in one Java Checks shard. Register new classes from either module in the native shard manifest.
+
 - Play Old World Classic matches inside the Gatehouse stadium in the 90° camera, with team-coloured stands and painted end zones visible from either coach end.
 - Support schema version 10 in the dev-local game cleanup command.
 

@@ -58,10 +58,10 @@ function Get-TestSourceModules([string]$TestRoot, [string[]]$Modules) {
     return ,$sourceModules
 }
 
-function Read-NativeManifest([string]$Path, $SourceModules) {
+function Read-NativeManifest([string]$Path, $SourceModules, [string[]]$Modules, [int]$SchemaVersion) {
     Assert-Condition (Test-Path -LiteralPath $Path -PathType Leaf) "Missing native shard manifest: $Path"
     $manifest = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
-    Assert-Condition (($manifest.schemaVersion -is [int] -or $manifest.schemaVersion -is [long]) -and $manifest.schemaVersion -eq $schemaVersion) "Native shard manifest schemaVersion must be $schemaVersion."
+    Assert-Condition (($manifest.schemaVersion -is [int] -or $manifest.schemaVersion -is [long]) -and $manifest.schemaVersion -eq $SchemaVersion) "Native shard manifest schemaVersion must be $SchemaVersion."
     Assert-Condition ($manifest.shards -is [array] -and $manifest.shards.Count -eq 4) 'Native shard manifest must have four shards.'
     $registered = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
     for ($index = 0; $index -lt 4; $index++) {
@@ -74,7 +74,7 @@ function Read-NativeManifest([string]$Path, $SourceModules) {
             Assert-Condition ($SourceModules.ContainsKey($class)) "Unknown native class registration: $class"
             [void]$shardModules.Add($SourceModules[$class])
         }
-        foreach ($module in $modules) {
+        foreach ($module in $Modules) {
             Assert-Condition ($shardModules.Contains($module)) "Native shard $($index + 1) has no classes from $module."
         }
     }
@@ -100,12 +100,12 @@ function Read-NativeManifest([string]$Path, $SourceModules) {
     return $manifest
 }
 
-function Read-NativeSuites($Manifest, [int]$ShardNumber, $SourceModules, [string]$TestRoot) {
+function Read-NativeSuites($Manifest, [int]$ShardNumber, $SourceModules, [string]$TestRoot, [string[]]$Modules) {
     $expected = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
     foreach ($class in $Manifest.shards[$ShardNumber - 1]) { [void]$expected.Add($class) }
     $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
     $suites = @()
-    foreach ($module in $modules) {
+    foreach ($module in $Modules) {
         $directory = Join-Path (Join-Path $TestRoot $module) 'target/surefire-reports'
         Assert-Condition (Test-Path -LiteralPath $directory -PathType Container) "Missing native Surefire reports: $directory"
         $files = @(Get-ChildItem -LiteralPath $directory -File -Filter 'TEST-*.xml')
@@ -126,7 +126,7 @@ function Read-NativeSuites($Manifest, [int]$ShardNumber, $SourceModules, [string
             Assert-Condition ($failures -eq 0 -and $errors -eq 0) "Native suite failed: $id ($failures failures, $errors errors)"
             $missingEnvironmentVariable = $null
             if ($tests -eq 0) {
-                # Surefire emits an empty suite when these opt-in tests abort in BeforeAll.
+                # Surefire omits the BeforeAll abort reason, so check the recorded opt-in prerequisites.
                 $requiredEnvironment = $Manifest.allowedEmptySuites.PSObject.Properties[$id]
                 foreach ($variable in $requiredEnvironment.Value) {
                     if ($null -eq [Environment]::GetEnvironmentVariable($variable, 'Process')) {
@@ -174,9 +174,9 @@ function Read-NativeSuites($Manifest, [int]$ShardNumber, $SourceModules, [string
 $reportPath = Join-Path $ReportDirectory "native-$Shard.json"
 if (!$ValidateOnly -and (Test-Path -LiteralPath $reportPath)) { Remove-Item -LiteralPath $reportPath }
 $sourceModules = Get-TestSourceModules $testRoot $modules
-$nativeManifest = Read-NativeManifest $ManifestPath $sourceModules
+$nativeManifest = Read-NativeManifest $ManifestPath $sourceModules $modules $schemaVersion
 if ($ValidateOnly) {
-    $nativeSuites = Read-NativeSuites $nativeManifest $Shard $sourceModules $testRoot
+    $nativeSuites = Read-NativeSuites $nativeManifest $Shard $sourceModules $testRoot $modules
     Write-Host "Validated native shard $Shard`: $($nativeSuites.Count) suites."
     exit 0
 }
@@ -189,7 +189,7 @@ $nativeManifest.shards[$Shard - 1] | ForEach-Object { $_.Replace('.', '/') + '.j
 $shell = (Get-Process -Id $PID).Path
 & $shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root 'tools/target-build.ps1') verify -JavaHome $JavaHome -NativeIncludesFile $includePath
 if ($LASTEXITCODE -ne 0) { throw "Native shard $Shard Maven verify failed (exit $LASTEXITCODE)." }
-$nativeSuites = Read-NativeSuites $nativeManifest $Shard $sourceModules $testRoot
+$nativeSuites = Read-NativeSuites $nativeManifest $Shard $sourceModules $testRoot $modules
 $checkout = (& git -C $root rev-parse HEAD).Trim()
 $commit = if ($env:GITHUB_SHA) { $env:GITHUB_SHA } else { $checkout }
 Assert-Condition ($commit -match '^[0-9a-fA-F]{40}$') "Invalid native shard commit: $commit"

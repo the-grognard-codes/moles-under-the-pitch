@@ -1,6 +1,8 @@
 import { appendFile, readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
+export const BROWSER_REPORT_SCHEMA_VERSION = 1;
+
 export function assertExact(actual, expected, label) {
   if (!Array.isArray(actual) || !Array.isArray(expected)) throw new Error(`${label}: expected arrays`);
   const duplicate = actual.find((id, index) => actual.indexOf(id) !== index);
@@ -53,8 +55,11 @@ export function assertDependencies(needs, expected) {
 }
 
 export function validateReports(reports, {
-  family, shards, commit, schemaVersion = 1, allowedSkips = {}, allowedEmptySuites = {},
+  family, shards, commit, schemaVersion, allowedSkips = {}, allowedEmptySuites = {},
 }) {
+  if (!Number.isInteger(schemaVersion) || schemaVersion < 1) {
+    throw new Error(`${family}: expected a positive report schemaVersion`);
+  }
   assertExact(reports.map(report => report.shard), shards.map((_, index) => index + 1), `${family} reports`);
   for (const report of reports) {
     if (report.schemaVersion !== schemaVersion || report.family !== family || report.commit !== commit || report.passed !== true) {
@@ -87,10 +92,13 @@ export function validateReports(reports, {
 }
 
 export async function summarize(suites, output) {
-  const lines = ['## Validation suite timings', '', '| Family | Shard | Suite | Seconds | Tests | Opt-in skips | Missing opt-in variable |',
-    '| --- | ---: | --- | ---: | ---: | ---: | --- |'];
+  const showsMissingVariable = suites.some(suite => suite.missingEnvironmentVariable);
+  const lines = ['## Validation suite timings', '',
+    '| Family | Shard | Suite | Seconds | Tests | Opt-in skips |' + (showsMissingVariable ? ' Missing opt-in variable |' : ''),
+    '| --- | ---: | --- | ---: | ---: | ---: |' + (showsMissingVariable ? ' --- |' : '')];
   for (const suite of suites.toSorted((a, b) => b.durationMs - a.durationMs)) {
-    lines.push(`| ${suite.family} | ${suite.shard} | ${suite.id} | ${(suite.durationMs / 1000).toFixed(2)} | ${suite.tests} | ${suite.skipped} | ${suite.missingEnvironmentVariable ?? ''} |`);
+    const missingVariable = showsMissingVariable ? ` ${suite.missingEnvironmentVariable ?? ''} |` : '';
+    lines.push(`| ${suite.family} | ${suite.shard} | ${suite.id} | ${(suite.durationMs / 1000).toFixed(2)} | ${suite.tests} | ${suite.skipped} |${missingVariable}`);
   }
   const summary = `${lines.join('\n')}\n`;
   console.log(summary);
