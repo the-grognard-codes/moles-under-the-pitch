@@ -27,6 +27,8 @@ Reconsider the recommendation if the prototype cannot host the existing rules wi
 
 ## ADR-001: Java backend; modernize runtime independently
 
+Canonical decision: [ADR 0010](../../docs/adr/0010-java-backend.md).
+
 Decision status: **accepted**. The proposal below is now the agreed direction.
 
 **Proposed:** keep Java and Maven; target Java 21 for the new server runtime, after baseline checks and dependency compatibility work. Preserve the Java 8 baseline as a comparison during migration. The current root POM already describes a Java 21 Mockito profile; that is evidence of intended build support, not proof of production runtime compatibility.
@@ -38,6 +40,8 @@ Keep embedded Jetty as the first server-framework candidate, upgrading to a supp
 **Keep initially:** MariaDB/JDBC, with an isolated disposable local instance and versioned schema setup. Changing database technology while changing the client adds a second durability risk. The README's old MySQL connector compatibility statement is not the current POM: the declared driver is MariaDB Java client 3.5.8. Verify a supported server/driver combination in the local startup milestone; no database compatibility test was performed by the source audit. [Readme startup section](../../Readme.md); [declared dependency inventory](evidence/dependencies.csv).
 
 ## ADR-002: TypeScript, React DOM interface, PixiJS board, Vite
+
+Canonical decision: [ADR 0011](../../docs/adr/0011-browser-stack.md).
 
 Decision status: **accepted for TypeScript, React, and Vite; board renderer amended to DOM/SVG on 2026-09-25**. The subsequent Svelte comparison did not change the React selection. The following proposal and comparison retain the original decision context; the M5 addendum below governs the board.
 
@@ -66,9 +70,11 @@ Use Node 24 LTS for the proposed frontend toolchain rather than an obsolete Node
 
 ## ADR-003: Versioned JSON over browser-native WebSockets
 
+Canonical decision: [ADR 0012](../../docs/adr/0012-versioned-browser-protocol.md).
+
 Decision status: **accepted**.
 
-Retain the existing transport category. First prove a browser can encode representative legacy commands and decode responses in an isolated environment. Prefer uncompressed text JSON in the diagnostic slice; test existing LZString framing separately if required. The existing 64 KiB ingress setting and server-side decompression require real payload measurements, including decoded-size limits. [CommandSocket](../../ffb-server/src/main/java/com/fumbbl/ffb/server/net/CommandSocket.java#L25).
+Retain the existing transport category. First prove a browser can encode representative legacy commands and decode responses in an isolated environment. Prefer uncompressed text JSON in the diagnostic slice; test existing LZString framing separately if required. The existing 64 KiB ingress setting and server-side decompression require real payload measurements, including decoded-size limits. [CommandSocket](https://github.com/the-grognard-codes/moles-under-the-pitch/blob/120dd9953a71d7b0bff031c751feffae7f55b5f8/ffb-server/src/main/java/com/fumbbl/ffb/server/net/CommandSocket.java#L25).
 
 For the product interface, introduce a versioned adapter rather than exporting the entire mutable Java object model. Document protocol version, request correlation, ordered state revision, caller role, accepted/rejected actions, full snapshot recovery, and audience projection. Client types are generated or checked against shared protocol fixtures; TypeScript types alone do not validate incoming JSON.
 
@@ -77,6 +83,8 @@ JSON is readable and aligns with the current implementation. Protobuf could impr
 Use TLS and an explicitly validated origin/authentication policy for public connections. Browser WebSocket does not provide automatic backpressure; bound outbound queues and use a full resync for slow clients instead of unbounded buffering. [Browser WebSocket API](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket); [WebSocket server guidance](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API/Writing_WebSocket_servers).
 
 ## ADR-004: Application seams, not an engine rewrite prerequisite
+
+Canonical decision: [ADR 0013](../../docs/adr/0013-application-seams.md).
 
 Decision status: **accepted**.
 

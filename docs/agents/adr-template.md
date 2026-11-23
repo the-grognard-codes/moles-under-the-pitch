@@ -11,12 +11,23 @@ they help a reviewer assess the trade-off.
 - Put the request and its acceptance criteria in `docs/specs/<topic>-adr.md`,
   linked to the existing GitHub issue. A request describes work to be done; it
   does not accept a decision or prove that mitigations are implemented.
-- Put the resulting decision in `docs/adr/NNNN-<decision>.md`, using the next
-  unused number at drafting time. Link it back to the request and issue.
+- Draft the decision in `docs/adr/<slug>.md`. Refer to the draft by its issue
+  number during review and link it back to the request and issue.
+- Assign the ADR number at merge. Immediately before merging, check current
+  `main` for the next unused number, rename the draft to
+  `docs/adr/NNNN-<slug>.md`, and update its references in the same PR.
+  If another ADR lands first, recheck the number and links before merging.
+  A merged ADR may remain `proposed` until the maintainer accepts it.
 - Mark a new decision `proposed`. Record `accepted` only with maintainer
   approval evidence and a date. Approval of an ADR requirement is distinct from
   acceptance of its final policy. Later records may be `deprecated` or
   `superseded`, with a link to the replacement.
+- Amend an accepted ADR when its governing decision still holds and a narrower
+  rule changes. Preserve the original text and append a dated amendment with
+  its approval or outcome evidence. When the governing decision itself changes,
+  use a replacement ADR. On acceptance, mark the old decision `superseded`
+  and link both records. Identify the affected rule if the replacement covers
+  only part of an earlier decision.
 - Follow [the domain documentation layout](domain.md). Link the resulting ADR
   from the architecture map's invariants on acceptance. A draft may be linked
   separately as proposed, not yet enforced. Update an

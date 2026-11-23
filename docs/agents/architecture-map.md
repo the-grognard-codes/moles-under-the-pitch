@@ -5,10 +5,19 @@ things live and which invariants a change must keep. Commands, setup and module
 purposes live in [Readme.md](../../Readme.md); vocabulary lives in
 [CONTEXT.md](../../CONTEXT.md). Update this map when a seam it names moves.
 
+## Foundations
+
+- [ADR 0010](../adr/0010-java-backend.md) retains the Java rules engine. Java 21 is the sole build and runtime baseline.
+- [ADR 0011](../adr/0011-browser-stack.md) selects TypeScript, React and Vite. Its September 25 amendment selects DOM/SVG for the pitch used in [ADR 0003](../adr/0003-coach-oriented-angled-pitch.md).
+- [ADR 0012](../adr/0012-versioned-browser-protocol.md) defines the versioned JSON/WebSocket boundary. V2 is the sole browser runtime.
+- [ADR 0013](../adr/0013-application-seams.md) keeps application services around the BB2025 engine. Its dated follow-ups link the publication, persistence and worker decisions.
+
+The [long-term hosting and operating-cost decision](../../.notes/overhaul-analysis/04-technology-and-decisions.md#adr-005-hosting-and-operating-cost) remains deferred. The [deployment guide](../../deployment/README.md) documents current Firebase Hosting and the separate game-server deployment.
+
 ## Request path for a live match
 
 ```text
-browser-client/src/play-entry.tsx            product entry (React + Pixi)
+browser-client/src/play-entry.tsx            product entry (React, DOM/SVG pitch)
   └ v2-client.ts, *-protocol.ts               V2 message encode/decode per feature
       │  WebSocket /browser/v2
 ffb-server/.../server/local/
