@@ -290,3 +290,4 @@ jobs:
       - run: bash -n deployment/game-service/provision.sh
       - run: bash -n deployment/game-service/activate.sh
       - run: bash -n deployment/game-service/install-host.sh
+# Temporary issue 622 validation probe.
