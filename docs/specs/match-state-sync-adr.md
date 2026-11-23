@@ -68,7 +68,7 @@ This sets the server-to-client model for the rest of the project. The target is 
    - the size of a compact restore snapshot at about revision 50 and about revision 700;
    - the time to write that snapshot plus append one record in MariaDB, early and late in a match;
    - the time to restore from the compact snapshot.
-3. **Proposed ADR**, `docs/adr/<slug>.md`, status `proposed`. It is numbered at merge under the rule set by #610. It states:
+3. **Proposed ADR**, `docs/adr/<slug>.md`, status `proposed`. It is numbered when the maintainer accepts it, before merge, under the rule set by #610. It states:
    - which records it **supersedes**: ADR 0002, ADR 0004, and the snapshot and resync parts of the promoted versioned browser protocol record;
    - which it **amends**: ADR 0001 (publication sends records plus a per-role envelope) and ADR 0007 (format 3 moves to 4, with markers in the record);
    - that ADR 0006 is unchanged.
@@ -141,7 +141,7 @@ This sets the server-to-client model for the rest of the project. The target is 
 - **#593, #594 and #596 are superseded by this design.** The ADR PR references all three. Each is closed as *not planned* once that PR merges; GitHub closing keywords would close them as *completed*, so close them by hand. They are labelled `wontfix` until then.
 - **#548 (proposed, not yet decided).** Its full-time timing and compaction budget are superseded too. Its other items stand on their own: retiring the browser's `COMPLETION_PENDING` handling, decoupling `MatchTranscript` from presentation, and tidying the analysis scripts. Splitting them out is proposed.
 - **#550** consumes this ADR as an input. #595 and #597 are unaffected.
-- **#610** (PR #612) promotes the founding records and sets numbering at merge.
+- **#610** (PR #612) promotes the founding records and sets numbering on acceptance, before merge.
 
 ## Acceptance criteria
 
