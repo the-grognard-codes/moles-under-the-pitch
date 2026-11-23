@@ -1,6 +1,6 @@
 #Requires -Version 5.1
-# Offline integration checks in an isolated throwaway project, including paths
-# with spaces. Requires a completed bootstrap; adds no test-framework dependency.
+# Integration checks in an isolated throwaway project, including paths with
+# spaces. Requires a completed bootstrap. Network checks use loopback only.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $manifest = Get-Content (Join-Path $PSScriptRoot 'target-build-toolchain.json') -Raw | ConvertFrom-Json
@@ -28,6 +28,114 @@ function Invoke-CheckProcess([string]$Script, [string[]]$Arguments, [string]$Log
     $PSNativeCommandUseErrorActionPreference = $false
     & $shell -NoProfile -File $Script @Arguments *> (Join-Path $fixture $Log)
     return $LASTEXITCODE
+}
+
+function Invoke-DownloadCheck($Urls) {
+    $manifest.maven.urls = $Urls
+    $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $fixtureTools 'target-build-toolchain.json')
+    if (Test-Path -LiteralPath $archive) { Remove-Item -LiteralPath $archive }
+    $waits = [Collections.Generic.List[int]]::new()
+    # Record the requested waits without sleeping so the 60-second cap can be tested.
+    function Start-Sleep([int]$Seconds) { $waits.Add($Seconds) }
+    $failure = $null
+    try { & $bootstrap -JavaHome $javaHome } catch { $failure = $_.Exception.Message }
+    return @{ Failure = $failure; Waits = $waits }
+}
+
+function Test-ArchiveDownloads {
+    $server = Start-Job -ArgumentList (Join-Path $root ('.tools/downloads/' + $manifest.maven.archive)) -ScriptBlock {
+        param($ArchivePath)
+        $ErrorActionPreference = 'Stop'
+        $zip = [IO.File]::ReadAllBytes($ArchivePath)
+        # Use a raw listener so a response can intentionally end before Content-Length.
+        $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
+        $listener.Start()
+        try {
+            "http://127.0.0.1:$($listener.LocalEndpoint.Port)"
+            $retryRequests = 0
+            while ($true) {
+                if (!$listener.Pending()) {
+                    Start-Sleep -Milliseconds 20
+                    continue
+                }
+                $client = $listener.AcceptTcpClient()
+                try {
+                    $client.ReceiveTimeout = 5000
+                    $stream = $client.GetStream()
+                    $reader = [IO.StreamReader]::new($stream)
+                    $path = ($reader.ReadLine() -split ' ')[1]
+                    while ($reader.ReadLine()) { }
+
+                    $status = '200 OK'
+                    $extraHeaders = ''
+                    $body = $zip
+                    $truncated = $false
+                    switch ($path) {
+                        '/retry' {
+                            $retryRequests++
+                            if ($retryRequests -le 3) {
+                                $status = '429 Too Many Requests'
+                                $body = [byte[]]@()
+                                $retryAfter = switch ($retryRequests) {
+                                    1 { '3' }
+                                    2 { [DateTime]::UtcNow.AddSeconds(30).ToString('r') }
+                                    3 { '120' }
+                                }
+                                $extraHeaders = "Retry-After: $retryAfter`r`n"
+                            }
+                        }
+                        '/unavailable' { $status = '503 Service Unavailable'; $body = [byte[]]@() }
+                        '/valid' { }
+                        '/corrupt' { $body = [Text.Encoding]::ASCII.GetBytes('invalid archive') }
+                        '/truncated' { $truncated = $true; $body = [byte[]]@(80, 75) }
+                        default { $status = '404 Not Found'; $body = [byte[]]@() }
+                    }
+                    $length = $body.Length
+                    if ($truncated) { $length = $zip.Length }
+                    $headers = [Text.Encoding]::ASCII.GetBytes("HTTP/1.1 $status`r`nConnection: close`r`nContent-Length: $length`r`n$extraHeaders`r`n")
+                    $stream.Write($headers, 0, $headers.Length)
+                    $stream.Write($body, 0, $body.Length)
+                } finally {
+                    $client.Dispose()
+                }
+            }
+        } finally {
+            $listener.Stop()
+        }
+    }
+
+    try {
+        $deadline = [DateTime]::UtcNow.AddSeconds(20)
+        do {
+            $baseUrl = Receive-Job $server
+            if ($baseUrl) { break }
+            Start-Sleep -Milliseconds 100
+        } while ($server.State -in @('NotStarted', 'Running') -and [DateTime]::UtcNow -lt $deadline)
+        Assert-Result ($baseUrl -like 'http://127.0.0.1:*') 'Local archive HTTP stub started'
+
+        $result = Invoke-DownloadCheck @("$baseUrl/retry")
+        Assert-Result (!$result.Failure -and (Test-Path -LiteralPath $archive)) 'Bootstrap retries HTTP 429 and installs the verified archive'
+        Assert-Result ($result.Waits.Count -eq 3 -and $result.Waits[0] -eq 3 -and
+            $result.Waits[1] -ge 25 -and $result.Waits[1] -le 30 -and $result.Waits[2] -eq 60) `
+            'Bootstrap honors Retry-After seconds and HTTP dates and caps each wait at 60 seconds'
+
+        $result = Invoke-DownloadCheck @("$baseUrl/unavailable", "$baseUrl/valid")
+        Assert-Result (!$result.Failure -and ($result.Waits -join ',') -eq '1,2,4,8' -and (Test-Path -LiteralPath $archive)) `
+            'Bootstrap uses the fallback after five primary attempts with exponential backoff'
+
+        $result = Invoke-DownloadCheck @("$baseUrl/unavailable", "$baseUrl/corrupt")
+        Assert-Result ($result.Failure -eq "Checksum mismatch: $baseUrl/corrupt. Nothing was extracted." -and
+            !(Test-Path -LiteralPath $archive)) 'Bootstrap rejects a corrupt fallback before publishing the archive'
+
+        $result = Invoke-DownloadCheck @("$baseUrl/truncated", "$baseUrl/missing")
+        Assert-Result ($result.Failure -like "Archive download failed. Sources tried: $baseUrl/truncated`: *; $baseUrl/missing`: HTTP 404" -and
+            ($result.Waits -join ',') -eq '1,2,4,8') `
+            "Bootstrap retries interrupted transfers and reports the final failure for each URL. Observed: $($result.Failure)"
+        Assert-Result (!(Get-ChildItem -LiteralPath (Split-Path -Parent $archive) -Force)) `
+            'Failed transfers leave no archive or temporary files'
+    } finally {
+        Remove-Job $server -Force
+    }
 }
 
 $checkExit = Invoke-CheckProcess $build @('info') 'missing-setup.log'
@@ -80,5 +188,6 @@ Assert-Result $true 'Java 21 or newer is accepted'
 Set-Content -LiteralPath (Join-Path $fixture 'pom.xml') -Value '<invalid' -Encoding Ascii
 $checkExit = Invoke-CheckProcess $build @('verify', '-Offline') 'failed-build.log'
 Assert-Result ($checkExit -ne 0) 'Maven failure reaches the caller as a nonzero exit code'
+Test-ArchiveDownloads
 Write-Host "$checks tooling checks passed. Diagnostic files: $fixture"
 exit 0
