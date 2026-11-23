@@ -13,9 +13,9 @@ $manifest = Get-Content (Join-Path $PSScriptRoot 'target-build-toolchain.json') 
 $windowsHost = [Environment]::OSVersion.Platform -eq 'Win32NT'
 New-Item -ItemType Directory -Force -Path (Join-Path $toolRoot 'downloads') | Out-Null
 
-function Assert-ArchiveHash($Path, $Algorithm, $Hash, $Source) {
-    if ((Get-FileHash -LiteralPath $Path -Algorithm $Algorithm).Hash -ne $Hash) {
-        throw "Checksum mismatch: $Source. Nothing was extracted."
+function Assert-ArchiveHash($Path, $Hash, $Label) {
+    if ((Get-FileHash -LiteralPath $Path -Algorithm SHA512).Hash -ne $Hash) {
+        throw [IO.InvalidDataException]::new("Checksum mismatch: $Label. Nothing was extracted.")
     }
 }
 
@@ -42,14 +42,16 @@ function Get-RetryDelay($Response, $Attempt) {
     return [int][math]::Ceiling([math]::Min(60, $delay))
 }
 
-function Save-Archive($Urls, $Archive, $Algorithm, $Hash) {
+function Save-Archive($Urls, $Archive, $Hash) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $temporaryArchive = "$Archive.$([Guid]::NewGuid().ToString('N')).tmp"
-    $failures = foreach ($url in $Urls) {
-        for ($attempt = 1; $attempt -le 5; $attempt++) {
-            $failure = $null
+    $maxAttempts = 5
+    $sourceReports = [Collections.Generic.List[string]]::new()
+    :sources foreach ($url in $Urls) {
+        for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $requestException = $null
             try {
-                Write-Host "Downloading $url (attempt $attempt/5)"
+                Write-Host "Downloading $url (attempt $attempt/$maxAttempts)"
                 try {
                     $download = Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $temporaryArchive -PassThru -TimeoutSec 30
                     # Windows PowerShell can return successfully after a short response body.
@@ -59,10 +61,15 @@ function Save-Archive($Urls, $Archive, $Algorithm, $Hash) {
                         throw [IO.EndOfStreamException]::new('The response ended before the declared Content-Length.')
                     }
                 } catch {
-                    $failure = $_.Exception
+                    $requestException = $_.Exception
                 }
-                if (!$failure) {
-                    Assert-ArchiveHash $temporaryArchive $Algorithm $Hash $url
+                if (!$requestException) {
+                    try {
+                        Assert-ArchiveHash $temporaryArchive $Hash $url
+                    } catch [IO.InvalidDataException] {
+                        $sourceReports.Add("${url}: checksum mismatch")
+                        break sources
+                    }
                     Move-Item -LiteralPath $temporaryArchive -Destination $Archive -Force
                     return
                 }
@@ -72,58 +79,58 @@ function Save-Archive($Urls, $Archive, $Algorithm, $Hash) {
                 }
             }
 
-            $response = $failure.Response
+            $response = $requestException.Response
             if ($response) {
                 $status = [int]$response.StatusCode
-                $lastStatus = "HTTP $status"
+                $lastError = "HTTP $status"
                 $retryable = $status -eq 429 -or ($status -ge 500 -and $status -lt 600)
             } else {
                 # A failed response-body read can wrap the network error in an AggregateException.
-                $cause = $failure.GetBaseException()
-                $lastStatus = $cause.Message
-                $retryable = $failure -is [Net.WebException] -or $cause -is [IO.IOException] -or
+                $cause = $requestException.GetBaseException()
+                $lastError = $cause.Message
+                $retryable = $requestException -is [Net.WebException] -or $cause -is [IO.IOException] -or
                     $cause -is [Net.Sockets.SocketException] -or $cause -is [OperationCanceledException] -or
                     $cause -is [TimeoutException] -or
-                    ($PSVersionTable.PSVersion.Major -ge 7 -and $failure -is [Net.Http.HttpRequestException])
+                    ($PSVersionTable.PSVersion.Major -ge 7 -and $requestException -is [Net.Http.HttpRequestException])
             }
-            if (!$retryable -or $attempt -eq 5) { break }
+            if (!$retryable -or $attempt -eq $maxAttempts) { break }
             $delay = Get-RetryDelay $response $attempt
-            Write-Host "Download failed ($lastStatus). Retrying in $delay seconds."
+            Write-Host "Download failed ($lastError). Retrying in $delay seconds."
             Start-Sleep -Seconds $delay
         }
-        "${url}: $lastStatus"
+        $sourceReports.Add("${url}: $lastError")
     }
-    throw "Archive download failed. Sources tried: $($failures -join '; ')"
+    throw "Archive download failed. Sources tried: $($sourceReports -join '; '). Nothing was extracted. Rerun bootstrap to retry."
 }
 
-function Install-Archive($Specification, $Algorithm, $Hash, $AuditArchive, $Directory) {
+function Install-Archive($Specification, $AuditArchive) {
     $archive = Join-Path $toolRoot ('downloads/' + $Specification.archive)
+    $hash = $Specification.sha512
     if (Test-Path -LiteralPath $archive) {
-        Assert-ArchiveHash $archive $Algorithm $Hash "$archive (remove this archive and retry)"
+        Assert-ArchiveHash $archive $hash "$archive (remove this archive and retry)"
     } elseif (Test-Path -LiteralPath $AuditArchive) {
         Write-Host "Reusing audit archive: $AuditArchive"
-        Assert-ArchiveHash $AuditArchive $Algorithm $Hash $AuditArchive
+        Assert-ArchiveHash $AuditArchive $hash $AuditArchive
         Copy-Item -LiteralPath $AuditArchive -Destination $archive
     } elseif ($Offline) {
         throw "Offline setup needs $archive. Run bootstrap once online or supply the pinned archive."
     } else {
-        Save-Archive $Specification.urls $archive $Algorithm $Hash
+        Save-Archive $Specification.urls $archive $hash
     }
-    Write-Host "Verified $Algorithm for $($Specification.archive)"
-    $destination = Join-Path $toolRoot $Directory
+    Write-Host "Verified SHA512 for $($Specification.archive)"
+    $destination = Join-Path $toolRoot $Specification.directory
     $marker = Join-Path $destination '.bootstrap-complete'
     if (!(Test-Path -LiteralPath $marker)) {
         if (Test-Path -LiteralPath $destination) {
             throw "Incomplete tool directory: $destination. Move it aside and rerun bootstrap."
         }
         Expand-Archive -LiteralPath $archive -DestinationPath $toolRoot
-        Set-Content -LiteralPath $marker -Value $Hash -Encoding Ascii
+        Set-Content -LiteralPath $marker -Value $hash -Encoding Ascii
     }
 }
 
 $audit = Join-Path $root '.notes/overhaul-analysis/verification'
-Install-Archive $manifest.maven 'SHA512' $manifest.maven.sha512 `
-    (Join-Path $audit $manifest.maven.archive) $manifest.maven.directory
+Install-Archive $manifest.maven (Join-Path $audit $manifest.maven.archive)
 
 if (!$JavaHome) {
     if (!$windowsHost) {

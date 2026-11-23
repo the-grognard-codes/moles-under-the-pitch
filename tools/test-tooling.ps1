@@ -30,20 +30,27 @@ function Invoke-CheckProcess([string]$Script, [string[]]$Arguments, [string]$Log
     return $LASTEXITCODE
 }
 
-function Invoke-DownloadCheck($Urls) {
-    $manifest.maven.urls = $Urls
-    $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $fixtureTools 'target-build-toolchain.json')
-    if (Test-Path -LiteralPath $archive) { Remove-Item -LiteralPath $archive }
+function Invoke-DownloadCheck($Urls, $Archive, $ManifestPath, $Bootstrap, $JavaHome) {
+    $downloadManifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
+    $downloadManifest.maven.urls = $Urls
+    $downloadManifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $ManifestPath -Encoding UTF8
+    if (Test-Path -LiteralPath $Archive) { Remove-Item -LiteralPath $Archive }
     $waits = [Collections.Generic.List[int]]::new()
     # Record the requested waits without sleeping so the 60-second cap can be tested.
     function Start-Sleep([int]$Seconds) { $waits.Add($Seconds) }
     $failure = $null
-    try { & $bootstrap -JavaHome $javaHome } catch { $failure = $_.Exception.Message }
+    try { & $Bootstrap -JavaHome $JavaHome } catch { $failure = $_.Exception.Message }
     return @{ Failure = $failure; Waits = $waits }
 }
 
-function Test-ArchiveDownloads {
-    $server = Start-Job -ArgumentList (Join-Path $root ('.tools/downloads/' + $manifest.maven.archive)) -ScriptBlock {
+function Test-ArchiveDownloads($Fixture, $Archive, $PinnedArchive, $JavaHome) {
+    $downloadCheck = @{
+        Archive = $Archive
+        ManifestPath = Join-Path $Fixture 'tools/target-build-toolchain.json'
+        Bootstrap = Join-Path $Fixture 'tools/bootstrap.ps1'
+        JavaHome = $JavaHome
+    }
+    $server = Start-Job -ArgumentList $PinnedArchive -ScriptBlock {
         param($ArchivePath)
         $ErrorActionPreference = 'Stop'
         $zip = [IO.File]::ReadAllBytes($ArchivePath)
@@ -113,25 +120,33 @@ function Test-ArchiveDownloads {
         } while ($server.State -in @('NotStarted', 'Running') -and [DateTime]::UtcNow -lt $deadline)
         Assert-Result ($baseUrl -like 'http://127.0.0.1:*') 'Local archive HTTP stub started'
 
-        $result = Invoke-DownloadCheck @("$baseUrl/retry")
-        Assert-Result (!$result.Failure -and (Test-Path -LiteralPath $archive)) 'Bootstrap retries HTTP 429 and installs the verified archive'
+        $result = Invoke-DownloadCheck @downloadCheck -Urls @("$baseUrl/retry")
+        Assert-Result (!$result.Failure -and (Test-Path -LiteralPath $Archive)) 'Bootstrap retries HTTP 429 and installs the verified archive'
         Assert-Result ($result.Waits.Count -eq 3 -and $result.Waits[0] -eq 3 -and
             $result.Waits[1] -ge 25 -and $result.Waits[1] -le 30 -and $result.Waits[2] -eq 60) `
             'Bootstrap honors Retry-After seconds and HTTP dates and caps each wait at 60 seconds'
 
-        $result = Invoke-DownloadCheck @("$baseUrl/unavailable", "$baseUrl/valid")
-        Assert-Result (!$result.Failure -and ($result.Waits -join ',') -eq '1,2,4,8' -and (Test-Path -LiteralPath $archive)) `
+        $result = Invoke-DownloadCheck @downloadCheck -Urls @("$baseUrl/unavailable", "$baseUrl/valid")
+        Assert-Result (!$result.Failure -and ($result.Waits -join ',') -eq '1,2,4,8' -and (Test-Path -LiteralPath $Archive)) `
             'Bootstrap uses the fallback after five primary attempts with exponential backoff'
 
-        $result = Invoke-DownloadCheck @("$baseUrl/unavailable", "$baseUrl/corrupt")
-        Assert-Result ($result.Failure -eq "Checksum mismatch: $baseUrl/corrupt. Nothing was extracted." -and
-            !(Test-Path -LiteralPath $archive)) 'Bootstrap rejects a corrupt fallback before publishing the archive'
+        $failurePrefix = 'Archive download failed. Sources tried: '
+        $retryMessage = '. Nothing was extracted. Rerun bootstrap to retry.'
+        $result = Invoke-DownloadCheck @downloadCheck -Urls @("$baseUrl/unavailable", "$baseUrl/corrupt")
+        $expected = "$failurePrefix$baseUrl/unavailable`: HTTP 503; $baseUrl/corrupt`: checksum mismatch$retryMessage"
+        Assert-Result ($result.Failure -eq $expected -and !(Test-Path -LiteralPath $Archive)) `
+            'Bootstrap rejects a corrupt fallback and reports the last error from both sources'
 
-        $result = Invoke-DownloadCheck @("$baseUrl/truncated", "$baseUrl/missing")
-        Assert-Result ($result.Failure -like "Archive download failed. Sources tried: $baseUrl/truncated`: *; $baseUrl/missing`: HTTP 404" -and
+        $result = Invoke-DownloadCheck @downloadCheck -Urls @("$baseUrl/corrupt", "$baseUrl/valid")
+        $expected = "$failurePrefix$baseUrl/corrupt`: checksum mismatch$retryMessage"
+        Assert-Result ($result.Failure -eq $expected -and $result.Waits.Count -eq 0 -and
+            !(Test-Path -LiteralPath $Archive)) 'Bootstrap stops on a corrupt primary and reports how to retry'
+
+        $result = Invoke-DownloadCheck @downloadCheck -Urls @("$baseUrl/truncated", "$baseUrl/missing")
+        Assert-Result ($result.Failure -like "$failurePrefix$baseUrl/truncated`: *; $baseUrl/missing`: HTTP 404$retryMessage" -and
             ($result.Waits -join ',') -eq '1,2,4,8') `
             "Bootstrap retries interrupted transfers and reports the final failure for each URL. Observed: $($result.Failure)"
-        Assert-Result (!(Get-ChildItem -LiteralPath (Split-Path -Parent $archive) -Force)) `
+        Assert-Result (!(Get-ChildItem -LiteralPath (Split-Path -Parent $Archive) -Force)) `
             'Failed transfers leave no archive or temporary files'
     } finally {
         Remove-Job $server -Force
@@ -143,10 +158,11 @@ Assert-Result ($checkExit -ne 0) 'Build rejects missing setup'
 $checkExit = Invoke-CheckProcess $bootstrap @('-JavaHome', $javaHome, '-Offline') 'offline-missing.log'
 Assert-Result ($checkExit -ne 0) 'Offline bootstrap rejects a missing archive'
 $archive = Join-Path $fixture ('.tools/downloads/' + $manifest.maven.archive)
+$pinnedArchive = Join-Path $root ('.tools/downloads/' + $manifest.maven.archive)
 Set-Content -LiteralPath $archive -Value 'invalid archive' -Encoding Ascii
 $checkExit = Invoke-CheckProcess $bootstrap @('-JavaHome', $javaHome, '-Offline') 'bad-hash.log'
 Assert-Result ($checkExit -ne 0 -and !(Test-Path (Join-Path $fixture ('.tools/' + $manifest.maven.directory)))) 'Checksum failure prevents extraction'
-Copy-Item -LiteralPath (Join-Path $root ('.tools/downloads/' + $manifest.maven.archive)) -Destination $archive -Force
+Copy-Item -LiteralPath $pinnedArchive -Destination $archive -Force
 $checkExit = Invoke-CheckProcess $bootstrap @('-JavaHome', $javaHome, '-Offline') 'bootstrap.log'
 Assert-Result ($checkExit -eq 0) 'Offline setup accepts the pinned archive and existing JDK in a path with spaces'
 $checkExit = Invoke-CheckProcess $bootstrap @('-JavaHome', $javaHome, '-Offline') 'bootstrap-repeat.log'
@@ -188,6 +204,6 @@ Assert-Result $true 'Java 21 or newer is accepted'
 Set-Content -LiteralPath (Join-Path $fixture 'pom.xml') -Value '<invalid' -Encoding Ascii
 $checkExit = Invoke-CheckProcess $build @('verify', '-Offline') 'failed-build.log'
 Assert-Result ($checkExit -ne 0) 'Maven failure reaches the caller as a nonzero exit code'
-Test-ArchiveDownloads
+Test-ArchiveDownloads $fixture $archive $pinnedArchive $javaHome
 Write-Host "$checks tooling checks passed. Diagnostic files: $fixture"
 exit 0
