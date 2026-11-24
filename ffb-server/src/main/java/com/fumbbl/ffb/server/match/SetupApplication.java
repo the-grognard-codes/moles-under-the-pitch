@@ -935,15 +935,18 @@ public final class SetupApplication {
 				if (recorded) { releaseCompleted(id); }
 				return outcome(response, true);
 			}
+			long decisionTime = clock.millis();
+			// A coach can see expiry at the committed deadline without spending the cold read's budget on a write.
+			if (cold && !computerChannel && "load".equals(operation) && session.expired(decisionTime))
+				return outcome(failure(requestId, "MATCH_ABANDONED"), false);
 			// Human matches return the committed cold projection and defer maintenance to a fresh request budget.
 			if (cold && "load".equals(operation) && !session.isComputerMatch())
 				return outcome(session.decorateSaveResume(session.reply(requestId, "ACCEPTED", false, role)), false);
-			long decisionTime = clock.millis();
 			boolean expiredProposal = session.expireSaveResumeProposal(decisionTime);
 			if (recordAbandonment(owner, id, session, decisionTime)) {
 				return outcome(failure(requestId, "MATCH_ABANDONED"), false);
 			}
-			if (session.isComputerMatch() && session.isAbandoned()) {
+			if (session.isAbandoned()) {
 				release(id);
 				return outcome(failure(requestId, "MATCH_ABANDONED"), false);
 			}
@@ -1217,19 +1220,33 @@ public final class SetupApplication {
 
 	/** Scalar public states for an authorized page; never restores or touches a native engine. */
 	public Map<String, JsonObject> browseStates(List<String> ids, LobbyReadBudget budget) throws SQLException {
+		return browseStates(ids, Map.of(), 0L, budget);
+	}
+
+	/** Add resume details to the owner's lobby using the same clock sample sent in the response. */
+	public Map<String, JsonObject> currentMatchStates(List<String> ids, Map<String, MatchDocument> documents, long now,
+		LobbyReadBudget budget) throws SQLException {
+		return browseStates(ids, documents, now, budget);
+	}
+
+	private Map<String, JsonObject> browseStates(List<String> ids, Map<String, MatchDocument> resumeDocuments, long now,
+		LobbyReadBudget budget) throws SQLException {
 		budget.entries(ids.size());
 		Map<String, JsonObject> result = new LinkedHashMap<>();
 		List<String> missing = new ArrayList<>();
 		for (String id : ids) {
 			budget.check();
 			SetupSession resident = sessions.get(id);
-			if (resident != null && !resident.isFailed()) result.put(id, resident.browseSummary());
+			if (resident != null && !resident.isFailed())
+				result.put(id, resumeDocuments.containsKey(id) ? resident.resumeSummary(now) : resident.browseSummary());
 			else missing.add(id);
 		}
 		if (recovery != null) for (RecoveryRepository.Record record : recovery.findAll(missing, budget).values()) {
 			budget.check();
 			try {
-				JsonValue payloadValue = JsonObject.readFrom(record.json).get("payload");
+				MatchDocument resumeDocument = resumeDocuments.get(record.matchId);
+				JsonValue payloadValue = resumeDocument == null ? JsonObject.readFrom(record.json).get("payload")
+					: checkpoints.validate(record.json).payload();
 				if (payloadValue == null || !payloadValue.isObject()) continue;
 				JsonObject payload = payloadValue.asObject();
 				if (!record.matchId.equals(payload.getString("matchId", null)) || payload.getBoolean("failed", false)) continue;
@@ -1237,10 +1254,22 @@ public final class SetupApplication {
 				if (viewValue == null || !viewValue.isObject()) continue;
 				JsonObject view = viewValue.asObject();
 				if (!record.matchId.equals(view.getString("matchId", null)) || !"home".equals(view.getString("callerRole", null))) continue;
-				result.put(record.matchId, browseScalars(view));
+				JsonObject summary = browseScalars(view);
+				if (resumeDocument != null) addResumeDetails(payload, summary, resumeDocument, now);
+				result.put(record.matchId, summary);
 			} catch (RuntimeException invalid) { /* Stored scalar facts are unavailable for this entry. */ }
 		}
 		return result;
+	}
+
+	private void addResumeDetails(JsonObject payload, JsonObject summary, MatchDocument document, long now) {
+		JsonValue saved = payload.get("saveResume");
+		if (saved == null || saved.isNull() || payload.getBoolean("pendingTerminal", true)
+			|| "FULL_TIME".equals(summary.getString("phase", null))) return;
+		SetupSession.SaveResumeState retention = new SetupSession.SaveResumeState(saved.asObject());
+		JsonValue reaction = payload.get("reactiveDecision");
+		long reactionDeadline = reaction == null ? -1L : reaction.asObject().get("expiresAt").asLong();
+		retention.addResumeDetails(summary, computerOpponents.member(document) != null, now, reactionDeadline);
 	}
 
 	private JsonObject browseScalars(JsonObject view) {

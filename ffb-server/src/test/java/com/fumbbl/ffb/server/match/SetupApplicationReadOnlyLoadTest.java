@@ -16,10 +16,13 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -245,6 +248,90 @@ class SetupApplicationReadOnlyLoadTest {
 		assertFalse(fixture.engine.session.abandonmentDue(start + 3_600_000));
 		assertFalse(fixture.engine.session.abandonmentDue(start + 30L * 24 * 3_600_000 - 1));
 		assertTrue(fixture.engine.session.abandonIfInactive(start + 30L * 24 * 3_600_000));
+	}
+
+	@Test void coldHumanLobbyShowsTheDeadlineAfterFiveQuietMinutesAndExpiredLoadDoesNotWrite() throws Exception {
+		Fixture fixture = new Fixture();
+		SetupApplication application = fixture.application();
+		long started = fixture.now.get();
+		fixture.now.set(started + 5 * 60_000 - 1);
+		assertNull(lobbyState(fixture, application).get("resumeUntil"));
+		fixture.now.incrementAndGet();
+		assertEquals(started + SAVED_RETENTION, lobbyState(fixture, application).getLong("resumeUntil", -1));
+		assertEquals(0, application.lifecycleMetrics().getInt("residentSessions", -1));
+		fixture.now.set(started + SAVED_RETENTION);
+		assertTrue(lobbyState(fixture, application).getBoolean("expired", false));
+		assertEquals("MATCH_ABANDONED", application.handle("home", fixture.load()).getString("code", null));
+		assertEquals(0, fixture.recovery.saves);
+		assertFalse(retainedSave(fixture).getBoolean("abandoned", true));
+		assertTrue(lobbyState(fixture, application).getBoolean("expired", false));
+	}
+
+	@Test void computerLobbyResetsCountdownWhenTheHumanActsAndShowsNoneDuringTheComputerTurn() throws Exception {
+		Fixture fixture = new Fixture("away");
+		moveToActor(fixture, "home");
+		SetupApplication application = fixture.application();
+		long started = fixture.now.get();
+		assertNull(lobbyState(fixture, application).get("resumeUntil"));
+		fixture.now.addAndGet(5 * 60_000);
+		assertEquals(started + HOUR, lobbyState(fixture, application).getLong("resumeUntil", -1));
+		JsonObject human = stateOf(application.handle("home", fixture.load()));
+		JsonObject computer = stateOf(application.handle("home", endTurn(fixture.engine, human, "lobby-human-end")));
+		fixture.now.addAndGet(HOUR);
+		assertNull(lobbyState(fixture, application).get("resumeUntil"));
+		assertFalse(lobbyState(fixture, application).getBoolean("expired", false));
+		long nextStart = fixture.now.get();
+		stateOf(application.handleComputerWithOutcome("away", endTurn(fixture.engine, computer, "lobby-computer-end")).response());
+		assertNull(lobbyState(fixture, application).get("resumeUntil"));
+		fixture.now.addAndGet(5 * 60_000);
+		assertEquals(nextStart + HOUR, lobbyState(fixture, application).getLong("resumeUntil", -1));
+	}
+
+	@Test void coldComputerMatchReportsExpiryWithoutWritingWhenItsCoachLoads() throws Exception {
+		Fixture fixture = new Fixture("away");
+		moveToActor(fixture, "home");
+		fixture.now.addAndGet(HOUR);
+		SetupApplication application = fixture.application();
+		assertTrue(lobbyState(fixture, application).getBoolean("expired", false));
+		assertEquals("MATCH_ABANDONED", application.handle("home", fixture.load()).getString("code", null));
+		assertEquals(0, fixture.recovery.saves);
+		assertFalse(retainedSave(fixture).getBoolean("abandoned", true));
+	}
+
+	@Test void suspendedLobbyCountsFromSuspensionEvenAfterASubsequentProposal() throws Exception {
+		Fixture fixture = new Fixture();
+		SetupApplication application = fixture.application();
+		JsonObject active = stateOf(application.handle("home", fixture.load()));
+		JsonObject pending = stateOf(application.handle("home", proposal(fixture, active, "saveRequest", "save-pending")));
+		long suspendedAt = fixture.now.addAndGet(60_000);
+		JsonObject suspended = stateOf(application.handle("away", proposal(fixture, pending, "saveAccept", "saved")
+			.add("proposalId", pending.get("saveResume").asObject().get("proposalId"))));
+		assertNull(lobbyState(fixture, application).get("resumeUntil"));
+		fixture.now.addAndGet(5 * 60_000);
+		stateOf(application.handle("home", proposal(fixture, suspended, "resumeRequest", "resume-pending")));
+		assertEquals(suspendedAt + SAVED_RETENTION, lobbyState(fixture, fixture.application()).getLong("resumeUntil", -1));
+	}
+
+	@Test void computerRetentionLetsOnlyTimeoutsStrictlyBeforeTheDeadlineResolveFirst() {
+		long started = 100_000;
+		long deadline = started + HOUR;
+		SetupSession.SaveResumeState retention = new SetupSession.SaveResumeState(started);
+		retention.humanDecisionSince = started;
+		assertFalse(retention.expired(true, deadline, deadline - 1));
+		assertTrue(retention.expired(true, deadline, deadline));
+		assertTrue(retention.expired(true, deadline, deadline + 1));
+		for (long proposalDeadline : new long[] {deadline - 1, deadline, deadline + 1}) {
+			JsonObject saved = retention.json().set("proposal", new JsonObject()
+				.add("id", "12345678-1234-1234-1234-123456789abc").add("intent", "SAVE").add("proposer", "away").add("revision", 0)
+				.add("createdAt", proposalDeadline - SetupSession.SaveResumeState.PROPOSAL_MILLIS).add("expiresAt", proposalDeadline));
+			SetupSession.SaveResumeState proposed = new SetupSession.SaveResumeState(saved);
+			assertEquals(proposalDeadline >= deadline, proposed.expired(true, deadline, -1));
+		}
+	}
+
+	private JsonObject lobbyState(Fixture fixture, SetupApplication application) throws SQLException {
+		return application.currentMatchStates(List.of(fixture.id), Map.of(fixture.id, fixture.engine.document),
+			fixture.now.get(), new LobbyReadBudget()).get(fixture.id);
 	}
 
 	@Test void runnableComputerColdLoadReadsPreferencesBeforeTheCheckpoint() throws Exception {

@@ -618,22 +618,23 @@ public final class SetupSession {
 
 	/** Expiry is durable and fail-closed; it is never a background deletion or an inferred consent. */
 	public boolean abandonIfInactive(long now) {
-		if (!abandonmentDue(now) || computerTimeoutBeforeAbandonment(now)) return false;
+		if (!abandonmentDue(now)) return false;
 		saveResumeState.abandoned = true;
 		saveResumeState.proposal = null;
 		saveResumeState.humanDecisionSince = -1L;
 		return true;
 	}
 
-	private boolean computerTimeoutBeforeAbandonment(long now) {
-		if (!isComputerMatch()) return false;
-		return saveResumeProposalDue(now) && !saveResumeState.inactive(true, saveResumeState.proposal.expiresAt)
-			|| reactiveDecisionDue(now) && !saveResumeState.inactive(true, reactiveDecision.expiresAt());
+	boolean abandonmentDue(long now) {
+		return !isAbandoned() && expired(now);
 	}
 
-	boolean abandonmentDue(long now) {
-		return saveResume && !saveResumeState.abandoned && !isComplete() && !failed
-			&& saveResumeState.inactive(computerMember != null, now);
+	boolean expired(long now) {
+		return saveResume && !isComplete() && !failed && saveResumeState.expired(isComputerMatch(), now, reactionDeadline());
+	}
+
+	private long reactionDeadline() {
+		return reactiveDecision.pending() ? reactiveDecision.expiresAt() : -1L;
 	}
 
 	boolean isAbandoned() { return saveResume && saveResumeState.abandoned; }
@@ -1148,6 +1149,12 @@ public final class SetupSession {
 			.add("half", Math.max(1, Math.min(2, game.getHalf())))
 			.add("turn", game.getTurnData().getTurnNr())
 			.add("homeScore", homeScore()).add("awayScore", awayScore());
+	}
+
+	JsonObject resumeSummary(long now) {
+		JsonObject summary = browseSummary();
+		if (saveResume && !isComplete()) saveResumeState.addResumeDetails(summary, isComputerMatch(), now, reactionDeadline());
+		return summary;
 	}
 
 	private String browsePhase() {
@@ -2047,6 +2054,7 @@ public final class SetupSession {
 		static final long PROPOSAL_MILLIS = 5 * 60 * 1000L;
 		static final long RETENTION_MILLIS = 30L * 24 * 60 * 60 * 1000L;
 		static final long COMPUTER_RETENTION_MILLIS = 60L * 60 * 1000;
+		static final long RESUME_COUNTDOWN_QUIET_MILLIS = 5 * 60 * 1000L;
 		static final int HISTORY_LIMIT = 256;
 		long lastPlayerActivityAt;
 		long humanDecisionSince = -1L;
@@ -2084,9 +2092,38 @@ public final class SetupSession {
 		}
 
 		boolean inactive(boolean computerMatch, long now) {
-			if (!computerMatch) return now - lastPlayerActivityAt >= RETENTION_MILLIS;
-			if (suspended()) return now - suspendedAt >= RETENTION_MILLIS;
-			return humanDecisionSince >= 0 && now - humanDecisionSince >= COMPUTER_RETENTION_MILLIS;
+			long start = retentionStart(computerMatch);
+			return start >= 0 && now - start >= retentionMillis(computerMatch);
+		}
+
+		private long retentionStart(boolean computerMatch) {
+			if (suspended()) return suspendedAt;
+			return computerMatch ? humanDecisionSince : lastPlayerActivityAt;
+		}
+
+		private long retentionMillis(boolean computerMatch) {
+			return computerMatch && !suspended() ? COMPUTER_RETENTION_MILLIS : RETENTION_MILLIS;
+		}
+
+		boolean expired(boolean computerMatch, long now, long reactionDeadline) {
+			if (abandoned) return true;
+			if (!inactive(computerMatch, now)) return false;
+			if (!computerMatch) return true;
+			// A computer timeout strictly before retention expiry must resolve first. A suspended
+			// match pauses its reactive clock, but can still have a pending resume proposal.
+			if (proposal != null && now >= proposal.expiresAt && !inactive(true, proposal.expiresAt)) return false;
+			return suspended() || reactionDeadline < 0 || now < reactionDeadline || inactive(true, reactionDeadline);
+		}
+
+		void addResumeDetails(JsonObject summary, boolean computerMatch, long now, long reactionDeadline) {
+			if (expired(computerMatch, now, reactionDeadline)) summary.add("expired", true);
+			else {
+				long start = retentionStart(computerMatch);
+				long retention = retentionMillis(computerMatch);
+				long elapsed = now - start;
+				if (start >= 0 && elapsed >= RESUME_COUNTDOWN_QUIET_MILLIS && elapsed < retention)
+					summary.add("resumeUntil", Math.addExact(start, retention));
+			}
 		}
 
 		boolean suspended() { return suspendedAt >= 0; }
