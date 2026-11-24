@@ -67,5 +67,5 @@ footer { padding: 24px 0; color: #b7c4b3; }
 @media (max-width: 700px) { .proof-palette-pickers { grid-template-columns: minmax(0, 1fr); } }
 .proof-pitch-scroll { overflow: auto; max-width: 100%; }
 .proof-pitch-stage { position: relative; width: 1000px; height: 600px; overflow: hidden; background: #182b20; }
-.proof-pixi { position: absolute; inset: 0; }
-.proof-pixi canvas { display: block; }
+.proof-pitch-sprites { position: absolute; inset: 0; }
+.proof-pitch-sprites > img { position: absolute; max-width: none; pointer-events: none; transform-origin: center; }

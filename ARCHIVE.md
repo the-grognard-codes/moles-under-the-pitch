@@ -4,7 +4,7 @@ This page indexes historical material kept outside GitHub. The older inventory b
 
 ## Network cold storage — 2026-11-09
 
-The ignored, machine-local `cold-storage` symlink points to `\\192.168.1.250\gdrive\coding\cold-storage`. Batch `cold-storage/fumbbl-rebuild/2026-11-09/batch-20261109T050910Z/` contains 620 provenance tar.gz archives: 69,836 source-file copies (16.804 GiB) stored as 15.336 GiB of tarballs, plus catalogs, checksums and recovery instructions.
+The ignored, machine-local `cold-storage` symlink points to `\\192.168.1.250\gdrive\coding\cold-storage`. Batch `cold-storage/moles-under-the-pitch/2026-11-09/batch-20261109T050910Z/` contains 620 provenance tar.gz archives: 69,836 source-file copies (16.804 GiB) stored as 15.336 GiB of tarballs, plus catalogs, checksums and recovery instructions.
 
 All tarballs passed local and network payload verification. The initial preservation pass left original files in place. The subsequent user-approved A + B cleanup removed 28,132 local files (4.409 GiB of logical contents) and 3,037 empty folders; one zero-byte log remained because another process had it open. All 620 network tarballs, the pre-history-rewrite Git bundle, designated local keeper files and tracked project files were retained. See the [cleanup results](docs/reviews/deletion-results-2026-11-09.md) for the exact removed-file list and verification.
 
@@ -13,6 +13,8 @@ Protected worktrees, local work, runtime/sensitive state, recently active groups
 The Drive inventory and totals below are historical and are not combined with this batch; content can overlap.
 
 ## Drive archive inventory
+
+The checkout's `archive` symlink points to `moles-under-the-pitch/archive` in the synced Drive.
 
 Inventory prepared 2026-10-18 from the repository checkout. The 1,725 listed files were moved into `archive/`, preserving their repository-relative paths: 1,655 skill-marker history files and 70 scratch logs (328,150,522 bytes). Paths below identify the original repository locations.
 

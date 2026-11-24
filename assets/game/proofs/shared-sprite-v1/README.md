@@ -30,11 +30,11 @@ node browser-client/test/sprite-proof-full-ui.mjs
 npm.cmd --prefix browser-client run assets:check
 ```
 
-Serve Vite from `browser-client`; open `/test/sprite-proof.html`. The review server was stopped after approval; restart Vite on port 5182 to use <http://127.0.0.1:5182/test/sprite-proof.html#animation-proof>. Source/delivery validation rejects stale JSON or PNG bytes. The existing sync copies only the proof's delivery namespace into browser assets, retaining accepted catalogs.
+Serve Vite from `browser-client` and open `/test/sprite-proof.html#animation-proof` at the URL Vite prints. Source/delivery validation rejects stale JSON or PNG bytes. The existing sync copies only the proof's delivery namespace into browser assets, retaining accepted catalogs.
 
-The fixture exposes design/clip/direction selection, both coach ends, mirroring, perspective/Top-down projection, pause/restart/step, reduced motion, static fallback and a 22-player synthetic Pixi scene. The standalone canvas provides native/integer frame review. Bust selection changes all four shared-identity consumers and its 256-pair sheet. Primary/secondary controls apply to all preview artwork.
+The fixture exposes design/clip/direction selection, both coach ends, mirroring, perspective/Top-down projection, pause/restart/step, reduced motion, static fallback and a 22-player synthetic DOM scene. The standalone canvas provides native/integer frame review. Bust selection changes all four shared-identity consumers and its 256-pair sheet. Primary/secondary controls apply to all preview artwork.
 
-Static caches use an LRU capped at 32 data URLs. The scene owns at most 96 recolored Pixi textures, clears them on palette/configuration changes and releases them on unmount. Nine accepted fallback textures are owned separately. Actual measured performance, memory estimates and their limits are in the outcome; do not treat these Windows/Chrome results as Android/Linux certification.
+Static caches use an LRU capped at 32 data URLs. The scene owns at most 96 recolored frame images, clears them on palette/configuration changes and releases them on unmount. Static fallback players use the accepted sprite URLs. Actual measured performance, memory estimates and their limits are in the outcome; do not treat these Windows/Chrome results as Android/Linux certification.
 
 ## Bust and helmet consumers
 
@@ -46,6 +46,8 @@ The proof retains the approved two 4×4 radio grids with names. Future static-si
 
 ## Evidence and limits
 
-`qa/full-proof/` contains native sheets for all three busts and representative animation frames, each frame at 3x, native samples, actual bust consumers, both coach ends/projections/mirror states, palette extremes, measured results and `playback.webm`. Randomly named videos include earlier test runs; the named playback is the successful full run. `qa/sixteen-shade/` and `qa/helmet/` retain approved static checkpoints; `qa/checkpoint-outcome-history.md` preserves their chronology.
+New full UI runs write screenshots, video and timing results to `.tools/sprite-proof/full-proof/` in the checkout. [DOM comparison and timing](../../../../docs/specs/remove-pixi-outcome.md).
+
+The historical `qa/full-proof/` directory contains native sheets for all three busts and representative animation frames, each frame at 3x, native samples, actual bust consumers, both coach ends/projections/mirror states, palette extremes, measured results and `playback.webm`. Randomly named videos include earlier test runs; the named playback is the successful full run. `qa/sixteen-shade/` and `qa/helmet/` retain approved static checkpoints; `qa/checkpoint-outcome-history.md` preserves their chronology.
 
 All 256 palette pairs are automatically checked on every frame and bust, including fixed-pixel/alpha invariance. Semantic material selection and readable animation still require visual inspection. The approved sixteen-shade treatment deliberately quantizes finer gradients, and identical colors can blend trim. Layered source authoring can export these explicit indices; no shader or renderer migration is required. Full rosters, live team colors, gameplay/replay animation routing and default-art promotion remain later work.

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { decodeSpriteProof, recolorProofImage, SpriteProofTextures, type ProofImage, type SpriteProofPack } from './sprite-proof-format.ts';
+import { decodeSpriteProof, proofImageCanvas, recolorProofImage, SpriteProofTextures, type ProofImage, type SpriteProofPack } from './sprite-proof-format.ts';
 import { resolvePlayerArt, resolvePlayerPortrait, playerArtPlacement } from './player-art.ts';
 import type { SetupPlayer } from './setup-protocol.ts';
 import './sprite-proof-review.css';
@@ -12,14 +12,6 @@ import type { MatchAnnouncement } from './match-announcements.ts';
 const player: SetupPlayer = { id: 'proof-lineman', name: 'Human lineman', slot: 1, role: 'home', x: 13, y: 7,
   state: 'standing', art: { rosterId: 'human', positionId: 'lineman' } };
 
-function imageCanvas(image: ProofImage, pixels: Uint8ClampedArray): HTMLCanvasElement {
-  const canvas = document.createElement('canvas'); canvas.width = image.width; canvas.height = image.height;
-  const context = canvas.getContext('2d');
-  if (!context) throw new Error('Canvas rendering is unavailable');
-  const data = context.createImageData(image.width, image.height); data.data.set(pixels); context.putImageData(data, 0, 0);
-  return canvas;
-}
-
 function PaletteSheet({ pack, kind, design }: { pack: SpriteProofPack; kind: ProofImage['kind']; design: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const image = pack.images.find(image => image.kind === kind && (kind !== 'bust' || image.id === `${design}-portrait`))!;
@@ -28,7 +20,7 @@ function PaletteSheet({ pack, kind, design }: { pack: SpriteProofPack; kind: Pro
     const context = ref.current!.getContext('2d')!;
     context.fillStyle = '#355b35'; context.fillRect(0, 0, cell * 16, cell * 16);
     pack.ramps.forEach((primary, row) => pack.ramps.forEach((secondary, column) => {
-      context.drawImage(imageCanvas(image, recolorProofImage(image, primary, secondary)), column * cell + 4, row * cell + 4);
+      context.drawImage(proofImageCanvas(image, recolorProofImage(image, primary, secondary)), column * cell + 4, row * cell + 4);
     }));
   }, [pack, image, cell]);
   return <><p>Rows = primary; columns = secondary. Both follow the numbered palette order below. Scroll to inspect every cell at native size.</p>
@@ -40,7 +32,7 @@ function Review({ pack }: { pack: SpriteProofPack }) {
   const [bustDesign, setBustDesign] = useState('lineman');
   const [primary, setPrimary] = useState('navy'), [secondary, setSecondary] = useState('ivory');
   const [zoom, setZoom] = useState(3), [mirror, setMirror] = useState(false), [kind, setKind] = useState<ProofImage['kind']>('body');
-  const [textures] = useState(() => new SpriteProofTextures(pack, (image, pixels) => imageCanvas(image, pixels).toDataURL()));
+  const [textures] = useState(() => new SpriteProofTextures(pack, (image, pixels) => proofImageCanvas(image, pixels).toDataURL()));
   const [mode, setMode] = useState<'perspective' | 'top-down'>('perspective');
   const body = pack.images.find(image => image.kind === 'body')!, bust = pack.images.find(image => image.id === `${bustDesign}-portrait`)!;
   const helmet = pack.images.find(image => image.kind === 'helmet')!;
@@ -48,7 +40,7 @@ function Review({ pack }: { pack: SpriteProofPack }) {
   // Same portrait identity as cards/dugouts/choices. The builder preview also uses this route.
   const portraitUrl = textures.resolve(resolvePlayerPortrait({ ...player, art: { rosterId: 'human', positionId: bustDesign } }), primary, secondary)!;
   const helmetUrl = textures.resolve(helmet.sourceUrl, primary, secondary)!;
-  const originalHelmet = imageCanvas(helmet, new Uint8ClampedArray(helmet.rgba)).toDataURL();
+  const originalHelmet = proofImageCanvas(helmet, new Uint8ClampedArray(helmet.rgba)).toDataURL();
   const selectedBody = resolvePlayerArt(player, { end: 'home', facing: mirror ? 'south-west' : 'south-east' })!.body;
   const placement = playerArtPlacement(selectedBody, mode === 'top-down');
   const maskUrl = (image: ProofImage) => {
@@ -57,7 +49,7 @@ function Review({ pack }: { pack: SpriteProofPack }) {
       const at = (y * image.width + x) * 4, index = Number(image.indices[y][x]);
       pixels.set(index === 0 ? [70, 70, 70] : index <= 16 ? [44, 205, 242] : [255, 91, 177], at);
     }
-    return imageCanvas(image, pixels).toDataURL();
+    return proofImageCanvas(image, pixels).toDataURL();
   };
   return <main>
     <header><p className="proof-eyebrow">MUTP · DEVELOPMENT ART REVIEW · #393 / #432</p><h1>Shared sprite format</h1>
@@ -116,7 +108,7 @@ function Review({ pack }: { pack: SpriteProofPack }) {
         <details><summary>Exact shade values</summary><ol>{ramp.colors.map((color, shade) => <li key={shade}><code>{color}</code></li>)}</ol></details></article>)}</div>
     </section>
     <section><h2>All 256 combinations</h2><label>Sheet artwork <select aria-label="Sheet artwork" value={kind} onChange={event => setKind(event.target.value as typeof kind)}><option value="body">Pitch sprite</option><option value="bust">Selected static bust</option><option value="helmet">Team helmet</option></select></label><PaletteSheet pack={pack} kind={kind} design={bustDesign}/></section>
-    <footer>Development-only proof. Static preview cache: 32 entries. Animation textures: at most 96 per palette pair, released on palette change. Production integration and all-device certification remain separate.</footer>
+    <footer>Development-only proof. Static preview cache holds 32 images. The animation cache holds up to 96 recolored frames and resets on palette changes.</footer>
   </main>;
 }
 

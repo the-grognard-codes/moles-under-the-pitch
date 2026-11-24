@@ -66,9 +66,9 @@ export function clearDevLocalGames({ apply = false, run = defaultRun, environmen
   // Use immutable container IDs after checking names/labels/mounts.
   const query = input => run('docker', ['exec', '-i', database.Id, 'sh', '-c', sqlCommand], { input });
   const marker = query('SELECT version FROM ffb_local_schema;').trim();
-  if (!['7', '8', '9'].includes(marker)) throw Error('REVIEW_SCHEMA_MISMATCH');
+  if (!['7', '8', '9', '10', '11'].includes(marker)) throw Error('REVIEW_SCHEMA_MISMATCH');
   const retainedForSchema = marker !== '7' ? [...retainedTables, 'ffb_v2_skill_use_preferences'] : retainedTables;
-  const gamesForSchema = marker === '9' ? ['ffb_match_recovery_journal', ...gameTables] : gameTables;
+  const gamesForSchema = ['9', '10', '11'].includes(marker) ? ['ffb_match_recovery_journal', ...gameTables] : gameTables;
   const inventory = query('SELECT TABLE_NAME, ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() ORDER BY TABLE_NAME;')
     .trim().split(/\r?\n/).map(line => line.split('\t'));
   const expected = [...gamesForSchema, ...retainedForSchema];

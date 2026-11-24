@@ -70,10 +70,10 @@ paths before creating anything.
    health and verify the target volume is `ffb-match-review_database`.
 2. Once, run `node tools/match-review-provision.mjs`. It checks the exact source
    and target containers, distinct volumes, empty destination, and schema
-   marker 7 through 10. It streams a consistent database snapshot directly into the
+   marker 7 through 11. It streams a consistent database snapshot directly into the
    review container, retains accounts/scopes/saved teams, and clears match
    documents, membership, invitations, consent and recovery in the review copy
-   only, then upgrades the review copy to marker 10 for account skill use preferences, recovery journaling and computer job availability.
+   only, then upgrades the review copy to marker 11 for account skill use preferences, recovery journaling, computer job availability and per-account expiry acknowledgements.
    If import or cleanup is interrupted, inspect the target and provision
    a fresh empty review volume; the script refuses to overwrite populated data.
 3. Build and start the review game container with `docker compose -f
@@ -108,8 +108,8 @@ node tools/dev-local-clear-games.mjs --apply
 The default (no argument) is also a dry run. It prints table counts without
 changing data. `--apply` permanently deletes every prepared, active and completed
 match, including results/replays stored in match documents, checkpoints, consent,
-invitations, request records, membership and legacy database game snapshots.
-It requires the existing review database to be running at schema marker 7 through 10.
+invitations, request records, membership (including expiry acknowledgements) and legacy database game snapshots.
+It requires the existing review database to be running at schema marker 7 through 11.
 No build, Firebase login or matching game/client version is required.
 
 The script verifies the local Docker endpoint, exact review containers, Compose
@@ -148,15 +148,14 @@ node tools/match-review-adc-check.mjs
 node tools/dev-local.mjs --start
 ```
 
-The explicit bootstrap creates schema marker 10 without importing accounts,
-teams or matches. It can upgrade a verified marker-7 database while preserving
+The explicit bootstrap creates schema marker 11 without importing accounts,
+teams or matches. It can upgrade a verified marker-7 through marker-10 database while preserving
 its records, rejects populated marker-5/6 schemas, and never targets the
 retained current-dev database. Do not run the laptop-copy provisioning script
 for this path. The computer-player token file must match the SHA-256 configured
 in `server.match-review.ini`; daily startup also requires Firebase CLI and nginx.
 
-Existing marker-7 review databases must run the explicit schema bootstrap before
-starting this server build. See [account skill use schema migration](../../docs/operations/skill-use-preferences-schema.md).
+For an existing marker-10 review database, stop the service and back it up before upgrading. Follow the [marker-11 rollout and rollback procedure](../../docs/operations/recovery-journal-schema.md).
 
 ## Authentication preflight
 

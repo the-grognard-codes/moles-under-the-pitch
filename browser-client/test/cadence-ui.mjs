@@ -4,11 +4,14 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
 import { createServer } from './browser-test-server.mjs';
+import { setCameraAngle } from './camera-controls.mjs';
 import { DICE_GROUP_INTERVAL_MS, PITCH_DICE_ROLL_MS } from '../src/presentation-timing.ts';
 
 const initial = JSON.parse(readFileSync(new URL('./fixtures/m5a-blitz-projections.json', import.meta.url), 'utf8'))[0].actor;
 const state = (revision, x = 7, y = 7) => ({ ...initial, revision, actions: [], prompt: null,
   players: initial.players.map((player, index) => index ? player : { ...player, x, y }) });
+const loose = (revision, ballX, playerX) => ({ ...state(revision, playerX), ball: { x: ballX, y: 7 },
+  ballState: { version: 1, inPlay: true, moving: true, carrierPlayerId: null } });
 const move = (x, y = 7) => ({ modelChangeId: 'fieldModelSetPlayerCoordinate',
   modelChangeKey: initial.players[0].id, modelChangeValue: { x, y } });
 const ball = x => ({ modelChangeId: 'fieldModelSetBallCoordinate', modelChangeValue: { x, y: 7 } });
@@ -35,6 +38,7 @@ mkdirSync(evidence, { recursive: true });
 const publish = input => page.evaluate(input => window.publishPlayback(input), { enabled: true, mode: 'live', ...input });
 const output = () => page.locator('#playback-state').evaluate(out => ({ x: Number(out.dataset.x),
   revision: Number(out.dataset.revision), active: out.dataset.active === 'true', duration: Number(out.dataset.duration) }));
+const shownPlayerY = () => page.locator(`.live-marker[data-player-id="${initial.players[0].id}"]`).getAttribute('data-center-y');
 const at = (x, active) => page.waitForFunction(({ x, active }) => {
   const out = document.querySelector('#playback-state');
   return Number(out.dataset.x) === x && out.dataset.active === String(active);
@@ -45,6 +49,138 @@ const reset = async (view = state(0)) => {
   await publish({ view, records: [record(view)] });
   await page.evaluate(() => { window.playbackFrames = []; });
 };
+async function assertPlaybackPanHover() {
+  await setCameraAngle(page, 50);
+  // Hold a real player step on the clock while panning and restoring hover.
+  const baseWithBall = loose(0, 12);
+  const movedWithBall = loose(1, 12, 9);
+  await reset(baseWithBall);
+  await page.locator('.live-ball-marker[data-ball-x="12"]').waitFor({ state: 'attached' });
+  const scene = page.locator('.live-pitch-scene');
+  const initialFocus = await scene.getAttribute('data-focus');
+  const bounds = await scene.boundingBox();
+  const panStart = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+  const hover = page.locator('.live-hover-square');
+  const probeTargets = await page.evaluate(() => {
+    const overlay = document.createElement('aside');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:12px;height:12px';
+    document.body.append(overlay);
+    const calls = { player: 0, ball: 0, overlay: 0 };
+    const getAnimations = Element.prototype.getAnimations;
+    Element.prototype.getAnimations = function (...args) {
+      if (this.closest('.live-marker')) calls.player++;
+      if (this.closest('.live-ball-marker')) calls.ball++;
+      if (this === overlay) calls.overlay++;
+      return getAnimations.apply(this, args);
+    };
+    const selectors = ['.live-marker', '.live-marker .live-number', '.live-ball-marker', '.live-ball-highlight'];
+    const targets = selectors.map(selector => document.querySelector(selector));
+    window.hoverAnimationProbe = {
+      // Exercise both event paths on every target independently of CSS timing.
+      emit() {
+        for (const target of [overlay, ...targets]) {
+          target.dispatchEvent(new TransitionEvent('transitionrun', { bubbles: true, propertyName: 'left' }));
+          target.dispatchEvent(new TransitionEvent('transitionrun', { bubbles: true, propertyName: 'top' }));
+          target.dispatchEvent(new AnimationEvent('animationstart', { bubbles: true }));
+        }
+        return { ...calls };
+      },
+      read: () => ({ ...calls }),
+      restore() { Element.prototype.getAnimations = getAnimations; overlay.remove(); },
+    };
+    return selectors.filter((_, index) => !targets[index]);
+  });
+  try {
+    assert.deepEqual(probeTargets, [], 'Playback fixture renders both markers and their descendants');
+    await publish({ view: movedWithBall, records: [record(baseWithBall), record(movedWithBall, [sync([move(8), move(9)])])] });
+    await at(8, true);
+    await page.mouse.move(panStart.x, panStart.y);
+    await page.clock.runFor(34);
+    assert.equal(await hover.count(), 1, 'A stationary pointer is tracked during playback');
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(panStart.x, panStart.y + 35);
+    await page.clock.runFor(34);
+    assert.notEqual(await scene.getAttribute('data-focus'), initialFocus, 'Drag pans the camera during playback');
+    assert.equal(await hover.count(), 0, 'Dragging clears tracked hover');
+    const noReads = { player: 0, ball: 0, overlay: 0 };
+    assert.deepEqual(await page.evaluate(() => window.hoverAnimationProbe.emit()), noReads, 'No synchronous animation reads during a drag');
+    await page.clock.runFor(34);
+    assert.deepEqual(await page.evaluate(() => window.hoverAnimationProbe.read()), noReads, 'No target is inspected during a drag');
+    await page.mouse.up({ button: 'right' });
+    await page.clock.runFor(34);
+    assert.equal(await hover.count(), 1, 'Releasing the pan restores tracked hover');
+    await at(8, true);
+    const initialZoom = await scene.getAttribute('data-zoom');
+    await page.mouse.wheel(0, -100);
+    await page.clock.runFor(34);
+    assert.notEqual(await scene.getAttribute('data-zoom'), initialZoom, 'Wheel zoom changes the camera during playback');
+    assert.equal(await hover.count(), 1, 'Wheel zoom preserves tracked hover');
+    assert.deepEqual(await page.evaluate(() => window.hoverAnimationProbe.read()), noReads, 'Zoom skips player and ball animation reads');
+    assert.deepEqual(await page.evaluate(() => window.hoverAnimationProbe.emit()), noReads, 'Event handlers defer animation reads');
+    await page.clock.runFor(34);
+    assert.deepEqual(await page.evaluate(() => window.hoverAnimationProbe.read()), { ...noReads, overlay: 1 },
+      'Only the overlay is inspected and its events share one frame read');
+  } finally {
+    await page.evaluate(() => window.hoverAnimationProbe.restore());
+  }
+}
+async function assertReplayMovementDoesNotRefreshHover() {
+  const base = loose(0, 12), target = loose(1, 13, 8);
+  await reset(base);
+  const scene = page.locator('.live-pitch-scene');
+  const bounds = await scene.boundingBox();
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.clock.runFor(34);
+  assert.equal(await page.locator('.live-hover-square').count(), 1);
+  await publish({ view: target, records: [record(base), record(target, [sync([move(8), ball(13)])])], mode: 'replay' });
+  await at(8, true);
+  await page.clock.runFor(34);
+  const ballCenter = () => page.locator('.live-ball-marker').evaluate(marker => marker.style.top);
+  const firstCenter = await ballCenter();
+  await page.evaluate(() => {
+    const hitTest = document.elementFromPoint;
+    window.replayHoverHits = 0;
+    document.elementFromPoint = function (x, y) {
+      window.replayHoverHits++;
+      return hitTest.call(this, x, y);
+    };
+  });
+  try {
+    for (let frame = 0; frame < 6; frame++) await page.clock.runFor(17);
+    assert.notEqual(await ballCenter(), firstCenter, 'The ball continues moving while the pointer rests');
+    assert.equal(await page.evaluate(() => window.replayHoverHits), 0, 'Moving pieces introduce no redundant hover hit tests');
+    assert.equal(await page.locator('.live-hover-square').count(), 1, 'Replay retains the hover square under the pointer');
+  } finally {
+    await page.evaluate(() => { delete document.elementFromPoint; });
+  }
+}
+async function assertMovementTimerCompletesWithoutFrames() {
+  await reset(state(0, 8));
+  const intermediateY = await shownPlayerY();
+  await reset();
+  const startY = await shownPlayerY();
+  assert.notEqual(startY, intermediateY);
+  await page.evaluate(() => {
+    const request = window.requestAnimationFrame;
+    const cancel = window.cancelAnimationFrame;
+    window.requestAnimationFrame = () => -1;
+    window.cancelAnimationFrame = id => { if (id !== -1) cancel(id); };
+    window.restoreCadenceFrames = () => {
+      window.requestAnimationFrame = request;
+      window.cancelAnimationFrame = cancel;
+    };
+  });
+  try {
+    await publish({ view: state(1, 9), records: [record(state(0)), record(state(1, 9), [sync([move(8), move(9)])])] });
+    await at(8, true);
+    assert.equal(await shownPlayerY(), startY, 'The first step has no frame in which to advance');
+    await page.clock.runFor(200);
+    await at(9, true);
+    assert.equal(await shownPlayerY(), intermediateY, 'The timer settles the first step before the next uses its position');
+  } finally {
+    await page.evaluate(() => { window.restoreCadenceFrames(); delete window.restoreCadenceFrames; });
+  }
+}
 try {
   await page.addInitScript(input => { window.playbackInput = input; window.playbackFrames = []; },
     { view: state(0), records: [record(state(0))], enabled: true, mode: 'live' });
@@ -102,8 +238,6 @@ try {
   await page.clock.runFor(1); await at(7, false); await page.locator('#required-choice').waitFor();
 
   // A catch result belongs between the ball's arriving and departing squares.
-  const loose = (revision, x) => ({ ...state(revision), ball: { x, y: 7 },
-    ballState: { version: 1, inPlay: true, moving: true, carrierPlayerId: null } });
   await reset(loose(0, 7));
   const bobble = loose(1, 10);
   await publish({ view: bobble, records: [record(loose(0, 7)), record(bobble, [sync([ball(8)]),
@@ -155,7 +289,7 @@ try {
 
   // Replay speed scales movement, ball steps, roll spacing and roll animation.
   await reset(loose(0, 7));
-  const replay = { ...loose(1, 8), players: state(1, 8).players };
+  const replay = loose(1, 8, 8);
   await publish({ view: replay, records: [record(loose(0, 7)), record(replay, [sync([move(8)]), sync([], [block, injury]), sync([ball(8)])])], mode: 'replay', speed: 2 });
   await at(8, true); assert.equal((await output()).duration, 100);
   await page.clock.runFor(100);
@@ -175,11 +309,14 @@ try {
   await page.clock.runFor(1000); await at(23, false);
 
   // Background tabs consume current snapshots rather than building a backlog.
+  await reset(state(0, 10));
+  const backgroundTargetY = await shownPlayerY();
   await reset();
   const route = record(state(1, 10), [sync([move(8), move(9), move(10)])]);
   await publish({ view: route.state, records: [record(state(0)), route] }); await at(8, true);
   await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: true }); document.dispatchEvent(new Event('visibilitychange')); });
   await at(10, false);
+  assert.equal(await shownPlayerY(), backgroundTargetY, 'Hiding the tab settles the displayed marker at the latest snapshot');
   const restored = { ...state(2, 12), actions: [{ id: 'block', kind: 'blockDie', actor: 'home', label: 'Choose POW (die 1)', sourcePlayerId: 'home1', target: null }] };
   await publish({ view: restored, records: [record(state(0)), route, record(restored, [sync([], [block])])] }); await at(12, false);
   await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: false }); document.dispatchEvent(new Event('visibilitychange')); });
@@ -245,22 +382,42 @@ try {
   const replayMarker = hosted.locator(`.replay-board .live-marker[data-player-id="${initial.players[0].id}"]`);
   const replayAt = x => hosted.waitForFunction(({ id, x }) => document.querySelector(`.replay-board [data-player-id="${id}"]`)
     ?.getAttribute('aria-label')?.endsWith(`square ${x}, 7`), { id: initial.players[0].id, x });
+  const assertReplayPosition = async x => {
+    const delta = await replayMarker.evaluate(async (marker, x) => {
+      const { PitchProjection } = await import('/src/pitch-projection.ts');
+      const scene = marker.closest('.live-pitch-scene');
+      const camera = new PitchProjection({
+        width: parseFloat(scene.style.width), height: parseFloat(scene.style.height), end: scene.dataset.end,
+        mode: scene.dataset.projection, perspectiveElevation: Number(scene.dataset.elevation) === 90 ? 50 : Number(scene.dataset.elevation),
+        zoom: Number(scene.dataset.zoom), focus: Number(scene.dataset.focus), transverseFocus: Number(scene.dataset.transverseFocus),
+      });
+      const expected = camera.project({ x: x + .5, y: 7.5 });
+      const surface = scene.getBoundingClientRect(), rect = marker.getBoundingClientRect();
+      return Math.hypot(rect.left - surface.left + rect.width / 2 - expected.x,
+        rect.top - surface.top + rect.height / 2 - expected.y);
+    }, x);
+    assert.ok(delta < 1, `Hosted replay immediately renders square ${x}, 7 (offset ${delta} CSS pixels)`);
+  };
   await replayAt(7);
   await hosted.getByLabel('Event', { exact: true }).fill('2');
   await hosted.getByRole('button', { name: 'Seek', exact: true }).click();
   await replayAt(10);
-  assert.equal(await replayMarker.evaluate(node => getComputedStyle(node).transitionDuration.split(',')[0].trim()), '0s');
+  await assertReplayPosition(10);
   await hosted.getByRole('combobox', { name: /Speed/ }).selectOption('2');
   await hosted.getByRole('button', { name: 'Next', exact: true }).click(); await replayAt(11);
   await hosted.clock.runFor(99); await replayAt(11);
   await hosted.clock.runFor(1); await replayAt(12);
   await hosted.getByLabel('Skip animations').check(); await replayAt(13);
+  await assertReplayPosition(13);
   await hosted.clock.runFor(1000); await replayAt(13);
   await hosted.getByLabel('Skip animations').uncheck();
   await hosted.getByRole('button', { name: 'Last', exact: true }).click(); await replayAt(15);
   await hosted.clock.runFor(1000); await replayAt(15);
   await hosted.close();
   writeFileSync(resolve(evidence, 'frames.json'), JSON.stringify(await page.evaluate(() => window.playbackFrames), null, 2));
+  await assertPlaybackPanHover();
+  await assertReplayMovementDoesNotRefreshHover();
+  await assertMovementTimerCompletesWithoutFrames();
   assert.deepEqual(errors, []);
-  console.log('PASS: fixed coach/spectator cadence, prompt gating, grouped rolls, ball/catch order, reduced motion, replay rates/seek/skip, background recovery.');
+  console.log('PASS: playback pan and replay hover, fixed coach/spectator cadence, prompt gating, grouped rolls, ball/catch order, reduced motion, replay rates/seek/skip, dropped frames, background recovery.');
 } finally { await browser.close(); await server.close(); }

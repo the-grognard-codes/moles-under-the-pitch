@@ -212,6 +212,17 @@ public final class BrowserV2Adapter implements BrowserProtocol {
 				}
 				return;
 			}
+			if (type == BrowserV2RequestType.ACKNOWLEDGE_EXPIRED) {
+				fields(request, "version", "type", "requestId", "matchId");
+				String id = request.get("matchId").asString();
+				if (!id.matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}")) throw new IllegalArgumentException();
+				lobbyRead = true;
+				admitLobbyRead(connection, principal, ApplicationScope.PLAYER);
+				access.acknowledgeExpired(principal, id, setup);
+				send(connection, new JsonObject().add("type", "acknowledgeExpired").add("requestId", requestId)
+					.add("matchId", id).add("code", "ACCEPTED"));
+				return;
+			}
 			if (type == BrowserV2RequestType.SKILL_USE_PREFERENCES) {
 				principal = access.require(principal, ApplicationScope.PLAYER);
 				String operation = request.getString("operation", "");
@@ -227,7 +238,11 @@ public final class BrowserV2Adapter implements BrowserProtocol {
 				return;
 			}
 			if (type == BrowserV2RequestType.CURRENT_MATCHES) {
-				fields(request, "version", "type", "requestId", "after");
+				JsonValue requestedDetails = request.get("includeResumeDetails");
+				if (requestedDetails == null) fields(request, "version", "type", "requestId", "after");
+				else fields(request, "version", "type", "requestId", "after", "includeResumeDetails");
+				if (requestedDetails != null && !requestedDetails.isBoolean()) throw new IllegalArgumentException();
+				boolean includeResumeDetails = requestedDetails != null && requestedDetails.asBoolean();
 				JsonValue after = request.get("after");
 				if (!after.isNull() && (!after.isString()
 					|| !after.asString().matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}"))) throw new IllegalArgumentException();
@@ -244,7 +259,9 @@ public final class BrowserV2Adapter implements BrowserProtocol {
 				Map<String, MatchDocument> documents = setup.browseDocuments(ids, budget);
 				List<String> active = new ArrayList<>();
 				for (MatchDocument document : documents.values()) if (document.lifecycle == MatchDocument.Lifecycle.ACTIVATED) active.add(document.matchId);
-				Map<String, JsonObject> states = setup.browseStates(active, budget);
+				long serverNow = clock.millis();
+				Map<String, JsonObject> states = includeResumeDetails ? setup.currentMatchStates(active, documents, serverNow, budget)
+					: setup.browseStates(active, budget);
 				for (int index = 0; index < count; index++) {
 					MatchMembership membership = memberships.get(index);
 					JsonObject entry = new JsonObject().add("matchId", membership.matchId).add("callerRole", membership.role)
@@ -260,15 +277,23 @@ public final class BrowserV2Adapter implements BrowserProtocol {
 								: JsonValue.valueOf(document.away.team.teamName == null || document.away.team.teamName.isEmpty() ? "Away" : document.away.team.teamName));
 						if (document.lifecycle == MatchDocument.Lifecycle.ACTIVATED) {
 							JsonObject state = states.get(membership.matchId);
-							if (state != null && state.get("phase") != null) entry.set("phase", state.get("phase"));
-							else entry.set("lifecycle", "UNAVAILABLE");
+							if (state == null || state.get("phase") == null) entry.set("lifecycle", "UNAVAILABLE");
+							else {
+								entry.set("phase", state.get("phase"));
+								if (includeResumeDetails) {
+									if (state.getBoolean("expired", false)) entry.set("lifecycle", "EXPIRED");
+									else if (state.get("resumeUntil") != null) entry.add("resumeUntil", state.get("resumeUntil"));
+								}
+							}
 						}
 					}
 					entries.add(entry);
 				}
-				sendLobby(connection, budget, new JsonObject().add("type", "currentMatches").add("requestId", requestId).add("code", "ACCEPTED")
+				JsonObject response = new JsonObject().add("type", "currentMatches").add("requestId", requestId).add("code", "ACCEPTED")
 					.add("matches", entries).add("next", memberships.size() > count
-						? JsonValue.valueOf(memberships.get(count - 1).matchId) : JsonValue.NULL));
+						? JsonValue.valueOf(memberships.get(count - 1).matchId) : JsonValue.NULL);
+				if (includeResumeDetails) response.add("serverNow", serverNow);
+				sendLobby(connection, budget, response);
 				return;
 			}
 			if (type == BrowserV2RequestType.BROWSE) {

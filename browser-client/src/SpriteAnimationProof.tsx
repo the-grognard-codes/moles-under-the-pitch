@@ -62,7 +62,7 @@ export function SpriteAnimationProof({ palette, primary, secondary, mirror, zoom
     <div className="proof-green" style={{ width: 'fit-content', padding: 24 }}><canvas ref={canvas} width={size} height={size} aria-label="Animated player"
       style={{ width: size * zoom, height: size * zoom, imageRendering: 'pixelated', transform: mirror ? 'scaleX(-1)' : undefined }}/></div>
     {!selected && pack && <p>No authored clip for this view; the projected scene retains the accepted static player.</p>}
-    <h3>Projected pitch · current Pixi renderer</h3>
+    <h3>Projected pitch</h3>
     <label>Coach end <select aria-label="Coach end" value={end} onChange={event => setEnd(event.target.value as typeof end)}><option value="home">Home</option><option value="away">Away</option></select></label>
     <label>Projection <select aria-label="Proof projection" value={mode} onChange={event => setMode(event.target.value as typeof mode)}><option value="perspective">Perspective</option><option value="top-down">Top-down</option></select></label>
     <label><input type="checkbox" checked={crowd} onChange={event => setCrowd(event.target.checked)}/> 22-player synthetic scene</label>

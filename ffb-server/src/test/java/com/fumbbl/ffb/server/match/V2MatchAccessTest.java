@@ -1,16 +1,25 @@
 package com.fumbbl.ffb.server.match;
 
+import com.eclipsesource.json.JsonObject;
+
+import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -77,6 +86,28 @@ class V2MatchAccessTest {
 		when(memberships.hasMatch(match)).thenReturn(true);
 		access.spectatorTranscript(viewer, match);
 		assertThrows(MatchService.Failure.class, () -> access.spectatorSnapshot(viewer, match));
+	}
+
+	@Test void acknowledgementRequiresMembershipAndChecksExpiryOnlyUntilFirstSuccess() throws Exception {
+		AuthenticatedPrincipal player = principal(2000, ApplicationScope.PLAYER);
+		when(directory.reauthorize(player)).thenReturn(player);
+		SetupApplication setup = mock(SetupApplication.class);
+		when(memberships.acknowledged(match, account)).thenReturn(null, true, false);
+		assertEquals("NOT_FOUND", assertThrows(MatchService.Failure.class, () -> access.acknowledgeExpired(player, match, setup)).code);
+		access.acknowledgeExpired(player, match, setup);
+		verifyNoInteractions(setup);
+		MatchDocument doc = new BogrukEngineFixture("human", "orc", 42).document;
+		Map<String, MatchDocument> documents = Map.of(match, doc);
+		when(setup.browseDocuments(eq(List.of(match)), any())).thenReturn(documents);
+		when(setup.currentMatchStates(eq(List.of(match)), eq(documents), eq(1000L), any()))
+			.thenReturn(Map.of(match, new JsonObject()), Map.of(match, new JsonObject().add("expired", true)));
+		assertEquals("MATCH_NOT_EXPIRED", assertThrows(MatchService.Failure.class, () -> access.acknowledgeExpired(player, match, setup)).code);
+		access.acknowledgeExpired(player, match, setup);
+		verify(memberships).acknowledge(match, account, 1000);
+		doThrow(new MatchMembershipRepository.OutcomeUnknown(new SQLException())).when(memberships).acknowledge(match, account, 1000);
+		assertEquals("ACKNOWLEDGEMENT_OUTCOME_UNKNOWN", assertThrows(MatchService.Failure.class, () -> access.acknowledgeExpired(player, match, setup)).code);
+		doThrow(new SQLException("failed")).when(memberships).acknowledge(match, account, 1000);
+		assertThrows(SQLException.class, () -> access.acknowledgeExpired(player, match, setup));
 	}
 
 	private AuthenticatedPrincipal principal(long expiry, ApplicationScope... scopes) {

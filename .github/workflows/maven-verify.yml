@@ -22,6 +22,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Classify pull request changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      java_required: ${{ job.status == 'success' && steps.classify.outcome == 'success' && steps.classify.outputs.java_required == 'false' && 'false' || 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name == 'pull_request'
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          sparse-checkout: /tools/validation/java-pr-changes.mjs
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@v4
+        if: github.event_name == 'pull_request'
+        with:
+          node-version: '26'
+      - name: Classify the complete pull request diff
+        id: classify
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch --unshallow --no-tags --filter=blob:none origin "$PR_BASE_SHA" "$PR_HEAD_SHA"
+          node tools/validation/java-pr-changes.mjs
+
   full-browser:
     if: github.event_name == 'workflow_dispatch' && inputs.full_browser_validation
     uses: ./.github/workflows/browser-validation.yml
@@ -38,12 +65,14 @@ jobs:
         with:
           node-version: '26'
       - run: node --test tools/test/dev-local.test.mjs tools/test/dev-local-clear-games.test.mjs tools/test/dev-local-install-formations.test.mjs tools/test/review-mount-source.test.mjs tools/test/match-review-start.test.mjs tools/test/review-current-matches-index.test.mjs tools/test/game-service-start.test.mjs
-      - run: node --test tools/test/validation.test.mjs tools/test/browser-local.test.mjs tools/test/deploy.test.mjs tools/test/compare-browser-workloads.test.mjs tools/test/capture-analysis.test.mjs
+      - run: node --test tools/test/validation.test.mjs tools/test/java-pr-changes.test.mjs tools/test/browser-local.test.mjs tools/test/deploy.test.mjs tools/test/compare-browser-workloads.test.mjs tools/test/capture-analysis.test.mjs
       - run: npm test --prefix computer-player
 
   baseline:
     # Preserve the required-check context while validating the supported runtime.
     name: Validate
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.java_required != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -58,22 +87,32 @@ jobs:
         with:
           distribution: temurin
           java-version: ${{ steps.toolchain.outputs.java-version }}
+      - name: Cache project-local Maven archive
+        uses: actions/cache@v4
+        with:
+          path: .tools/downloads
+          key: ${{ runner.os }}-maven-archive-${{ hashFiles('tools/target-build-toolchain.json') }}
       - name: Bootstrap project Maven with Java 21
         shell: pwsh
         run: ./tools/bootstrap.ps1 -JavaHome $env:JAVA_HOME
+      - name: Restore project-local Maven repository
+        # Let the full reactor builds in the shards populate the shared cache.
+        uses: actions/cache/restore@v4
+        with:
+          path: .tools/repository
+          key: ${{ runner.os }}-java21-${{ hashFiles('tools/target-build-toolchain.json', '**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-java21-
       - name: Check bootstrap and build tooling
         shell: pwsh
         run: ./tools/test-tooling.ps1
-      - uses: actions/cache@v4
-        with:
-          path: .tools/repository
-          key: ${{ runner.os }}-browser-runtime-${{ hashFiles('tools/target-build-toolchain.json', '**/pom.xml') }}
       - name: Check browser startup, queue and endpoint boundaries
         shell: pwsh
         run: ./tools/target-build.ps1 test -JavaHome $env:JAVA_HOME -Module ffb-server -Test 'BrowserRuntimeSelectionTest,BrowserEngineQueueTest,BrowserJettyContractTest,BrowserV2RouteTest'
 
   target-shards:
     name: Java 21 state tests (${{ matrix.shard }}/4)
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.java_required != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
@@ -98,6 +137,12 @@ jobs:
           distribution: temurin
           java-version: ${{ steps.toolchain.outputs.java-version }}
 
+      - name: Cache project-local Maven archive
+        uses: actions/cache@v4
+        with:
+          path: .tools/downloads
+          key: ${{ runner.os }}-maven-archive-${{ hashFiles('tools/target-build-toolchain.json') }}
+
       - name: Set up project-local Maven
         shell: pwsh
         run: ./tools/bootstrap.ps1 -JavaHome $env:JAVA_HOME
@@ -107,6 +152,7 @@ jobs:
         with:
           path: .tools/repository
           key: ${{ runner.os }}-java21-${{ hashFiles('tools/target-build-toolchain.json', '**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-java21-
 
       - name: Reject disabled target tests
         shell: pwsh
@@ -126,7 +172,7 @@ jobs:
         shell: pwsh
         run: ./tools/validation/test-native-shard.ps1
 
-      - name: Run target Maven verify with isolated state-test shard
+      - name: Run target Maven verify with isolated test shard
         shell: pwsh
         run: ./tools/validation/native-shard.ps1 -Shard ${{ matrix.shard }} -JavaHome $env:JAVA_HOME
 
@@ -141,23 +187,39 @@ jobs:
           retention-days: 14
 
   target:
-    # Preserve the established required-check context; all matrix children must pass.
+    # The required check confirms when Java is not required or validates all four shards.
     name: Java 21 target verification
-    needs: [target-shards]
+    needs: [changes, target-shards]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    env:
+      JAVA_REQUIRED: ${{ needs.changes.outputs.java_required }}
     steps:
+      - name: Confirm Java not required
+        if: env.JAVA_REQUIRED == 'false'
+        env:
+          SHARD_RESULT: ${{ needs.target-shards.result }}
+        run: |
+          if [[ "$SHARD_RESULT" != skipped ]]; then
+            echo "::error::Expected the Java shards to be skipped, got $SHARD_RESULT."
+            exit 1
+          fi
+          echo "Java not required for this pull request. The Java shards were intentionally skipped."
       - uses: actions/checkout@v4
+        if: env.JAVA_REQUIRED != 'false'
       - uses: actions/setup-node@v4
+        if: env.JAVA_REQUIRED != 'false'
         with:
           node-version: '26'
       - uses: actions/download-artifact@v4
+        if: env.JAVA_REQUIRED != 'false'
         with:
           pattern: java-native-*
           path: .tools/validation-reports
           merge-multiple: true
       - name: Require successful jobs and complete native execution
+        if: env.JAVA_REQUIRED != 'false'
         env:
           VALIDATION_NEEDS: ${{ toJSON(needs) }}
         run: node tools/validation/coverage-gate.mjs native .tools/validation-reports
@@ -205,6 +267,8 @@ jobs:
 
   game-session:
     name: Firebase game session service
+    needs: [changes]
+    if: ${{ !cancelled() && needs.changes.outputs.java_required != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

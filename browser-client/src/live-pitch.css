@@ -43,7 +43,6 @@
 @keyframes live-path-chase { to { stroke-dashoffset: -14; } }
 .play-runtime .live-marker { position: absolute; display: block; padding: 0; margin: 0; border: 0; border-bottom: 3px solid #78addd; border-radius: 0 0 40% 40%; background: transparent; box-shadow: none; overflow: visible; }
 .play-runtime .live-marker[draggable=true], .play-runtime .live-dugout-players button[draggable=true] { cursor: grab; }
-.play-runtime .live-marker { transition: left .2s linear, top .2s linear; }
 .play-runtime .live-marker:disabled { opacity: 1; cursor: default; }
 .play-runtime .live-marker.away { border-bottom-color: #ed9e5d; border-bottom-style: dashed; }
 .play-runtime .live-marker.active { outline: 2px solid #f3e9b7; outline-offset: -2px; }
@@ -97,7 +96,7 @@
 @media (max-width: 620px) { .match-scoreboard { gap: .25rem; padding: .4rem; } .match-scoreboard > div { display: block; } .match-scoreboard strong { display: block; } .match-side { display: block; } }
 @media (max-width: 760px) { .match-command-bar { grid-template-columns: 1fr; } .match-command-bar span { grid-column: 1; } }
 @media (max-height: 700px) and (min-width: 981px) { .live-match-page .live-pitch-viewport { min-height: 260px; max-height: calc(100dvh - 350px); } }
-@media (prefers-reduced-motion: reduce) { .live-target-line, .live-route-line, .live-push-shaft { animation: none; } .play-runtime .live-marker { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .live-target-line, .live-route-line, .live-push-shaft { animation: none; } }
 
 /* The live match uses the content viewport; supporting controls follow below it. */
 @font-face { font-family: 'Match Alegreya'; src: url('/assets/game/ui/fonts/AlegreyaSC-Medium.ttf') format('truetype'); font-weight: 500; font-display: swap; }
@@ -498,18 +497,7 @@
 .live-selection-square { fill: #36ddff18; stroke: #36ddff; stroke-width: 3; }
 .live-hover-square { pointer-events: none; }
 .live-keyboard-square { fill: #ffe17b18; stroke: #ffe17b; stroke-width: 2; stroke-dasharray: 4 3; }
-.play-runtime .projected-pitch .live-marker { border: 0; border-radius: 0; box-shadow: none; outline: none; transform: none; background: transparent; overflow: visible;
-  transition: left var(--pitch-move-duration, 0ms) linear, top var(--pitch-move-duration, 0ms) linear,
-    width var(--pitch-move-duration, 0ms) linear, height var(--pitch-move-duration, 0ms) linear; }
-.projected-pitch .live-marker img { transition: left var(--pitch-move-duration, 0ms) linear, top var(--pitch-move-duration, 0ms) linear,
-  width var(--pitch-move-duration, 0ms) linear, height var(--pitch-move-duration, 0ms) linear; }
-.projected-pitch .live-ball-marker { transition: left var(--pitch-move-duration, 0ms) linear, top var(--pitch-move-duration, 0ms) linear; }
-.projected-pitch .live-ball-highlight { transition: left var(--pitch-move-duration, 0ms) linear, top var(--pitch-move-duration, 0ms) linear,
-  transform var(--pitch-move-duration, 0ms) linear; }
-@media (prefers-reduced-motion: reduce) {
-  .play-runtime .projected-pitch .live-marker, .projected-pitch .live-marker img,
-  .projected-pitch .live-ball-marker, .projected-pitch .live-ball-highlight { transition: none; }
-}
+.play-runtime .projected-pitch .live-marker { border: 0; border-radius: 0; box-shadow: none; outline: none; transform: none; background: transparent; overflow: visible; }
 .play-runtime .projected-pitch .live-marker:focus-visible { outline: none; }
 .projected-pitch .live-marker:focus-visible .live-number { color: #101c2b; background: #ffe17b; }
 .projected-pitch .live-marker.target .live-number { border: 1px dashed #36ddff; }

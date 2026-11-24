@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import type { PitchProjection, Point } from './pitch-projection.ts';
 import type { BallState } from './setup-protocol.ts';
+import { useDisplayedPosition, type BallMovement } from './pitch-movement.ts';
 
 // Smooth quarter arcs and inward triangles retain the rotating marker's shape.
 const ringSegment = 'M17.22 2.05A14 14 0 0 1 29.95 14.78L27.95 14.95A12 12 0 0 0 17.05 4.05Z';
 const inwardArrow = 'M13 7H19L16 11Z';
 const quarters = [0, 90, 180, 270];
 
-/** Ground-plane highlight; native possession alone decides whether to draw a football. */
-export function BallMarker({ ball, state, camera, variant, allowOffPitch = false }: { ball: Point; state?: BallState; camera: PitchProjection; variant?: 'kick'; allowOffPitch?: boolean }) {
+/** Ground-plane highlight and artwork for a loose or travelling ball. */
+export function BallMarker({ ball, state, camera, movement, variant, allowOffPitch = false }: {
+  ball: Point; state?: BallState; camera: PitchProjection; movement?: BallMovement | null; variant?: 'kick'; allowOffPitch?: boolean;
+}) {
   const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false);
   useEffect(() => {
     const preference = window.matchMedia?.('(prefers-reduced-motion: reduce)');
@@ -17,10 +20,11 @@ export function BallMarker({ ball, state, camera, variant, allowOffPitch = false
     preference.addEventListener('change', update);
     return () => preference.removeEventListener('change', update);
   }, []);
-  const center = camera.project({ x: ball.x + .5, y: ball.y + .5 });
-  const footprint = allowOffPitch ? camera.polygon([{ x: ball.x, y: ball.y }, { x: ball.x + 1, y: ball.y },
-    { x: ball.x + 1, y: ball.y + 1 }, { x: ball.x, y: ball.y + 1 }], true) : camera.square(ball, 0, true);
+  const { position: square, inMotion } = useDisplayedPosition(ball, movement?.path);
+  const center = camera.project({ x: square.x + .5, y: square.y + .5 });
+  const footprint = movement || allowOffPitch ? camera.squareFootprint(square, 0, true) : camera.square(square, 0, true);
   if (!center || state?.inPlay === false || footprint.length < 3) return null;
+  const showFootball = !!state && (state.carrierPlayerId === null || movement?.kind === 'loose' && inMotion);
   // Keep the reference ball-to-square proportion at every zoom and pitch depth.
   // Pixel-size clamps made the football dominate its marker when zoomed out.
   const ballScale = center.pixelsPerSquare / 75;
@@ -32,7 +36,7 @@ export function BallMarker({ ball, state, camera, variant, allowOffPitch = false
   const ballTop = (-10 - 9 * Math.cos(radians)) * ballScale;
   // Rotate inside the ground plane, before applying the camera homography.
   // A screen-space rotation would turn the foreshortened ellipse off the turf.
-  const groundTransform = camera.planeImageTransform([[1 / 32, 0, ball.x], [0, 1 / 32, ball.y], [0, 0, 1]]);
+  const groundTransform = camera.planeImageTransform([[1 / 32, 0, square.x], [0, 1 / 32, square.y], [0, 0, 1]]);
   return <div className={`live-ball-marker${variant === 'kick' ? ' live-ball-kick-preview' : ''}`} data-ball-x={ball.x} data-ball-y={ball.y}
     aria-hidden="true" style={{ left: center.x, top: center.y }}>
     <svg className="live-ball-highlight" width="32" height="32" viewBox="0 0 32 32"
@@ -47,7 +51,7 @@ export function BallMarker({ ball, state, camera, variant, allowOffPitch = false
       </g>
     </svg>
     {variant === 'kick' && <span className="live-kick-label">K</span>}
-    {state?.carrierPlayerId === null && <>
+    {showFootball && <>
       <span className="live-ball-shadow" style={{ left: -7 * ballScale, top: -2 * ballScale, width: 14 * ballScale, height: 5 * ballScale }}/>
       <img className="live-ball-football" src={`${import.meta.env.BASE_URL}assets/game/ui/ball-v1.svg`}
         alt="" draggable={false} style={{ left: ballLeft, top: ballTop, width: 16 * ballScale, height: 20 * ballScale, transform: `rotate(${ballRotation}deg)` }}/>

@@ -21,7 +21,7 @@ const baselineRef = process.env.PAN_BASELINE_REF || 'HEAD';
 if (!process.env.PAN_USE_BUNDLE) await build({ root, configFile: false, define: { 'process.env.NODE_ENV': '"production"' },
   plugins: process.env.PAN_BASELINE ? [{ name: 'original-pan-source', enforce: 'pre', load(id) {
     const relative = id.replaceAll('\\', '/').split('/browser-client/')[1];
-    if (['src/GameView.tsx', 'src/LivePitch.tsx', 'src/useMatchHistoryDock.ts', 'src/PlayerHoverCard.tsx', 'src/HostedResult.tsx', 'src/pitch-projection.ts', 'src/live-pitch.css'].includes(relative))
+    if (['src/GameView.tsx', 'src/LivePitch.tsx', 'src/useMatchHistoryDock.ts', 'src/PlayerHoverCard.tsx', 'src/HostedResult.tsx', 'src/pitch-projection.ts', 'src/live-pitch.css', 'src/use-pitch-hover.ts'].includes(relative))
       return execFileSync('git', ['show', `${baselineRef}:browser-client/${relative}`], { cwd: root, encoding: 'utf8', windowsHide: true });
   } }] : [],
   build: { outDir: join(output, 'bundle'), emptyOutDir: false, lib: { entry: join(root, 'test/idle-panning-harness.tsx'), formats: ['es'], fileName: () => 'harness.js', cssFileName: 'harness' } } });
@@ -35,6 +35,12 @@ const server = createServer(async (req, res) => {
 await new Promise(done => server.listen(0, '127.0.0.1', done));
 const browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || (process.platform === 'win32' ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : undefined) });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+if (process.env.PAN_BLOCK_TRANSITIONRUN === '1') {
+  console.log('Benchmark control enabled: blocking transitionrun at window capture.');
+  await page.addInitScript(() => {
+    window.addEventListener('transitionrun', event => event.stopImmediatePropagation(), true);
+  });
+}
 const errors = []; page.on('pageerror', error => errors.push(error.message));
 const results = [];
 try {

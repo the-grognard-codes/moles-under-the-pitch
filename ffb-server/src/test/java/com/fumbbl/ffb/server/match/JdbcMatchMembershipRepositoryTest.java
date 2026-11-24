@@ -3,13 +3,18 @@ package com.fumbbl.ffb.server.match;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.SQLTimeoutException;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -31,6 +36,20 @@ class JdbcMatchMembershipRepositoryTest {
 		when(statement.executeUpdate()).thenReturn(1);
 		assertDoesNotThrow(() -> repository.insert(new MatchMembership(MATCH, HOME, "home")));
 		verify(statement).setString(1, MATCH); verify(statement).setString(2, HOME); verify(statement).setString(3, "home");
+	}
+
+	@Test void failureBeforeAcknowledgementCommitHasADefiniteOutcome() throws Exception {
+		when(connection.getAutoCommit()).thenReturn(true);
+		SQLException denied = new SQLException("Update refused", "42000");
+		when(statement.executeUpdate()).thenThrow(denied);
+		assertSame(denied, assertThrows(SQLException.class, () -> repository.acknowledge(MATCH, HOME, 123)));
+		verify(connection).setAutoCommit(false);
+	}
+
+	@Test void timeoutDuringAcknowledgementCommitIsUncertain() throws Exception {
+		when(statement.executeUpdate()).thenReturn(1);
+		doThrow(new SQLTimeoutException()).when(connection).commit();
+		assertThrows(MatchMembershipRepository.OutcomeUnknown.class, () -> repository.acknowledge(MATCH, HOME, 123));
 	}
 
 	@Test void pagesOwnedUnfinishedMembershipsWithoutDependingOnConnections() throws Exception {

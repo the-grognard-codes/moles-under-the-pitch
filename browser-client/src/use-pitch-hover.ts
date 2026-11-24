@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { PitchProjection, type Point } from './pitch-projection.ts';
 
+const pitchPieces = '.live-marker, .live-ball-marker, .live-player-shadow, [data-selection]';
+
 /** Track physical hover independently of selection, keyboard focus and game intents. */
 export function usePitchHover(scene: RefObject<HTMLDivElement | null>, camera: PitchProjection, enabled: boolean) {
   const pointer = useRef<Point | null>(null);
@@ -33,22 +35,35 @@ export function usePitchHover(scene: RefObject<HTMLDivElement | null>, camera: P
     const document = scene.current!.ownerDocument, window = document.defaultView!;
     let frame = 0;
     const animations = new Set<Animation>();
+    const pendingTargets = new Set<Element>();
     const schedule = () => {
       if (!frame && pointer.current) frame = window.requestAnimationFrame(() => {
-        frame = 0; refresh.current();
+        frame = 0;
+        if (!pointer.current) {
+          pendingTargets.clear();
+          animations.clear();
+          return;
+        }
+        for (const target of pendingTargets) {
+          for (const animation of target.getAnimations()) {
+            // Infinite decorative effects must not keep the hover loop alive.
+            if (animation.playState === 'running' && Number.isFinite(animation.effect?.getComputedTiming().endTime))
+              animations.add(animation);
+          }
+        }
+        pendingTargets.clear();
+        refresh.current();
         for (const animation of animations) if (animation.playState !== 'running') animations.delete(animation);
         if (animations.size) schedule();
       });
     };
     scheduleRefresh.current = schedule;
-    const animate = (event: Event) => {
-      if (!(event.target instanceof Element)) return;
-      for (const animation of event.target.getAnimations()) {
-        // Recheck sliding/resizing panels during their transition. Infinite
-        // decorative effects must not turn hover into a permanent render loop.
-        if (animation.playState === 'running' && Number.isFinite(animation.effect?.getComputedTiming().endTime))
-          animations.add(animation);
-      }
+    const queueAnimationTarget = (event: Event) => {
+      const target = event.target;
+      // Ground and player hits use the same camera-projected square. The ball ignores pointer events.
+      // Sliding panels can cover that square even while the pointer stays still.
+      if (!pointer.current || !(target instanceof Element) || target.closest(pitchPieces)) return;
+      pendingTargets.add(target);
       schedule();
     };
     const move = (event: PointerEvent) => {
@@ -69,13 +84,15 @@ export function usePitchHover(scene: RefObject<HTMLDivElement | null>, camera: P
     document.addEventListener('dragstart', clear, true);
     document.addEventListener('scroll', schedule, true);
     document.addEventListener('visibilitychange', visibility);
-    document.addEventListener('transitionrun', animate, true);
-    document.addEventListener('animationstart', animate, true);
+    document.addEventListener('transitionrun', queueAnimationTarget, true);
+    document.addEventListener('animationstart', queueAnimationTarget, true);
     window.addEventListener('blur', clear);
     window.addEventListener('resize', schedule);
     // Panels can open, close or resize beneath a stationary pointer without
-    // rerendering LivePitch. Coalesce their DOM changes into one hit test.
-    const observer = new MutationObserver(schedule);
+    // rerendering LivePitch. Piece geometry does not change the ground hit.
+    const observer = new MutationObserver(records => {
+      if (pointer.current && records.some(({ target }) => !(target instanceof Element) || !target.closest(pitchPieces))) schedule();
+    });
     observer.observe(document.body, { subtree: true, childList: true, attributes: true,
       attributeFilter: ['class', 'style', 'hidden', 'open'] });
     return () => {
@@ -90,8 +107,8 @@ export function usePitchHover(scene: RefObject<HTMLDivElement | null>, camera: P
       document.removeEventListener('dragstart', clear, true);
       document.removeEventListener('scroll', schedule, true);
       document.removeEventListener('visibilitychange', visibility);
-      document.removeEventListener('transitionrun', animate, true);
-      document.removeEventListener('animationstart', animate, true);
+      document.removeEventListener('transitionrun', queueAnimationTarget, true);
+      document.removeEventListener('animationstart', queueAnimationTarget, true);
       window.removeEventListener('blur', clear);
       window.removeEventListener('resize', schedule);
     };

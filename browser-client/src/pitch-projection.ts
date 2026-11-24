@@ -137,7 +137,13 @@ export class PitchProjection {
 
   square(point: Point, inset = 0, clipToViewport = false): Point[] {
     if (!Number.isInteger(point.x) || !Number.isInteger(point.y) || point.x < 0 || point.x >= PITCH_LENGTH
-      || point.y < 0 || point.y >= PITCH_WIDTH || !Number.isFinite(inset) || inset < 0 || inset >= 0.5) return [];
+      || point.y < 0 || point.y >= PITCH_WIDTH) return [];
+    return this.squareFootprint(point, inset, clipToViewport);
+  }
+
+  /** Projects a unit square at a fractional position or beyond the touchline. */
+  squareFootprint(point: Point, inset = 0, clipToViewport = false): Point[] {
+    if (!Number.isFinite(inset) || inset < 0 || inset >= 0.5) return [];
     return this.polygon([{ x: point.x + inset, y: point.y + inset }, { x: point.x + 1 - inset, y: point.y + inset },
       { x: point.x + 1 - inset, y: point.y + 1 - inset }, { x: point.x + inset, y: point.y + 1 - inset }], clipToViewport);
   }

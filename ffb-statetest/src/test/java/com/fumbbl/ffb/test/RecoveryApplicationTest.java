@@ -699,28 +699,28 @@ class RecoveryApplicationTest {
 		assertEquals("MATCH_SUSPENDED", restarted.handle(actor(view), choice(fixture.id, "blocked-action", view, "heads")).getString("code", null));
 		assertTrue(restarted.handle("away", save(fixture.id, "save-accept", view, "saveAccept", proposal)).getBoolean("duplicate", false));
 		clock.advance(30L * 24 * 60 * 60 * 1000L + 1L);
-		JsonObject restored = accepted(restarted.handle("home", load(fixture.id, "expired-cold"))).get("state").asObject();
-		assertEquals("SUSPENDED", restored.get("saveResume").asObject().getString("status", null));
+		int writes = fixture.recovery.writes;
+		assertEquals("MATCH_ABANDONED", restarted.handle("home", load(fixture.id, "expired-cold")).getString("code", null));
+		assertEquals(writes, fixture.recovery.writes);
 		assertEquals("MATCH_ABANDONED", restarted.handle("home", load(fixture.id, "expired-resident")).getString("code", null));
 		JsonObject payload = JsonObject.readFrom(fixture.recovery.rows.get(fixture.id).json).get("payload").asObject();
 		assertTrue(payload.get("saveResume").asObject().getBoolean("abandoned", false));
 	}
 
-	@Test void coldLoadReturnsDurableViewBeforeNextResidentRequestRecordsAbandonment() throws Exception {
+	@Test void coldLoadReportsExpiryBeforeNextResidentRequestRecordsAbandonment() throws Exception {
 		Fixture fixture = fixture();
 		MutableClock clock = new MutableClock(1_700_000_000_000L);
 		SetupApplication application = new SetupApplication(new TestServer().getServer(), fixture.matches, fixture.recovery, true, clock, true);
 		accepted(application.activate("home", activate(fixture.id, "activate").toString()));
-		JsonObject durableView = accepted(application.handle("home", load(fixture.id, "before-expiry"))).get("state").asObject();
+		accepted(application.handle("home", load(fixture.id, "before-expiry")));
 		RecoveryRepository.Record checkpoint = fixture.recovery.rows.get(fixture.id);
 		int writes = fixture.recovery.writes;
 
 		clock.advance(30L * 24 * 60 * 60 * 1000L + 1L);
 		SetupApplication restarted = new SetupApplication(new TestServer().getServer(), fixture.matches, fixture.recovery, true, clock, true);
 		SetupApplication.HandleOutcome cold = restarted.handleWithOutcome("home", load(fixture.id, "expired-cold-load"));
-		JsonObject view = accepted(cold.response()).get("state").asObject();
-		assertEquals(durableView.get("revision"), view.get("revision"));
-		assertEquals(durableView.get("saveResume"), view.get("saveResume"));
+		assertEquals("MATCH_ABANDONED", cold.response().getString("code", null));
+		assertTrue(cold.response().get("state").isNull());
 		assertFalse(cold.publish());
 		assertEquals(writes, fixture.recovery.writes);
 		assertEquals(checkpoint, fixture.recovery.rows.get(fixture.id));

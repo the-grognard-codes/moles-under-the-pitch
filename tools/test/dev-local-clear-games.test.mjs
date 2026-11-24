@@ -120,6 +120,7 @@ test('rejects wrong targets and unsupported schemas before stopping or deleting'
     f => { f.database.State.Running = false; },
     f => { f.database.Config.Env = ['MARIADB_DATABASE=prod']; },
     f => { f.state.marker = '6'; },
+    f => { f.state.marker = '12'; },
     f => { f.state.inventory += '\nffb_new_match_table\tInnoDB'; },
     f => { f.state.inventory = f.state.inventory.replace('ffb_match_recovery\tInnoDB', 'ffb_match_recovery\tMyISAM'); },
     f => { f.state.inventory = f.state.inventory.split('\n').filter(line => !line.startsWith('ffb_v2_match_members\t')).join('\n'); },
@@ -132,20 +133,23 @@ test('rejects wrong targets and unsupported schemas before stopping or deleting'
   }
 });
 
-test('marker nine requires journal inventory and clears it before its parent without changing preferences', () => {
-  const f = fixture(); f.state.marker = '9';
-  f.state.inventory += '\nffb_v2_skill_use_preferences\tInnoDB\nffb_match_recovery_journal\tInnoDB';
-  f.rows.ffb_v2_skill_use_preferences = '18'; f.rows.ffb_match_recovery_journal = '12';
-  const result = f.invoke(true);
-  assert.equal(result.ffb_match_recovery_journal, '0');
-  assert.equal(f.rows.ffb_v2_skill_use_preferences, '18');
-  const deletion = f.operations.find(({ input }) => input?.includes('DELETE FROM')).input;
-  assert.ok(deletion.indexOf('DELETE FROM `ffb_match_recovery_journal`') < deletion.indexOf('DELETE FROM `ffb_match_recovery`'));
-  const missing = fixture(); missing.state.marker = '9';
-  missing.state.inventory += '\nffb_v2_skill_use_preferences\tInnoDB';
-  assert.throws(() => missing.invoke(true), /REVIEW_TABLES_MISMATCH/);
-  assert.ok(missing.operations.every(({ args }) => args[0] !== 'stop'));
-});
+for (const marker of ['9', '10', '11']) {
+  test(`marker ${marker} requires the journal and clears it before its parent while preserving preferences`, () => {
+    const f = fixture(); f.state.marker = marker;
+    f.state.inventory += '\nffb_v2_skill_use_preferences\tInnoDB\nffb_match_recovery_journal\tInnoDB';
+    f.rows.ffb_v2_skill_use_preferences = '18'; f.rows.ffb_match_recovery_journal = '12';
+    assert.equal(f.invoke().ffb_match_recovery_journal, '12');
+    const result = f.invoke(true);
+    assert.equal(result.ffb_match_recovery_journal, '0');
+    assert.equal(f.rows.ffb_v2_skill_use_preferences, '18');
+    const deletion = f.operations.find(({ input }) => input?.includes('DELETE FROM')).input;
+    assert.match(deletion, /DELETE FROM `ffb_match_recovery_journal`;[\s\S]*DELETE FROM `ffb_match_recovery`;/);
+    const missing = fixture(); missing.state.marker = marker;
+    missing.state.inventory += '\nffb_v2_skill_use_preferences\tInnoDB';
+    assert.throws(() => missing.invoke(true), /REVIEW_TABLES_MISMATCH/);
+    assert.ok(missing.operations.every(({ args }) => args[0] !== 'stop'));
+  });
+}
 
 test('honors Docker endpoint precedence and rejects remote DOCKER_HOST before any inspection', () => {
   const f = fixture();

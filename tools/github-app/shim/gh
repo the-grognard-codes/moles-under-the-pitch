@@ -2,7 +2,9 @@
 # Stands in for gh in POSIX shells (Git Bash) when this folder is first on PATH: refreshes
 # the GitHub App token if needed, then runs the real gh. See docs/agents/github-app.md.
 shim_dir=$(cd "$(dirname "$0")" && pwd)
-pwsh -NoProfile -NonInteractive -File "$shim_dir/../github-app-token.ps1" -Mode ensure || exit 1
+# pwsh -File reads all of a redirected stdin before it returns. Give the refresh an empty
+# stdin, so it can't block on an open pipe or consume input meant for the real gh.
+pwsh -NoProfile -NonInteractive -File "$shim_dir/../github-app-token.ps1" -Mode ensure </dev/null || exit 1
 
 old_ifs=$IFS
 IFS=:

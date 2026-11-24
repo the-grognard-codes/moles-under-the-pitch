@@ -169,6 +169,6 @@ keyboard/focus behavior and actual usable-height fit.
 Next art trial: registered transparent sprites for small, normal and large
 positions, with visible skill overlays on the exact board at practical zoom
 levels. Production engineering should carry these requirements into the accepted
-React/Pixi view, with board transformations independent of engine state. No
+React DOM/SVG view, with board transformations independent of engine state. No
 server, database, rules, runtime tooling or unrelated in-progress edits were
 changed for this art/UI review.

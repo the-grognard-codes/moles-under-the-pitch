@@ -19,7 +19,7 @@ export function summarizeGameplayPerformance(events, metadata = {}) {
       const key = `${event.documentId}:${event.requestId}`;
       const motion = routeMotion.get(key) ?? { documentId: event.documentId, requestId: event.requestId, role: event.role, samples: [] };
       const sample = [event.at, event.x, event.y];
-      if (Number.isFinite(event.targetLeft)) sample.push(event.targetLeft, event.targetTop,
+      if (Number.isFinite(event.inlineLeft)) sample.push(event.inlineLeft, event.inlineTop,
         event.computedLeft, event.computedTop, event.sceneLeft, event.sceneTop);
       motion.samples.push(sample); routeMotion.set(key, motion); continue;
     }
@@ -76,16 +76,16 @@ export function summarizeGameplayPerformance(events, metadata = {}) {
       pendingRemovedBeforePaint: matches.filter(trace => trace.pendingRemovedBeforePaint === true).length,
       missingTranscript: matches.filter(trace => trace.code === 'ACCEPTED' && !Number.isFinite(trace.transcriptAt)).length };
   };
-  return { formatVersion: 1, metadata: { platform: platform(), osRelease: release(), cpu: cpus()[0]?.model,
+  return { formatVersion: 2, metadata: { platform: platform(), osRelease: release(), cpu: cpus()[0]?.model,
     logicalProcessors: cpus().length, memoryBytes: totalmem(), ...metadata },
     semantics: { clock: 'performance.timeOrigin + performance.now(), milliseconds',
       paint: 'requestAnimationFrame paint opportunity; not actual GPU presentation or physical display latency',
-      movement: 'first DOM coordinate change for an authoritatively moved player, including provisional movement before response; CSS transition completion is separate',
+      movement: 'first authoritative-square DOM change for a moved player, including provisional movement before response; pitch-space animation is sampled separately at paint opportunities',
       transcript: 'first wire receipt containing the matching revision; no additional fetch is introduced',
       diceData: 'earliest matching state action with a block/reroll face or transcript native dice values; transcript arrival remains separate',
       frames: 'rAF intervals during PLAY while pending, playback active, or within 3 seconds of a local mutation',
       screenMovement: 'first rAF observing movement source getBoundingClientRect change >=0.5px after coordinate mutation; metrics require matching authoritative source movement; geometry at a paint opportunity, not actual displayed pixels; includes camera transforms',
-      routeMotion: 'up to 1500ms after first coordinate change for each movement; samples are [epochMilliseconds,screenLeft,screenTop,targetLeft,targetTop,computedLeft,computedTop,sceneLeft,sceneTop]; baseline captured before this instrumentation has no geometry cohort',
+      routeMotion: 'up to 1500ms after first coordinate change for each movement; samples are [epochMilliseconds,screenLeft,screenTop,inlineLeft,inlineTop,computedLeft,computedTop,sceneLeft,sceneTop]; inline coordinates now track the projected sprite during the step',
       observationWindowMs: 10000,
       input: 'last click or Enter/Space keydown within 2 seconds before request; pending is a matching machine-state marker; feedback separately requires a disabled/removed input control or visible busy overlay',
       privacy: 'allowlisted timing/category/revision fields only; no credentials, player IDs, names, chat or native state',
@@ -295,8 +295,10 @@ export function installGameplayPerformanceObserver() {
       if (!visible(marker)) continue;
       const rect = marker.getBoundingClientRect();
       const style = getComputedStyle(marker);
-      if (!trace.motionTransition) {
-        trace.motionTransition = { property: style.transitionProperty, duration: style.transitionDuration, easing: style.transitionTimingFunction };
+      if (!trace.motionAnimation) {
+        const duration = marker.closest('.projected-pitch')?.dataset.movementDuration;
+        trace.motionAnimation = { space: 'pitch', stepDurationMs: duration === undefined ? null : Number(duration),
+          reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches };
         send(trace);
       }
       if (!trace.firstScreenMovementAt && Math.hypot(rect.left - trace.initialRect[0], rect.top - trace.initialRect[1]) >= .5) {
@@ -305,7 +307,7 @@ export function installGameplayPerformanceObserver() {
       const scene = marker.closest('.live-pitch-scene')?.getBoundingClientRect();
       emit({ kind: 'motion', requestId: trace.requestId, at,
         x: Math.round(rect.left * 100) / 100, y: Math.round(rect.top * 100) / 100,
-        targetLeft: parseFloat(marker.style.left), targetTop: parseFloat(marker.style.top),
+        inlineLeft: parseFloat(marker.style.left), inlineTop: parseFloat(marker.style.top),
         computedLeft: parseFloat(style.left), computedTop: parseFloat(style.top), sceneLeft: scene?.left, sceneTop: scene?.top });
     }
     requestAnimationFrame(frame);

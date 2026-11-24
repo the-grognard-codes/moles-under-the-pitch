@@ -18,7 +18,7 @@ Run `npm run test:stadium-mockup` from `browser-client` to exercise the current 
 
 ### Live match follow-up
 
-The next change is separate live integration for the 90° overhead camera. Cache the stadium artwork, use the actual match teams and kits, and verify the view from both coach ends. Play through a drive manually to check that the stadium, field markings and players remain aligned during normal play.
+The playable 90° camera uses the stadium with the match teams’ names and kits. Both captures below show the same real dev-local kickoff from opposite coach ends. The gate stays at the bottom, while the visiting bays and defending teams’ end zones change sides. A separate authenticated browser run advanced through setup, kickoff and a confirmed move. The away view is awaiting owner approval. [Integration issue #605](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/605) · [Home kickoff](../reviews/gatehouse-overhead/kickoff-home.webp) · [Away kickoff](../reviews/gatehouse-overhead/kickoff-away.webp)
 
 ## Original painting and reconstruction
 
