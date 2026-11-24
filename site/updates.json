@@ -1,5 +1,21 @@
 [
   {
+    "number": 644,
+    "title": "Remove expired matches across devices",
+    "summary": "Choose Acknowledge and remove in the lobby or on the expired match page. It clears the listing for your account on every device. Your opponent can remove their listing separately.",
+    "category": "Gameplay",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/644",
+    "mergedAt": "2026-11-24T16:50:12Z"
+  },
+  {
+    "number": 643,
+    "title": "See how long you have to resume a match",
+    "summary": "After five quiet minutes, the lobby shows how much time remains to resume a match with a deadline. At zero it checks with the server. Opening an expired match explains why play has ended.",
+    "category": "Gameplay",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/643",
+    "mergedAt": "2026-11-24T16:15:04Z"
+  },
+  {
     "number": 640,
     "title": "Smoother pitch panning during player and ball movement",
     "summary": "The camera responds more smoothly when you drag the pitch during a move or while a loose ball travels. Playback keeps its existing pace, and sliding panels still update the highlighted square under the pointer.",

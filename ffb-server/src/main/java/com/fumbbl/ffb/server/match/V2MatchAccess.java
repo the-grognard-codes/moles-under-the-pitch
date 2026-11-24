@@ -2,6 +2,8 @@ package com.fumbbl.ffb.server.match;
 
 import com.fumbbl.ffb.server.local.BrowserRequestTiming;
 
+import com.eclipsesource.json.JsonObject;
+
 import java.sql.SQLException;
 import java.time.Clock;
 import java.util.List;
@@ -104,6 +106,27 @@ public final class V2MatchAccess {
 	public List<MatchMembership> currentMatches(AuthenticatedPrincipal principal, String afterMatchId) throws SQLException {
 		principal = require(principal, ApplicationScope.PLAYER);
 		return memberships.unfinishedMatches(principal.accountId(), afterMatchId);
+	}
+
+	/** Verify the committed expiry before recording this participant's first acknowledgement. */
+	public void acknowledgeExpired(AuthenticatedPrincipal principal, String matchId, SetupApplication setup) throws SQLException {
+		String account = require(principal, ApplicationScope.PLAYER).accountId();
+		Boolean acknowledged = memberships.acknowledged(matchId, account);
+		if (acknowledged == null) throw new MatchService.Failure("NOT_FOUND");
+		if (acknowledged) return;
+		LobbyReadBudget budget = new LobbyReadBudget();
+		List<String> ids = List.of(matchId);
+		Map<String, MatchDocument> documents = setup.browseDocuments(ids, budget);
+		MatchDocument document = documents.get(matchId);
+		if (document == null) throw new MatchService.Failure("NOT_FOUND");
+		if (document.lifecycle != MatchDocument.Lifecycle.ACTIVATED) throw new MatchService.Failure("MATCH_NOT_EXPIRED");
+		long now = clock.millis();
+		JsonObject state = setup.currentMatchStates(ids, documents, now, budget).get(matchId);
+		if (state == null) throw new MatchService.Failure("PERSISTENCE_FAILED");
+		if (!state.getBoolean("expired", false)) throw new MatchService.Failure("MATCH_NOT_EXPIRED");
+		budget.check();
+		try { memberships.acknowledge(matchId, account, now); }
+		catch (MatchMembershipRepository.OutcomeUnknown failure) { throw new MatchService.Failure("ACKNOWLEDGEMENT_OUTCOME_UNKNOWN"); }
 	}
 
 	public AuthenticatedPrincipal require(AuthenticatedPrincipal principal, ApplicationScope scope) throws SQLException {

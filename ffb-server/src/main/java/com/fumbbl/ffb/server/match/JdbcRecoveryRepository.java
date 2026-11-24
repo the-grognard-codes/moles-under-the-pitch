@@ -429,7 +429,7 @@ public final class JdbcRecoveryRepository implements RecoveryRepository {
 			BrowserRequestTiming.Scope read = timing.span(BrowserRequestTiming.Phase.DB_READ); ResultSet rows = lock.executeQuery()) {
 			if (!rows.next()) throw new SQLException("Recovery schema unavailable");
 			int version = rows.getInt(1);
-			if (version < 5 || version > 10 || journalEnabled && version < 9 || computerScheduling && version != 10)
+			if (version < 5 || version > 11 || journalEnabled && version < 9 || computerScheduling && version < 10)
 				throw new SQLException("Recovery schema unavailable");
 		}
 		try (PreparedStatement count = connection.prepareStatement(

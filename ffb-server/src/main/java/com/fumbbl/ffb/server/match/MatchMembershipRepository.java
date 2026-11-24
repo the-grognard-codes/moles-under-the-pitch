@@ -8,6 +8,13 @@ public interface MatchMembershipRepository {
 		public OutcomeUnknown(SQLException cause) { super("Membership write outcome unknown; retry the same membership", cause); }
 	}
 	MatchMembership find(String matchId, String accountId) throws SQLException;
+	/** Returns null for a missing membership. */
+	default Boolean acknowledged(String matchId, String accountId) throws SQLException {
+		return find(matchId, accountId) == null ? null : Boolean.FALSE;
+	}
+	default void acknowledge(String matchId, String accountId, long now) throws SQLException {
+		throw new SQLException("Membership acknowledgement storage unavailable");
+	}
 	boolean hasMatch(String matchId) throws SQLException;
 	void insert(MatchMembership membership) throws SQLException;
 	default String accountForRole(String matchId, String role) throws SQLException { return null; }
