@@ -6,7 +6,7 @@
 
 Activated matches show a countdown after five quiet minutes. The client anchors each page's deadlines to its server clock sample and tracks elapsed time with a monotonic clock. At zero the lobby withholds Resume and Concede while it requests the server's decision. The direct link explains expiry and clears a stale retained intent for that account and match. Expired matches stay listed in this slice.
 
-Both suspended match types count 30 days from suspension, including after a later resume proposal. Pending computer timeouts keep their ordering. Cold reads used by the lobby and direct link check the committed state without writing a checkpoint.
+Two-coach matches count 30 days from the last human action, including resume requests, rejections and cancellations during suspension. A suspended computer match counts from suspension. Countdown labels round down and omit zero lower units. The final minute displays `0m to resume` until the status recheck. Pending computer timeouts keep their ordering. Cold reads used by the lobby and direct link check the committed state without writing a checkpoint.
 
 | Check | Result |
 | --- | --- |
