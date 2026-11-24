@@ -9,7 +9,7 @@ import type { TranscriptRecord } from '../src/transcript-protocol.ts';
 import type { RoutePreview } from '../src/route-protocol.ts';
 
 type Input = { view: SetupState; records: TranscriptRecord[]; enabled: boolean; mode: 'live' | 'replay'; interactive?: boolean;
-  requestPending?: string | null; speed?: number; snapshotKey?: number };
+  requestPending?: string | null; speed?: number; snapshotKey?: number; selectedId?: string };
 declare global {
   interface Window {
     playbackInput: Input;
@@ -25,7 +25,7 @@ function Harness() {
   const [input, setInput] = useState(window.playbackInput);
   window.publishPlayback = setInput;
   window.playbackActions ??= [];
-  const { pitchView, playbackActive, diceMoment, diceSnapshot, movementDuration, beginProvisional, synchronizing,
+  const { pitchView, playbackActive, diceMoment, diceSnapshot, movementDuration, movement, beginProvisional, synchronizing,
     announcement, announcementExiting, splash, changeHoldAnnouncements } =
     usePitchPlayback(input.view, input.records, input.enabled, input.speed ?? 1, input.mode, input.requestPending ?? null, input.snapshotKey);
   window.beginProvisional = beginProvisional;
@@ -41,10 +41,10 @@ function Harness() {
     <output id="playback-state" data-revision={pitchView.revision} data-x={pitchView.players[0]?.x}
       data-announcement={announcement?.kind ?? ''} data-announcement-exiting={announcementExiting} data-active={playbackActive} data-synchronizing={synchronizing} data-duration={movementDuration} data-roll-key={diceMoment?.rollKey ?? ''}/>
     {!playbackActive && (input.view.prompt || input.view.actions.length > 0) && <button id="required-choice">Required choice</button>}
-    <LivePitch view={pitchView} selectedId="" actions={[]} diceMoment={diceMoment} readOnly={!input.interactive || playbackActive} playback={playbackActive}
+    <LivePitch view={pitchView} selectedId={input.selectedId ?? ''} actions={[]} diceMoment={diceMoment} readOnly={!input.interactive || playbackActive} playback={playbackActive}
       splash={splash}
       diceSnapshot={diceSnapshot && !playbackActive}
-      movementDuration={playbackActive ? movementDuration : 0}
+      movementDuration={playbackActive ? movementDuration : 0} movement={playbackActive ? movement : null}
       decision={input.interactive && !playbackActive ? matchDecision(input.view, input.view.actions) : null}
       onDecisionAction={id => window.playbackActions.push(id)}
       onSelectPlayer={() => {}} onSquare={() => {}}/>

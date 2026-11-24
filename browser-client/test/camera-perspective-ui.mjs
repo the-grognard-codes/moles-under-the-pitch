@@ -50,11 +50,13 @@ async function assertMenuSizedButtons(page) {
   }
 }
 async function geometry(page) {
+  // Old World Classic switches to the composed Gatehouse once its artwork loads.
+  await page.locator('.pitch-gatehouse canvas').waitFor();
   return page.locator('.live-pitch-scene').evaluate(scene => ({
     end: scene.dataset.end, focus: scene.dataset.focus, transverse: scene.dataset.transverseFocus,
     cells: [...scene.querySelectorAll('[data-cell-x]')].map(cell => cell.getAttribute('points')),
     markers: [...scene.querySelectorAll('.live-marker')].map(marker => marker.getAttribute('style')),
-    scenery: scene.querySelector('.pitch-stadium-world')?.getAttribute('style'),
+    scenery: scene.querySelector('.pitch-gatehouse').style.transform,
   }));
 }
 try {

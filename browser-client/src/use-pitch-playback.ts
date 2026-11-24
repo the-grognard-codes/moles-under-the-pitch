@@ -15,6 +15,7 @@ import { announcementReadingDuration } from './match-announcements.ts';
 import type { MatchAnnouncement } from './match-announcements.ts';
 import type { MatchSplashProps } from './MatchSplash.tsx';
 import { useAnnouncementPreferences } from './use-announcement-preferences.ts';
+import { pitchMovement, type PitchMovement } from './pitch-movement.ts';
 
 type QueuedAnnouncement = {
   card: MatchAnnouncement;
@@ -23,6 +24,7 @@ type QueuedAnnouncement = {
 };
 
 const responseKinds = new Set(['blockDie', 'rerollDie', 'proTestReroll', 'reroll', 'skill', 'kickSkill', 'pileDriver', 'push', 'followUp', 'apothecary', 'argueTheCall', 'bribe', 'interception', 'reactiveSkill', 'reactiveSquare', 'reactionMove', 'reactionEnd']);
+const noMovement = { movementDuration: 0, movement: null };
 
 function sequenceKey(view: SetupState): string {
   return [view.matchId, view.half, view.actor, view.turn, view.turnMode, view.activePlayerId].join(':');
@@ -42,7 +44,7 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
   const [active, setActive] = useState(false);
   const [diceMoment, setDiceMoment] = useState<DiceMoment | null>(null);
   const [tick, setTick] = useState(0);
-  const [moveMillis, setMoveMillis] = useState(0);
+  const [movementPresentation, setMovementPresentation] = useState<{ movementDuration: number; movement: PitchMovement | null }>(noMovement);
   const [synchronizing, setSynchronizing] = useState(false);
   const [announcement, setAnnouncement] = useState<MatchAnnouncement | null>(null);
   const [announcementExiting, setAnnouncementExiting] = useState(false);
@@ -65,6 +67,7 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
   const presentationRevision = useRef(view.revision);
   const completed = useRef(view.revision), generation = useRef(0);
   const running = useRef(false), waiting = useRef(false);
+  const currentMovement = useRef<PitchMovement | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingBeat = useRef<{ view: SetupState; advance: () => void; delay: number; committed?: () => void } | null>(null);
   const provisional = useRef<{ base: SetupState; moves: ConfirmedMove[]; shown: ConfirmedMove[] } | null>(null);
@@ -83,6 +86,17 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
   const nativeRate = () => mode === 'live' && catchingUp.current ? LIVE_CATCHUP_RATE : currentRate.current;
   latest.current = view;
   const clearDice = () => { pinnedDice.current = false; diceStream.current!.clear(); };
+  const clearMovement = () => {
+    currentMovement.current?.clock.stop();
+    currentMovement.current = null;
+    setMovementPresentation(noMovement);
+  };
+  const presentMovement = (before: SetupState, after: SetupState, movementDuration: number, playerId?: string) => {
+    const movement = pitchMovement(before, after, movementDuration, playerId, currentMovement.current);
+    currentMovement.current?.clock.stop();
+    currentMovement.current = movement;
+    setMovementPresentation(movementDuration ? { movement, movementDuration } : noMovement);
+  };
   const cancel = () => {
     catchingUp.current = false;
     generation.current += 1;
@@ -101,6 +115,7 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
     announcementTransitionTimer.current = null;
     provisional.current = null;
     clearDice();
+    clearMovement();
     timer.current = null; running.current = false; waiting.current = false;
   };
   // The preference can change while cards wait behind an active splash.
@@ -180,7 +195,7 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
       announced.current.clear();
       responseDiceKey.current = null;
       presented.current = view; setPitchView(view); setActive(false);
-      setMoveMillis(0); setSynchronizing(false);
+      setSynchronizing(false);
       if (enabled && mode === 'live' && requiresResponse && !document.hidden) restoreResponse();
     };
     // Reconnect, a different match, backward seek and nonadjacent replay seeks
@@ -194,7 +209,7 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
     const prediction = provisional.current;
     if (prediction && view.revision === prediction.base.revision) {
       if (!requestPending) {
-        cancel(); presented.current = view; setPitchView(view); setActive(false); setMoveMillis(0);
+        cancel(); presented.current = view; setPitchView(view); setActive(false);
         return;
       }
       if (running.current || prediction.shown.length >= prediction.moves.length) return;
@@ -202,7 +217,8 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
       const next = withConfirmedMove(presented.current, move);
       const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
       const delay = movementBeatMillis(1, reduced);
-      running.current = true; setActive(true); setMoveMillis(reduced ? 0 : delay);
+      running.current = true; setActive(true);
+      presentMovement(presented.current, next, reduced ? 0 : delay, move.playerId);
       const token = generation.current;
       pendingBeat.current = { view: next, delay, committed: () => prediction.shown.push(move), advance: () => {
         if (generation.current !== token) return;
@@ -252,7 +268,7 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
         timer.current = setTimeout(() => {
           waiting.current = false; timer.current = null; completed.current = latest.current.revision;
           presented.current = latest.current; setPitchView(latest.current); clearDice(); setActive(false);
-          provisional.current = null; setMoveMillis(0); setSynchronizing(false);
+          provisional.current = null; clearMovement(); setSynchronizing(false);
           setTick(value => value + 1);
         }, 1000);
       }
@@ -270,7 +286,7 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
       if (remaining === null) {
         // Divergence is recovery, never a fabricated path or a second submission.
         cancel(); completed.current = view.revision; presented.current = view;
-        setPitchView(view); setActive(false); setMoveMillis(0);
+        setPitchView(view); setActive(false);
         return;
       }
       beats = remaining;
@@ -301,7 +317,7 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
       completed.current = record.revision;
       running.current = false; timer.current = null;
       setActive(completed.current < latest.current.revision);
-      setMoveMillis(0);
+      clearMovement();
       setTick(value => value + 1);
     };
     const presentDice = (dice: DiceMoment, index: number, rate: number) => {
@@ -350,7 +366,7 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
           // Successful movement checks accompany their native square update;
           // dice lifetime must not add a stop to the player's movement.
           if (beat.dice.continuous) continue;
-          setMoveMillis(0);
+          clearMovement();
           const nextIndex = index + 1;
           pendingBeat.current = { view: presented.current, delay: DICE_GROUP_INTERVAL_MS / rate,
             advance: () => advance(nextIndex) };
@@ -364,7 +380,7 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
         // timer tasks alone can still be batched, especially in reduced motion.
         const delay = beat.kind === 'block' || beat.kind === 'player' ? 16 : beat.kind === 'ball' ? BALL_STEP_MS / rate
           : movementBeatMillis(rate, reduced);
-        setMoveMillis(reduced || beat.kind === 'block' ? 0 : delay);
+        presentMovement(current, next, reduced || beat.kind === 'block' ? 0 : delay, beat.kind === 'move' ? beat.move.playerId : undefined);
         const nextIndex = index + 1;
         pendingBeat.current = { view: next, delay, advance: () => advance(nextIndex) };
         presentationRevision.current = record.revision;
@@ -380,7 +396,12 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
     if (!pending || pending.view !== pitchView) return;
     pendingBeat.current = null;
     pending.committed?.();
-    timer.current = setTimeout(pending.advance, pending.delay);
+    const clock = currentMovement.current?.clock;
+    clock?.start();
+    timer.current = setTimeout(() => {
+      clock?.finish();
+      pending.advance();
+    }, pending.delay);
   }, [pitchView, diceMoment]);
   const dismissAnnouncement = useCallback(() => {
     const pending = pendingAnnouncement.current;
@@ -459,7 +480,7 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
     onSkipGap: !announcement && announcementShadeHeld && announcementExiting ? dismissAnnouncement : undefined,
   } : undefined;
   const playbackActive = active || !!pendingAnnouncement.current || announcementFading;
-  return { pitchView, presentationRevision: playbackActive ? Math.max(pitchView.revision, presentationRevision.current, diceMoment?.revision ?? -1) : pitchView.revision, provisionalActive: !!provisional.current, playbackActive, diceMoment, synchronizing, movementDuration: moveMillis, beginProvisional,
+  return { pitchView, presentationRevision: playbackActive ? Math.max(pitchView.revision, presentationRevision.current, diceMoment?.revision ?? -1) : pitchView.revision, provisionalActive: !!provisional.current, playbackActive, diceMoment, synchronizing, ...movementPresentation, beginProvisional,
     splash, announcement, announcementExiting, changeHoldAnnouncements: announcementPreferences.changeHoldAnnouncements,
     diceSnapshot: pitchView.revision === snapshotRevision.current };
 }

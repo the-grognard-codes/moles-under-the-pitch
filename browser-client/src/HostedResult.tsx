@@ -116,7 +116,7 @@ function ReplayBoardContent({ event, records, skipAnimations, speed, snapshotKey
   interactionBlocked: boolean;
   onBusy: (busy: boolean) => void; onRevision: (revision: number) => void;
 }) {
-  const { pitchView, presentationRevision, playbackActive, diceMoment, diceSnapshot, movementDuration,
+  const { pitchView, presentationRevision, playbackActive, diceMoment, diceSnapshot, movementDuration, movement,
     splash } = usePitchPlayback(event.state, records, !skipAnimations, speed, 'replay', null, snapshotKey);
   useDiagnosticPresentation(event.state.revision, pitchView.revision, playbackActive, false, !!splash?.announcement, false, 'replay', speed, `${event.state.matchId}:${snapshotKey ?? ''}`, presentationRevision);
   const [hover, setHover] = useState<{ id: string } | null>(null);
@@ -137,7 +137,7 @@ function ReplayBoardContent({ event, records, skipAnimations, speed, snapshotKey
       diceSnapshot={skipAnimations || diceSnapshot && !playbackActive}
       interactionBlocked={interactionBlocked}
       animateBlockMarkers={!skipAnimations}
-      movementDuration={playbackActive ? movementDuration : 0}
+      movementDuration={playbackActive ? movementDuration : 0} movement={playbackActive ? movement : null}
       onSelectPlayer={() => {}} onSquare={() => {}} onFocusPlayer={focusPlayer} onBlurPlayer={clearHover}/>
     <div className="replay-dugouts"><LiveDugouts players={pitchView.players} homeName={matchTeamName(pitchView, 'home')}
       awayName={matchTeamName(pitchView, 'away')} onSelect={() => {}} onFocusPlayer={focusPlayer} onBlurPlayer={clearHover}/></div>

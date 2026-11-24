@@ -50,9 +50,14 @@ import { useCameraPreferences } from './use-camera-preferences.ts';
 import { usePitchHover } from './use-pitch-hover.ts';
 import { MatchSplash, MatchAnnouncementStatus } from './MatchSplash.tsx';
 import type { MatchSplashProps } from './MatchSplash.tsx';
+import { useMovingSquare, type MovingSquare, type PitchMovement } from './pitch-movement.ts';
 
 const points = (polygon: Point[]) => polygon.map(p => `${p.x},${p.y}`).join(' ');
 const centerOf = (point: Point) => ({ x: point.x + .5, y: point.y + .5 });
+const playerArtScale = 1.08 / 64;
+const shadowFootprint = Array.from({ length: 16 }, (_, index) => ({
+  x: .28 * Math.cos(index * Math.PI / 8), y: .28 * Math.sin(index * Math.PI / 8),
+}));
 /** Off-pitch consumers share the portrait catalog. */
 export const spriteUrl = resolvePlayerPortrait;
 
@@ -60,9 +65,9 @@ function routePath(route: RoutePoint[], camera: PitchProjection): string {
   return movementRoutePath(route,camera);
 }
 
-function PlayerMarker({ player, teamName, camera, facing, setupPerspective, order, active, selected, participant, target, onSelect, onGround,
+function PlayerMarker({ player, motion, teamName, camera, facing, setupPerspective, order, active, selected, participant, target, onSelect, onGround,
   onFocus, onBlur, readOnly, canDrag, onStartDrag, onEndDrag, failedArt, onArtError, markers, markerPreferences, showLimitedActions, showConditions }: {
-  player: SetupPlayer; teamName: string; camera: PitchProjection; facing?: PlayerFacing; setupPerspective: boolean; order: number;
+  player: SetupPlayer; motion?: MovingSquare | null; teamName: string; camera: PitchProjection; facing?: PlayerFacing; setupPerspective: boolean; order: number;
   active: boolean; selected: boolean; participant: boolean; target: boolean; onSelect: (clickedAt?: number) => void; onGround: (x: number, y: number, clickedAt?: number) => void;
   onFocus: (anchor: DOMRect) => void; onBlur: () => void; readOnly: boolean;
   failedArt: Set<string>; onArtError: (url: string) => void;
@@ -70,14 +75,17 @@ function PlayerMarker({ player, teamName, camera, facing, setupPerspective, orde
   markers: ReturnType<typeof playerSkillMarkers>; markerPreferences: SkillMarkerPreferences; showLimitedActions: boolean; showConditions: boolean;
 }) {
   const colors = useTeamColorContext();
-  const art = resolvePlayerArt(player, { colors: colors[player.role], end: camera.end, facing, setupPerspective, topDown: camera.mode === 'top-down' });
-  const position = camera.project(centerOf({ x: player.x!, y: player.y! }));
-  const visible = !!position && camera.square({ x: player.x!, y: player.y! }, 0, true).length >= 3;
+  const teamColors = colors[player.role];
+  const art = useMemo(() => resolvePlayerArt(player, { colors: teamColors, end: camera.end, facing, setupPerspective, topDown: camera.mode === 'top-down' }),
+    [player, teamColors, colors.revision, camera.end, facing, setupPerspective, camera.mode]);
+  const square = useMovingSquare({ x: player.x!, y: player.y! }, motion);
+  const position = camera.project(centerOf(square));
+  const visible = !!position && camera.squareFootprint(square, 0, true).length >= 3;
   const body = art?.body;
-  const scale = (position?.pixelsPerSquare ?? camera.scale) * 1.08 / 64;
+  const scale = (position?.pixelsPerSquare ?? camera.scale) * playerArtScale;
   const placement = body ? playerArtPlacement(body, camera.mode === 'top-down') : null;
   const anchor = placement?.anchor ?? { x: 0, y: 0 };
-  const corners = camera.square({ x: player.x!, y: player.y! });
+  const corners = camera.squareFootprint(square);
   const width = position?.pixelsPerSquare ?? camera.scale;
   const height = corners.length ? Math.max(...corners.map(p => p.y)) - Math.min(...corners.map(p => p.y)) : width;
   const left = (position?.x ?? 0) - width / 2, top = (position?.y ?? 0) - height / 2;
@@ -147,9 +155,28 @@ function PlayerMarker({ player, teamName, camera, facing, setupPerspective, orde
   </button>;
 }
 
+type PlayerGroundProps = { player: SetupPlayer; camera: PitchProjection; motion?: MovingSquare | null };
+
+function PlayerShadow({ player, camera, motion, placement }: PlayerGroundProps & { placement: ReturnType<typeof playerArtPlacement> | null }) {
+  const square = useMovingSquare({ x: player.x!, y: player.y! }, motion);
+  const center = centerOf(square);
+  const scale = (camera.project(center)?.pixelsPerSquare ?? camera.scale) * playerArtScale;
+  const offset = placement ? { x: (placement.shadowAnchor.x - placement.anchor.x) * scale,
+    y: (placement.shadowAnchor.y - placement.anchor.y) * scale } : { x: 0, y: 0 };
+  const shadow = shadowFootprint.map(p => ({ x: center.x + p.x, y: center.y + p.y }));
+  return <polygon className="live-player-shadow" data-shadow-player={player.id}
+    points={points(camera.polygon(shadow, true).map(p => ({ x: p.x + offset.x, y: p.y + offset.y })))}/>;
+}
+
+function PlayerSelection({ player, camera, motion }: PlayerGroundProps) {
+  const square = useMovingSquare({ x: player.x!, y: player.y! }, motion);
+  return <polygon className="live-selection-square" data-selection={player.id}
+    points={points(camera.squareFootprint(square, .06, true))}/>;
+}
+
 /** Presentation only: positions, state, ball and identity come from the server. */
 export function LivePitch({ view, selectedId, selectedIds = [], actions, pinnedAction, routePreview = null, waypoints = [], movementRange = null, diceMoment = null, potentialDice = null, diceAwaiting = false, diceSnapshot = false,
-  blockPreview = null, animateBlockMarkers = true, movementDuration = 0, splash,
+  blockPreview = null, animateBlockMarkers = true, movementDuration = 0, movement = null, splash,
   jumpOptions = null, plannedTransfer = null,
   threatPreferences = defaultThreatPreferences, allowThreats = true,
   onRightClick,
@@ -161,7 +188,7 @@ export function LivePitch({ view, selectedId, selectedIds = [], actions, pinnedA
   jumpOptions?: RouteStep[] | null;
   plannedTransfer?: { targetPlayerId?: string; targetSquare?: RoutePoint; from: RoutePoint } | null;
   potentialDice?: PotentialBlockDice | null; diceAwaiting?: boolean; diceSnapshot?: boolean;
-  blockPreview?: BlockContext | null; animateBlockMarkers?: boolean; movementDuration?: number;
+  blockPreview?: BlockContext | null; animateBlockMarkers?: boolean; movementDuration?: number; movement?: PitchMovement | null;
   splash?: MatchSplashProps;
   threatPreferences?: ThreatPreferences; allowThreats?: boolean;
   onRightClick?: () => void;
@@ -349,6 +376,7 @@ export function LivePitch({ view, selectedId, selectedIds = [], actions, pinnedA
   };
   const setupPerspective = mode === 'perspective' && (view.phase === 'SETUP' || view.phase === 'READY_FOR_KICKOFF');
   const occupants = view.players.filter(player => player.x !== null && player.y !== null);
+  const playerMotion = (id: string) => movement?.playerId === id ? movement.player : null;
   const depthOrder = new Map([...occupants].sort((a, b) =>
     (camera.project(centerOf({ x: b.x!, y: b.y! }))?.depth ?? 0) - (camera.project(centerOf({ x: a.x!, y: a.y! }))?.depth ?? 0) || a.id.localeCompare(b.id))
     .map((player, index) => [player.id, index]));
@@ -362,7 +390,7 @@ export function LivePitch({ view, selectedId, selectedIds = [], actions, pinnedA
       {showToolbar && <>{[1, 1.5, 2].map(value => <button key={value} type="button" aria-pressed={zoom === value} onClick={() => { setZoom(value); onBlurPlayer?.(); }}>{value === 1 ? 'Fit' : `${value}×`}</button>)}</>}
     </div>;
   return <section className="live-pitch projected-pitch"
-    style={{ ['--pitch-move-duration' as string]: `${movementDuration}ms` }}
+    data-movement-duration={movementDuration}
     aria-label={playback ? 'Live match pitch' : readOnly ? 'Read-only replay pitch' : 'Live match pitch'}>
     {cameraButtonsHost === undefined ? <div className="live-camera-buttons">{cameraButtons}</div> : cameraButtonsHost && createPortal(cameraButtons, cameraButtonsHost)}
     {debugOpen && (cameraControlsHost === undefined ? cameraControls : cameraControlsHost && createPortal(cameraControls, cameraControlsHost))}
@@ -436,16 +464,9 @@ export function LivePitch({ view, selectedId, selectedIds = [], actions, pinnedA
           </g>}
           <BlockVisibility context={blocks} camera={camera} layer="assists" animated={animateBlockMarkers}/>
           {occupants.map(player => {
-            const center = centerOf({ x: player.x!, y: player.y! });
             const body = resolvePlayerArt(player, { colors: colors[player.role], end, facing: facings[player.id], setupPerspective, topDown: mode === 'top-down' })?.body;
             const placement = body && !failedArt.has(body.url) ? playerArtPlacement(body, mode === 'top-down') : null;
-            const scale = (camera.project(center)?.pixelsPerSquare ?? camera.scale) * 1.08 / 64;
-            const offset = placement ? { x: (placement.shadowAnchor.x - placement.anchor.x) * scale,
-              y: (placement.shadowAnchor.y - placement.anchor.y) * scale } : { x: 0, y: 0 };
-            const shadow = Array.from({ length: 16 }, (_, index) => ({ x: center.x + .28 * Math.cos(index * Math.PI / 8),
-              y: center.y + .28 * Math.sin(index * Math.PI / 8) }));
-            return <polygon key={`shadow-${player.id}`} className="live-player-shadow" data-shadow-player={player.id}
-              points={points(camera.polygon(shadow, true).map(p => ({ x: p.x + offset.x, y: p.y + offset.y })))}/>;
+            return <PlayerShadow key={`shadow-${player.id}`} player={player} camera={camera} placement={placement} motion={playerMotion(player.id)}/>;
           })}
           <path className="pitch-chalk" d={[chalk({ x: 0, y: 0 }, { x: 26, y: 0 }), chalk({ x: 0, y: 15 }, { x: 26, y: 15 }), ...[0, 1, 13, 25, 26].map(x => chalk({ x, y: 0 }, { x, y: 15 }))].join(' ')}/>
           {[4, 11].map(y => <path key={y} className="pitch-chalk wide" d={chalk({ x: 0, y }, { x: 26, y })}/>) }
@@ -480,9 +501,8 @@ export function LivePitch({ view, selectedId, selectedIds = [], actions, pinnedA
             </g>;
           })()}
           {placementSquares.map(square => <polygon key={`place-${square.x},${square.y}`} className="live-placement-square" points={points(camera.square(square, .08, true))}/>) }
-          {view.players.filter(player => (player.id === selectedId || selectedIds.includes(player.id)) && player.x != null && player.y != null)
-            .map(player => <polygon key={player.id} className="live-selection-square" data-selection={player.id}
-              points={points(camera.square({ x: player.x!, y: player.y! }, .06, true))}/>)}
+          {occupants.filter(player => player.id === selectedId || selectedIds.includes(player.id))
+            .map(player => <PlayerSelection key={player.id} player={player} camera={camera} motion={playerMotion(player.id)}/>)}
           {hoverSquare && (hoverSquare.x !== selected?.x || hoverSquare.y !== selected?.y) && <polygon
             className="live-selection-square live-hover-square" data-hover-square={`${hoverSquare.x},${hoverSquare.y}`}
             points={points(camera.square(hoverSquare, .06, true))}/>}
@@ -506,6 +526,7 @@ export function LivePitch({ view, selectedId, selectedIds = [], actions, pinnedA
         </svg>
         {kickTarget ? <BallMarker ball={kickTarget} state={{ version: 1, inPlay: true, moving: true, carrierPlayerId: null }} camera={camera}/>
           : (kickPreview?.deviation ?? view.ball) && <BallMarker ball={(kickPreview?.deviation ?? view.ball)!} allowOffPitch={!!view.kickPreview}
+            motion={kickPreview ? null : movement?.ball}
             state={view.kickPreview || view.driveTracker?.phase === 'KICKOFF' || view.actions.some(action => action.kind === 'kickSkill') ? { version: 1, inPlay: true, moving: true, carrierPlayerId: null } : view.ballState} camera={camera}/>}
         {kickPreview && <BallMarker ball={kickPreview.withKick} variant="kick" allowOffPitch
           state={{ version: 1, inPlay: true, moving: true, carrierPlayerId: null }} camera={camera}/>}
@@ -513,7 +534,7 @@ export function LivePitch({ view, selectedId, selectedIds = [], actions, pinnedA
           {waypoints.map((square, index) => { const p = camera.project(centerOf(square));
             return p && <g key={index} className="live-route-waypoint" aria-hidden="true"><circle cx={p.x} cy={p.y} r="4"/></g>; })}
         </svg>
-        {occupants.map(player => <PlayerMarker failedArt={failedArt} onArtError={onArtError} key={player.id} player={player} teamName={matchTeamName(view, player.role)} camera={camera} facing={facings[player.id]}
+        {occupants.map(player => <PlayerMarker failedArt={failedArt} onArtError={onArtError} key={player.id} player={player} motion={playerMotion(player.id)} teamName={matchTeamName(view, player.role)} camera={camera} facing={facings[player.id]}
           markers={playerSkillMarkers(player, view.callerRole, markerPreferences, readOnly && allowEndChoice)} markerPreferences={markerPreferences} showLimitedActions={showLimitedActions && view.phase === 'PLAY'}
           showConditions={showConditions}
           setupPerspective={setupPerspective} order={depthOrder.get(player.id)!}

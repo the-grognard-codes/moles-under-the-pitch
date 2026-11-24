@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep players, their shadows, selection squares and the ball aligned with the pitch while moving, panning and zooming in live matches and replays.
+
 - Review animated sprites on a DOM pitch using the live player placement helpers. Retired the development renderer comparison and removed the PixiJS dependency.
 
 - Reduce pitch panning stalls while players and the ball are moving.
