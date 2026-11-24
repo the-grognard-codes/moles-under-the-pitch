@@ -2,6 +2,8 @@
 
 The live renderer reproduces the reported slowdown without network traffic. During playback, every player marker and its image can transition left, top, width and height while the camera changes their projected geometry. Keeping the stationary players visible and removing just those transitions materially improves the 50° moving-player drag. Hiding the perspective scenery and ordinary grid still leaves heavy frame loss. The next implementation target for #616 is stationary marker transitions during camera movement. Shadow alignment is tracked separately in #635.
 
+These measurements predate the hover-listener fix in #640. The [matched playback comparison](pan-during-playback-outcome.md#matched-movement-benchmark) records its effect and the cost remaining for #635. The rebased runner supports both the original movement matrix and the window-capture control.
+
 ## Measurements
 
 Three measured runs per condition after a discarded warm-up. Each cell is the median of its three run-level statistics. Timing columns are milliseconds. Commit samples count pointer updates that could be matched to a rendered camera position out of 160 requested moves. Slow cases coalesce more inputs, so read latency alongside frame intervals and sample counts.
