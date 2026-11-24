@@ -13,8 +13,9 @@ import java.util.List;
 
 /** Short JDBC operations over the v2 copied-storage membership table. */
 public final class JdbcMatchMembershipRepository implements MatchMembershipRepository {
-	static final String CURRENT_MATCHES_SQL = "SELECT m.matchid,m.role FROM ffb_v2_match_members m FORCE INDEX (ffb_v2_match_members_visible) JOIN ffb_prepared_matches p ON p.match_id=m.matchid "
-				+ "WHERE m.account_id=? AND m.acknowledged_at_epoch_ms IS NULL AND m.matchid>? AND p.document_version BETWEEN 1 AND 3 ORDER BY m.matchid LIMIT 101";
+	static final String CURRENT_MATCHES_SQL = "SELECT m.matchid,m.role FROM ffb_v2_match_members m FORCE INDEX (ffb_v2_match_members_visible) "
+		+ "JOIN ffb_prepared_matches p ON p.match_id=m.matchid "
+		+ "WHERE m.account_id=? AND m.acknowledged_at_epoch_ms IS NULL AND m.matchid>? AND p.document_version BETWEEN 1 AND 3 ORDER BY m.matchid LIMIT 101";
 	private final JdbcConnections connections;
 
 	public JdbcMatchMembershipRepository(JdbcConnections connections) { this.connections = connections; }
@@ -45,13 +46,10 @@ public final class JdbcMatchMembershipRepository implements MatchMembershipRepos
 			update.setLong(1, now);
 			update.setString(2, matchId);
 			update.setString(3, accountId);
-			boolean autoCommit = connection.getAutoCommit();
-			mayHaveCommitted = autoCommit;
+			if (connection.getAutoCommit()) connection.setAutoCommit(false);
 			int count = update.executeUpdate();
-			if (!autoCommit) {
-				mayHaveCommitted = true;
-				connection.commit();
-			}
+			mayHaveCommitted = true;
+			connection.commit();
 			if (count == 1) return;
 		} catch (SQLException failure) {
 			if (!mayHaveCommitted || failure instanceof NotStarted && !(failure instanceof CleanupNotStarted)
