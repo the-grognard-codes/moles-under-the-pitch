@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.Scanner;
 import java.util.Set;
-/** Explicit marker-5 through marker-10 bootstrap for the isolated acceptance profile. */
+/** Explicit marker-5 through marker-11 bootstrap for the isolated acceptance profile. */
 public final class LocalAcceptanceBootstrap {
 	private static final Set<String> MARKER5_TABLES = new HashSet<>(Arrays.asList(
 		"ffb_local_schema", "ffb_saved_teams", "ffb_prepared_matches", "ffb_match_recovery"));
@@ -53,7 +53,7 @@ public final class LocalAcceptanceBootstrap {
 		manager.setDbPassword(password);
 		manager.setDbType("mariadb");
 		bootstrap(manager);
-		System.out.println("Acceptance database schema verified at marker 10; no records were imported.");
+		System.out.println("Acceptance database schema verified at marker 11; no records were imported.");
 	}
 
 	static void validateBootstrapProfile(Properties properties) {
@@ -74,7 +74,7 @@ public final class LocalAcceptanceBootstrap {
 			tables = tableNames(manager);
 		}
 		int version = schemaVersion(manager);
-		if (version == 10) {
+		if (version == 11) {
 			requireInventory(tables, MARKER9_TABLES);
 			schema.initialize(manager);
 			try (Connection connection = manager.openDbConnection()) { new Marker6Schema().ensureCurrentMatchIndex(connection); connection.commit(); }
@@ -100,7 +100,7 @@ public final class LocalAcceptanceBootstrap {
 				schema.verifySavedTeams(connection);
 				schema.verifyCompletedMatches(connection);
 				schema.verifyRecovery(connection);
-				new Marker6Schema().verifyTables(connection);
+				new Marker6Schema().verifyTables(connection, false);
 			}
 			try (Connection connection = manager.openDbConnection(); Statement statement = connection.createStatement()) {
 				executeResource(statement, "/local-schema/007-named-saved-teams.sql");
@@ -111,7 +111,7 @@ public final class LocalAcceptanceBootstrap {
 		if (version == 7) {
 			requireInventory(tableNames(manager), MARKER7_TABLES);
 			try (Connection connection = manager.openDbConnection(); Statement statement = connection.createStatement()) {
-				new Marker6Schema().verifyTables(connection);
+				new Marker6Schema().verifyTables(connection, false);
 				executeResource(statement, "/local-schema/008-skill-use-preferences.sql");
 				connection.commit();
 			}
@@ -121,7 +121,7 @@ public final class LocalAcceptanceBootstrap {
 			requireInventory(tableNames(manager), MARKER8_TABLES);
 			try (Connection connection = manager.openDbConnection(); Statement statement = connection.createStatement()) {
 				schema.verifyRecovery(connection);
-				new Marker6Schema().verifyTables(connection);
+				new Marker6Schema().verifyTables(connection, false);
 				new Marker6Schema().verifySkillUsePreferences(connection);
 				executeResource(statement, "/local-schema/009-recovery-journal.sql");
 				connection.commit();
@@ -138,7 +138,16 @@ public final class LocalAcceptanceBootstrap {
 			}
 			version = 10;
 		}
-		if (version != 10) throw new SQLException("Acceptance bootstrap accepts only empty or marker-5-through-10 databases");
+		if (version == 10) {
+			requireInventory(tableNames(manager), MARKER9_TABLES);
+			try (Connection connection = manager.openDbConnection(); Statement statement = connection.createStatement()) {
+				new Marker6Schema().verifyTables(connection, false);
+				executeResource(statement, "/local-schema/011-expired-match-acknowledgement.sql");
+				connection.commit();
+			}
+			version = 11;
+		}
+		if (version != 11) throw new SQLException("Acceptance bootstrap accepts only empty or marker-5-through-11 databases");
 		tables = tableNames(manager);
 		requireInventory(tables, MARKER9_TABLES);
 		schema.initialize(manager);

@@ -13,15 +13,20 @@ import java.util.Set;
 final class Marker6Schema {
 	void verify(Connection connection) throws SQLException {
 		verifyMarker(connection);
-		verifyTables(connection);
+		verifyTables(connection, true);
 		verifySkillUsePreferences(connection);
 		verifyRecoveryJournal(connection);
 	}
 
-	void verifyTables(Connection connection) throws SQLException {
-		verifyTable(connection, "ffb_v2_match_members",
-			new String[] {"matchid|char(36)|NO|ascii|ascii_bin", "account_id|char(36)|NO|ascii|ascii_bin", "role|enum('home','away')|NO|ascii|ascii_bin"},
-			set("PRIMARY|0|matchid", "PRIMARY|0|account_id", "ffb_v2_match_members_role|0|matchid", "ffb_v2_match_members_role|0|role"), set(), set());
+	void verifyTables(Connection connection, boolean acknowledgements) throws SQLException {
+		String[] memberColumns = new String[] {"matchid|char(36)|NO|ascii|ascii_bin", "account_id|char(36)|NO|ascii|ascii_bin", "role|enum('home','away')|NO|ascii|ascii_bin"};
+		Set<String> memberIndexes = set("PRIMARY|0|matchid", "PRIMARY|0|account_id", "ffb_v2_match_members_role|0|matchid", "ffb_v2_match_members_role|0|role");
+		if (acknowledgements) {
+			memberColumns = Arrays.copyOf(memberColumns, 4);
+			memberColumns[3] = "acknowledged_at_epoch_ms|bigint unsigned|YES|null|null";
+			memberIndexes.addAll(set("ffb_v2_match_members_visible|1|account_id|1", "ffb_v2_match_members_visible|1|acknowledged_at_epoch_ms|2", "ffb_v2_match_members_visible|1|matchid|3"));
+		}
+		verifyTable(connection, "ffb_v2_match_members", memberColumns, memberIndexes, set(), set());
 		verifyTable(connection, "ffb_v2_account",
 			new String[] {"account_id|char(36)|NO|ascii|ascii_bin", "state|enum('ACTIVE','DISABLED')|NO|ascii|ascii_bin"},
 			set("PRIMARY|0|account_id"), set(), set());
@@ -46,7 +51,7 @@ final class Marker6Schema {
 
 	private void verifyMarker(Connection connection) throws SQLException {
 		try (Statement statement = connection.createStatement(); ResultSet rows = statement.executeQuery("SELECT version FROM ffb_local_schema")) {
-			if (!rows.next() || rows.getInt(1) != 10 || rows.next()) throw new SQLException("Computer job scheduling schema version 10 is required");
+			if (!rows.next() || rows.getInt(1) != 11 || rows.next()) throw new SQLException("Match acknowledgement schema version 11 is required");
 		}
 	}
 
@@ -86,7 +91,8 @@ final class Marker6Schema {
 						if (rows.getInt(2) != 1 || !(rows.getInt(4) == 1 && "account_id".equals(rows.getString(3))
 							|| rows.getInt(4) == 2 && "matchid".equals(rows.getString(3)))) throw new SQLException("Current match index has the wrong shape");
 					}
-					indexes.add(rows.getString(1) + "|" + rows.getInt(2) + "|" + rows.getString(3));
+					indexes.add(rows.getString(1) + "|" + rows.getInt(2) + "|" + rows.getString(3)
+						+ ("ffb_v2_match_members_visible".equals(rows.getString(1)) ? "|" + rows.getInt(4) : ""));
 				}
 			}
 			if ("ffb_v2_match_members".equals(name)

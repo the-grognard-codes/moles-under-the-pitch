@@ -120,7 +120,7 @@ test('rejects wrong targets and unsupported schemas before stopping or deleting'
     f => { f.database.State.Running = false; },
     f => { f.database.Config.Env = ['MARIADB_DATABASE=prod']; },
     f => { f.state.marker = '6'; },
-    f => { f.state.marker = '11'; },
+    f => { f.state.marker = '12'; },
     f => { f.state.inventory += '\nffb_new_match_table\tInnoDB'; },
     f => { f.state.inventory = f.state.inventory.replace('ffb_match_recovery\tInnoDB', 'ffb_match_recovery\tMyISAM'); },
     f => { f.state.inventory = f.state.inventory.split('\n').filter(line => !line.startsWith('ffb_v2_match_members\t')).join('\n'); },
@@ -133,7 +133,7 @@ test('rejects wrong targets and unsupported schemas before stopping or deleting'
   }
 });
 
-for (const marker of ['9', '10']) {
+for (const marker of ['9', '10', '11']) {
   test(`marker ${marker} requires the journal and clears it before its parent while preserving preferences`, () => {
     const f = fixture(); f.state.marker = marker;
     f.state.inventory += '\nffb_v2_skill_use_preferences\tInnoDB\nffb_match_recovery_journal\tInnoDB';

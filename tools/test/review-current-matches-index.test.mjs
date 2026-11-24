@@ -39,3 +39,12 @@ test('rejects another container, unsupported schema marker and malformed existin
     assert.equal(database.writes.length, 0);
   }
 });
+
+test('marker 11 verifies the acknowledgement index supplied by the stopped-service migration', () => {
+  const valid = fixture({ marker: '11', indexes: '1\t1\taccount_id\n2\t1\tacknowledged_at_epoch_ms\n3\t1\tmatchid' });
+  assert.equal(ensureReviewCurrentMatchesIndex(valid.run), false);
+  assert.deepEqual(valid.writes, []);
+  const missing = fixture({ marker: '11' });
+  assert.throws(() => ensureReviewCurrentMatchesIndex(missing.run), /MISMATCH/);
+  assert.deepEqual(missing.writes, []);
+});

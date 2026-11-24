@@ -5,6 +5,7 @@ import java.util.Map;
 
 /** Wire names shared by protocol dispatch and the transport's fatal log context. */
 enum BrowserV2RequestType {
+	ACKNOWLEDGE_EXPIRED("acknowledgeExpired"),
 	AUTHENTICATE("authenticate"),
 	AUTHENTICATE_COMPUTER("authenticateComputer"),
 	BROWSE("browse"),

@@ -1,6 +1,6 @@
 # DEV nginx-to-JVM handoff
 
-Current builds require separately provisioned schema marker 10 for durable recovery
+Current builds require separately provisioned schema marker 11 for durable recovery
 journaling and computer job availability. See [the explicit migration procedure](../../../docs/operations/recovery-journal-schema.md)
 before an authorized rollout. Server startup verifies the database without migrating it.
 

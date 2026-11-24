@@ -26,9 +26,12 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.sql.SQLException;
 import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -44,6 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
@@ -1234,6 +1238,133 @@ class BrowserV2AdapterTest {
 	private void sendPlacement(BrowserV2Adapter adapter, Connection source, String requestId) {
 		adapter.receive(source, setup(requestId).set("operation", "place").add("expectedRevision", 3)
 			.add("playerId", "p1").add("to", new JsonObject().add("x", 8).add("y", 7)).toString());
+	}
+
+	@Test void expiryAcknowledgementFollowsTheAccountAcrossConnectionsAndKeepsTheOpponentListing() throws Exception {
+		ExpiredAcknowledgementFixture fixture = new ExpiredAcknowledgementFixture();
+		Connection home = fixture.signIn("home", "play");
+		Connection homeOtherDevice = fixture.signIn("home-other-device", "preparation");
+		Connection away = fixture.signIn("away", "play");
+		Connection unrelated = fixture.signIn("unrelated", "play");
+		assertEquals("EXPIRED", fixture.lobby(home, "first-home-lobby", true).get("matches").asArray().get(0).asObject()
+			.getString("lifecycle", null));
+		JsonObject legacyLobby = fixture.lobby(homeOtherDevice, "legacy-lobby", false);
+		assertEquals("ACCEPTED", legacyLobby.getString("code", null));
+		assertNull(legacyLobby.get("serverNow"));
+		JsonObject legacyListing = legacyLobby.get("matches").asArray().get(0).asObject();
+		assertEquals("ACTIVATED", legacyListing.getString("lifecycle", null));
+		assertNull(legacyListing.get("resumeUntil"));
+
+		JsonObject acknowledge = request("acknowledgeExpired", "ack").add("matchId", MATCH);
+		assertEquals("AUTHENTICATION_REQUIRED", fixture.reply(new Connection(), acknowledge).getString("code", null));
+		assertEquals("NOT_FOUND", fixture.reply(unrelated, acknowledge).getString("code", null));
+		assertEquals("NOT_FOUND", fixture.reply(home, request("acknowledgeExpired", "unknown").add("matchId", SECOND)).getString("code", null));
+		assertEquals("MALFORMED_MESSAGE", fixture.reply(home, request("acknowledgeExpired", "spoof")
+			.add("matchId", MATCH).add("accountId", SECOND)).getString("code", null));
+		fixture.expired = false;
+		assertEquals("MATCH_NOT_EXPIRED", fixture.reply(home, acknowledge).getString("code", null));
+		assertTrue(fixture.timestamps.isEmpty());
+		fixture.expired = true;
+		JsonObject accepted = fixture.reply(home, acknowledge);
+		assertEquals("acknowledgeExpired", accepted.getString("type", null));
+		assertEquals("ACCEPTED", accepted.getString("code", null));
+		assertEquals(MATCH, accepted.getString("matchId", null));
+		assertTrue(fixture.lobby(homeOtherDevice, "legacy-refresh", false).get("matches").asArray().isEmpty());
+		fixture.adapter.disconnect(homeOtherDevice);
+		Connection reauthenticated = fixture.signIn("home-other-device", "preparation");
+		assertTrue(fixture.lobby(reauthenticated, "after-reauthentication", true).get("matches").asArray().isEmpty());
+		JsonObject awayListing = fixture.lobby(away, "away-lobby", true).get("matches").asArray().get(0).asObject();
+		assertEquals("EXPIRED", awayListing.getString("lifecycle", null));
+		assertEquals("away", awayListing.getString("callerRole", null));
+		assertEquals("ACCEPTED", fixture.reply(away, acknowledge).getString("code", null));
+		assertTrue(fixture.lobby(away, "away-removed", true).get("matches").asArray().isEmpty());
+		assertEquals(Map.of(FIRST, fixture.clock.millis(), SECOND, fixture.clock.millis()), fixture.timestamps);
+	}
+
+	@Test void acknowledgementRetainsTheListingAfterAFailedWriteAndReconcilesAnUncertainCommitOnExactRetry() throws Exception {
+		ExpiredAcknowledgementFixture fixture = new ExpiredAcknowledgementFixture();
+		Connection coach = fixture.signIn("home", "play");
+		JsonObject acknowledge = request("acknowledgeExpired", "retry-same-request").add("matchId", MATCH);
+		fixture.writeFailure = new SQLException("Storage unavailable");
+		assertEquals("PERSISTENCE_FAILED", fixture.reply(coach, acknowledge).getString("code", null));
+		assertEquals("EXPIRED", fixture.lobby(coach, "after-failure", true).get("matches").asArray().get(0).asObject()
+			.getString("lifecycle", null));
+		assertTrue(fixture.timestamps.isEmpty());
+		fixture.writeFailure = new MatchMembershipRepository.OutcomeUnknown(new SQLException("Commit response lost"));
+		assertEquals("ACKNOWLEDGEMENT_OUTCOME_UNKNOWN", fixture.reply(coach, acknowledge).getString("code", null));
+		assertEquals(Map.of(FIRST, fixture.clock.millis()), fixture.timestamps);
+		assertEquals("ACCEPTED", fixture.reply(coach, acknowledge).getString("code", null));
+		assertEquals(Map.of(FIRST, fixture.clock.millis()), fixture.timestamps);
+		verify(fixture.memberships, times(2)).acknowledge(eq(MATCH), eq(FIRST), anyLong());
+		assertTrue(fixture.lobby(coach, "after-retry", true).get("matches").asArray().isEmpty());
+	}
+
+	private final class ExpiredAcknowledgementFixture {
+		private final Clock clock = Clock.fixed(Instant.ofEpochMilli(10_000L), ZoneOffset.UTC);
+		private final MatchMembershipRepository memberships = mock(MatchMembershipRepository.class);
+		private final Map<String, Long> timestamps = new HashMap<>();
+		private final BrowserV2Adapter adapter;
+		private boolean expired = true;
+		private SQLException writeFailure;
+
+		ExpiredAcknowledgementFixture() throws SQLException, V2PrincipalAuthenticator.Rejected {
+			Map<String, MatchMembership> seats = Map.of(FIRST, new MatchMembership(MATCH, FIRST, "home"),
+				SECOND, new MatchMembership(MATCH, SECOND, "away"));
+			when(memberships.acknowledged(eq(MATCH), any())).thenAnswer(call -> {
+				String account = call.getArgument(1);
+				return seats.containsKey(account) ? timestamps.containsKey(account) : null;
+			});
+			when(memberships.acknowledged(eq(SECOND), any())).thenReturn(null);
+			when(memberships.unfinishedMatches(any(), isNull())).thenAnswer(call -> {
+				String account = call.getArgument(0);
+				return seats.containsKey(account) && !timestamps.containsKey(account) ? List.of(seats.get(account)) : List.of();
+			});
+			doAnswer(call -> {
+				if (writeFailure == null || writeFailure instanceof MatchMembershipRepository.OutcomeUnknown)
+					timestamps.putIfAbsent(call.getArgument(1), call.getArgument(2));
+				if (writeFailure != null) throw writeFailure;
+				return null;
+			}).when(memberships).acknowledge(eq(MATCH), any(), anyLong());
+			V2PrincipalDirectory directory = mock(V2PrincipalDirectory.class);
+			when(directory.reauthorize(any())).thenAnswer(call -> call.getArgument(0));
+			SetupApplication setup = mock(SetupApplication.class);
+			FrozenTeam team = frozenTeam("The Reavers", "human", 1000000);
+			MatchDocument document = new MatchDocument(MATCH, 3, "away", MatchDocument.Lifecycle.ACTIVATED,
+				new MatchDocument.Member("home", "home", team), new MatchDocument.Member("away", "away", team));
+			when(setup.browseDocuments(eq(List.of(MATCH)), any())).thenReturn(Map.of(MATCH, document));
+			when(setup.browseStates(eq(List.of(MATCH)), any())).thenReturn(Map.of(MATCH, new JsonObject().add("phase", "PLAY")));
+			when(setup.currentMatchStates(eq(List.of(MATCH)), any(), eq(clock.millis()), any())).thenAnswer(call ->
+				Map.of(MATCH, new JsonObject().add("phase", "PLAY").add("expired", expired)));
+			V2PrincipalAuthenticator authenticator = bearer -> principal(switch (bearer) {
+				case "home", "home-other-device" -> FIRST;
+				case "away" -> SECOND;
+				default -> "cccccccc-cccc-cccc-cccc-cccccccccccc";
+			}, ApplicationScope.PLAYER);
+			adapter = new BrowserV2Adapter(authenticator, new V2MatchAccess(memberships, directory, clock), setup,
+				mock(MatchService.class), mock(V2PreparationService.class), mock(BrowserSavedTeamJson.class),
+				new ComputerOpponentService(null), clock);
+		}
+
+		Connection signIn(String bearer, String purpose) {
+			Connection connection = new Connection();
+			assertEquals("ACCEPTED", reply(connection, authenticate("authenticate", bearer).add("purpose", purpose)).getString("code", null));
+			return connection;
+		}
+
+		JsonObject lobby(Connection connection, String id, boolean includeDetails) {
+			JsonObject request = request("currentMatches", id).add("after", JsonValue.NULL);
+			if (includeDetails) request.add("includeResumeDetails", true);
+			return reply(connection, request);
+		}
+
+		JsonObject reply(Connection connection, JsonObject request) {
+			int index = connection.messages.size();
+			adapter.receive(connection, request.toString());
+			assertEquals(index + 1, connection.messages.size());
+			JsonObject response = JsonObject.readFrom(connection.messages.get(index));
+			assertEquals(request.getString("requestId", null), response.getString("requestId", null));
+			return response;
+		}
 	}
 
 	private JsonObject preparedResponse() { return new JsonObject().add("type", "preparedMatch").add("code", "ACCEPTED").add("document", new JsonObject().add("matchId", MATCH)); }

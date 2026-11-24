@@ -26,7 +26,7 @@ const dataMount = container => {
 assert.notEqual(dataMount(oldContainer), dataMount(newContainer), 'Source and target volumes must differ');
 assert.match(dataMount(newContainer), /^ffb-match-review_database$/, 'Target is not the isolated review volume');
 const sourceMarker = await query(source, 'SELECT version FROM ffb_local_schema');
-assert.ok(['7', '8', '9', '10'].includes(sourceMarker), 'Source must be marker 7 through 10');
+assert.ok(['7', '8', '9', '10', '11'].includes(sourceMarker), 'Source must be marker 7 through 11');
 assert.equal(await query(target, 'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE()'), '0',
   'Review target must be empty; never overwrite a provisioned database');
 const dump = spawn('docker', ['exec', source, 'sh', '-c',
@@ -70,7 +70,8 @@ if (hasConsent) assert.equal(await query(target, 'SELECT COUNT(*) FROM ffb_match
 const migrations = [
   [8, '008-skill-use-preferences.sql'],
   [9, '009-recovery-journal.sql'],
-  [10, '010-computer-job-availability.sql']
+  [10, '010-computer-job-availability.sql'],
+  [11, '011-expired-match-acknowledgement.sql']
 ];
 for (const [version, file] of migrations) {
   if (Number(sourceMarker) >= version) continue;
@@ -81,6 +82,6 @@ for (const [version, file] of migrations) {
   migration.stdin.end(readFileSync(new URL(`../ffb-server/src/main/resources/local-schema/${file}`, import.meta.url), 'utf8'));
   assert.equal(await finished, 0, `Review schema migration ${file} failed: ${migrationError}`);
 }
-assert.equal(await query(target, 'SELECT version FROM ffb_local_schema'), '10', 'Review schema marker mismatch');
+assert.equal(await query(target, 'SELECT version FROM ffb_local_schema'), '11', 'Review schema marker mismatch');
 assert.equal(await query(target, 'SELECT COUNT(*) FROM ffb_match_recovery_journal'), '0');
-console.log('Isolated review schema verified at marker 10; match tables empty; accounts, teams and skill use preferences retained.');
+console.log('Isolated review schema verified at marker 11; match tables empty; accounts, teams and skill use preferences retained.');

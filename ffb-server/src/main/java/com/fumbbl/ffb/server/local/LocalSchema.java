@@ -38,7 +38,7 @@ public class LocalSchema {
 
 	private void initializeMarker6(DbConnectionManager manager) throws SQLException {
 		try (Connection connection = manager.openDbConnection(); Statement statement = connection.createStatement()) {
-			if (schemaVersion(statement) != 10) throw new SQLException("Browser startup requires a separately migrated schema version 10 database");
+			if (schemaVersion(statement) != 11) throw new SQLException("Browser startup requires a separately migrated schema version 11 database");
 			verifySavedTeams(connection);
 			verifyCompletedMatches(connection);
 			verifyRecovery(connection, true);
