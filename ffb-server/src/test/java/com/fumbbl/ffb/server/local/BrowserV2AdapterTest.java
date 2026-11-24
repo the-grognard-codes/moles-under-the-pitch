@@ -1263,9 +1263,11 @@ class BrowserV2AdapterTest {
 		assertEquals("MALFORMED_MESSAGE", fixture.reply(home, request("acknowledgeExpired", "spoof")
 			.add("matchId", MATCH).add("accountId", SECOND)).getString("code", null));
 		fixture.expired = false;
+		fixture.refillLobbyToken();
 		assertEquals("MATCH_NOT_EXPIRED", fixture.reply(home, acknowledge).getString("code", null));
 		assertTrue(fixture.timestamps.isEmpty());
 		fixture.expired = true;
+		fixture.refillLobbyToken();
 		JsonObject accepted = fixture.reply(home, acknowledge);
 		assertEquals("acknowledgeExpired", accepted.getString("type", null));
 		assertEquals("ACCEPTED", accepted.getString("code", null));
@@ -1278,6 +1280,7 @@ class BrowserV2AdapterTest {
 		assertEquals("EXPIRED", awayListing.getString("lifecycle", null));
 		assertEquals("away", awayListing.getString("callerRole", null));
 		assertEquals("ACCEPTED", fixture.reply(away, acknowledge).getString("code", null));
+		fixture.refillLobbyToken();
 		assertTrue(fixture.lobby(away, "away-removed", true).get("matches").asArray().isEmpty());
 		assertEquals(Map.of(FIRST, fixture.clock.millis(), SECOND, fixture.clock.millis()), fixture.timestamps);
 	}
@@ -1292,16 +1295,38 @@ class BrowserV2AdapterTest {
 			.getString("lifecycle", null));
 		assertTrue(fixture.timestamps.isEmpty());
 		fixture.writeFailure = new MatchMembershipRepository.OutcomeUnknown(new SQLException("Commit response lost"));
+		fixture.refillLobbyToken();
 		assertEquals("ACKNOWLEDGEMENT_OUTCOME_UNKNOWN", fixture.reply(coach, acknowledge).getString("code", null));
 		assertEquals(Map.of(FIRST, fixture.clock.millis()), fixture.timestamps);
+		fixture.refillLobbyToken();
 		assertEquals("ACCEPTED", fixture.reply(coach, acknowledge).getString("code", null));
 		assertEquals(Map.of(FIRST, fixture.clock.millis()), fixture.timestamps);
 		verify(fixture.memberships, times(2)).acknowledge(eq(MATCH), eq(FIRST), anyLong());
+		fixture.refillLobbyToken();
 		assertTrue(fixture.lobby(coach, "after-retry", true).get("matches").asArray().isEmpty());
+	}
+
+	@Test void acknowledgementSharesLobbyAdmissionAndRetriesAfterRefill() throws Exception {
+		ExpiredAcknowledgementFixture fixture = new ExpiredAcknowledgementFixture();
+		Connection coach = fixture.signIn("home", "play");
+		assertEquals("ACCEPTED", fixture.lobby(coach, "first-lobby-read", true).getString("code", null));
+		assertEquals("ACCEPTED", fixture.lobby(coach, "second-lobby-read", true).getString("code", null));
+		JsonObject acknowledge = request("acknowledgeExpired", "retry-throttled-acknowledgement").add("matchId", MATCH);
+		assertEquals("RATE_LIMITED", fixture.reply(coach, acknowledge).getString("code", null));
+		verify(fixture.memberships, never()).acknowledged(eq(MATCH), eq(FIRST));
+		verify(fixture.memberships, never()).acknowledge(eq(MATCH), eq(FIRST), anyLong());
+
+		fixture.refillLobbyToken();
+		assertEquals("ACCEPTED", fixture.reply(coach, acknowledge).getString("code", null));
+		assertEquals(Map.of(FIRST, fixture.clock.millis()), fixture.timestamps);
+		assertEquals("RATE_LIMITED", fixture.lobby(coach, "acknowledgement-used-token", true).getString("code", null));
+		fixture.refillLobbyToken();
+		assertTrue(fixture.lobby(coach, "after-refill", true).get("matches").asArray().isEmpty());
 	}
 
 	private final class ExpiredAcknowledgementFixture {
 		private final Clock clock = Clock.fixed(Instant.ofEpochMilli(10_000L), ZoneOffset.UTC);
+		private final AtomicLong readNanos = new AtomicLong();
 		private final MatchMembershipRepository memberships = mock(MatchMembershipRepository.class);
 		private final Map<String, Long> timestamps = new HashMap<>();
 		private final BrowserV2Adapter adapter;
@@ -1344,7 +1369,10 @@ class BrowserV2AdapterTest {
 			adapter = new BrowserV2Adapter(authenticator, new V2MatchAccess(memberships, directory, clock), setup,
 				mock(MatchService.class), mock(V2PreparationService.class), mock(BrowserSavedTeamJson.class),
 				new ComputerOpponentService(null), clock);
+			adapter.readClock(readNanos::get);
 		}
+
+		void refillLobbyToken() { readNanos.addAndGet(2_000_000_000L); }
 
 		Connection signIn(String bearer, String purpose) {
 			Connection connection = new Connection();

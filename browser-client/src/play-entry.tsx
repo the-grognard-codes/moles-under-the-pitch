@@ -31,7 +31,7 @@ const checkingMatchStatus = (match: LobbyMatch, now: number) => match.resumeCuto
 
 function ExpiredMatchAcknowledgement({ connection, matchId, connected }: { connection: V2Client | null; matchId: string; connected: boolean }) {
   const attempt = connection?.expiryAcknowledgement(matchId);
-  if (attempt?.error === 'UNSUPPORTED_MESSAGE' || attempt?.error === 'MALFORMED_MESSAGE')
+  if (attempt?.error === 'UNSUPPORTED_MESSAGE')
     return <p role="status">Match removal is unavailable on this server.</p>;
   const error = attempt?.status === 'failed' ? acknowledgementError(attempt.error, connected) : '';
   const pending = attempt?.status === 'pending';
@@ -48,6 +48,7 @@ function acknowledgementError(code: string | undefined, connected: boolean): str
   if (code === 'MATCH_NOT_EXPIRED') return 'This match is still resumable. Refresh your games.';
   if (code === 'NOT_FOUND') return 'This match is unavailable for this account.';
   if (code === 'ACKNOWLEDGEMENT_OUTCOME_UNKNOWN') return 'Removal could not be confirmed. Try again.';
+  if (code === 'RATE_LIMITED') return 'Match removal is busy. Wait a moment, then try again.';
   return 'The expired match could not be removed. Try again.';
 }
 

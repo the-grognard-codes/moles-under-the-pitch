@@ -58,10 +58,11 @@ async function openLobby(width, clockSkew, refreshOutcome) {
           reply({ type: 'setupState', code: 'MATCH_ABANDONED', duplicate: false, state: null });
         if (request.type === 'acknowledgeExpired') {
           const attempt = window.requests.filter(message => message.type === request.type).length;
+          const failures = location.pathname === '/play/match'
+            ? ['ACKNOWLEDGEMENT_OUTCOME_UNKNOWN', 'MALFORMED_MESSAGE'] : ['PERSISTENCE_FAILED', 'RATE_LIMITED'];
           window.releaseAcknowledgement = () => {
             if (refreshOutcome === 'legacy') reply({ type: 'error', code: 'UNSUPPORTED_MESSAGE' });
-            else if (attempt === 1) reply({ type: 'error',
-              code: location.pathname === '/play/match' ? 'ACKNOWLEDGEMENT_OUTCOME_UNKNOWN' : 'PERSISTENCE_FAILED' });
+            else if (attempt <= failures.length) reply({ type: 'error', code: failures[attempt - 1] });
             else {
               acknowledged = true;
               reply({ type: 'acknowledgeExpired', code: 'ACCEPTED', matchId: request.matchId });
@@ -90,21 +91,23 @@ async function openLobby(width, clockSkew, refreshOutcome) {
   return { page, errors };
 }
 
-async function retryAcknowledgement(page, surface, failureText) {
+async function retryAcknowledgement(page, surface, failureMessages) {
   const action = surface.getByRole('button', { name: removeButtonLabel, exact: true });
   const pending = surface.getByRole('button', { name: 'Removing match…', exact: true });
-  await action.click();
-  await pending.waitFor();
-  assert.equal(await pending.isDisabled(), true);
-  await page.evaluate(() => window.releaseAcknowledgement());
-  await surface.getByRole('alert').filter({ hasText: failureText }).waitFor();
-  assert.equal(await action.isEnabled(), true);
-  assert.ok(await surface.evaluate(element => element.scrollWidth <= element.clientWidth));
+  for (const message of failureMessages) {
+    await action.click();
+    await pending.waitFor();
+    assert.equal(await pending.isDisabled(), true);
+    await page.evaluate(() => window.releaseAcknowledgement());
+    await surface.getByRole('alert').filter({ hasText: message }).waitFor();
+    assert.equal(await action.isEnabled(), true);
+    assert.ok(await surface.evaluate(element => element.scrollWidth <= element.clientWidth));
+  }
   await action.click();
   await pending.waitFor();
   const attempts = await page.evaluate(() => window.requests.filter(request => request.type === 'acknowledgeExpired'));
-  assert.equal(attempts.length, 2);
-  assert.deepEqual(attempts[1], attempts[0]);
+  assert.equal(attempts.length, failureMessages.length + 1);
+  for (const attempt of attempts.slice(1)) assert.deepEqual(attempt, attempts[0]);
   assert.deepEqual(attempts[0], { type: 'acknowledgeExpired', matchId, requestId: attempts[0].requestId, version: 2 });
   await page.evaluate(() => window.releaseAcknowledgement());
 }
@@ -138,7 +141,7 @@ try {
       assert.equal(await late.getByRole('button').count(), 1);
       assert.equal(await late.getByRole('button', { name: removeButtonLabel, exact: true }).isVisible(), true);
       await page.screenshot({ path: fileURLToPath(new URL(`expired-${width}.png`, evidence)), fullPage: true });
-      await retryAcknowledgement(page, late, 'The expired match could not be removed. Try again.');
+      await retryAcknowledgement(page, late, ['The expired match could not be removed. Try again.', 'Match removal is busy. Wait a moment, then try again.']);
       await late.waitFor({ state: 'detached' });
       await page.waitForFunction(() => window.currentMatchesReads.length === 3);
       await page.getByText('You have no unfinished games.', { exact: true }).waitFor();
@@ -151,7 +154,9 @@ try {
         .map(request => request.operation)), ['load']);
       await page.screenshot({ path: fileURLToPath(new URL(`direct-${width}.png`, evidence)) });
       assert.equal(await page.getByRole('link', { name: 'Back to lobby' }).getAttribute('href'), '/play');
-      await retryAcknowledgement(page, page.getByRole('region', { name: 'Match expired' }), 'Removal could not be confirmed. Try again.');
+      await retryAcknowledgement(page, page.getByRole('region', { name: 'Match expired' }), [
+        'Removal could not be confirmed. Try again.', 'The expired match could not be removed. Try again.',
+      ]);
       await page.waitForURL(`${base}/play`);
     }
     assert.deepEqual(errors, []);

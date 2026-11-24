@@ -216,6 +216,8 @@ public final class BrowserV2Adapter implements BrowserProtocol {
 				fields(request, "version", "type", "requestId", "matchId");
 				String id = request.get("matchId").asString();
 				if (!id.matches("[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}")) throw new IllegalArgumentException();
+				lobbyRead = true;
+				admitLobbyRead(connection, principal, ApplicationScope.PLAYER);
 				access.acknowledgeExpired(principal, id, setup);
 				send(connection, new JsonObject().add("type", "acknowledgeExpired").add("requestId", requestId)
 					.add("matchId", id).add("code", "ACCEPTED"));
