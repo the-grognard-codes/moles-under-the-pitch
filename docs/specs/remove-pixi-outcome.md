@@ -10,13 +10,13 @@ Four paused lineman frames cover idle, move and fall, both coach ends, both proj
 
 ## Measurements
 
-Windows, Node 26.12.1, npm 11.20.0. Install size sums the file lengths in a fresh browser-client node_modules directory. The bundle measurements cover the Vite production entry and stylesheet.
+Windows, Node 26.12.1, npm 11.20.0. Install size sums the file lengths in a fresh browser-client node_modules directory. The production JavaScript and CSS SHA-256 hashes match the independent build of main at 0de358bec after merging PR #640.
 
 | Measurement | Before | After |
 | --- | ---: | ---: |
 | Installed package files, bytes | 175,418,005 | 93,426,336 |
 | Packages installed | 37 | 25 |
-| game.js, bytes | 1,081,640 | 1,081,640 |
+| game.js, bytes | 1,081,835 | 1,081,835 |
 | game.css, bytes | 175,653 | 175,653 |
 
 Headless Chrome 158.0.8127.36, 22 players, last 600 frames of each ten-second run. Frame interval measures time between animation callbacks. CPU measures synchronous work inside the callback. Browser paint and compositing happen separately. These are local observations under concurrent validation.
