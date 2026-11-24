@@ -173,7 +173,7 @@ test('actual CI gate requires current native reports, all server suites, and suc
     const runGate = result => spawnSync(process.execPath, ['tools/validation/coverage-gate.mjs', 'native', directory], {
       cwd: root, encoding: 'utf8', windowsHide: true,
       env: { ...process.env, GITHUB_SHA: 'current', GITHUB_STEP_SUMMARY: '',
-        VALIDATION_NEEDS: JSON.stringify({ 'target-shards': { result } }) },
+        VALIDATION_NEEDS: JSON.stringify({ changes: { result: 'failure' }, 'target-shards': { result } }) },
     });
     const passed = runGate('success');
     assert.equal(passed.status, 0, passed.stderr);

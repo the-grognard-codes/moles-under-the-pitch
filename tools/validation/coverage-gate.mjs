@@ -10,6 +10,8 @@ if (!['static', 'browser', 'native'].includes(family) || !directory || extra.len
   throw new Error('Use coverage-gate.mjs static|browser|native report-directory with a validation commit and VALIDATION_NEEDS');
 }
 const needs = JSON.parse(process.env.VALIDATION_NEEDS);
+// An inconclusive classification requires Java. Only execution dependencies count in this gate.
+if (family === 'native') delete needs.changes;
 const dependencies = {
   native: ['target-shards'],
   static: ['static-checks', 'hosted-browser', 'browser-interactions'],
