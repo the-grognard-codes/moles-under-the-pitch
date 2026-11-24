@@ -1,6 +1,8 @@
 import { appendFile, readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
+export const BROWSER_REPORT_SCHEMA_VERSION = 1;
+
 export function assertExact(actual, expected, label) {
   if (!Array.isArray(actual) || !Array.isArray(expected)) throw new Error(`${label}: expected arrays`);
   const duplicate = actual.find((id, index) => actual.indexOf(id) !== index);
@@ -52,18 +54,26 @@ export function assertDependencies(needs, expected) {
   }
 }
 
-export function validateReports(reports, { family, shards, commit, allowedSkips = {} }) {
+export function validateReports(reports, {
+  family, shards, commit, schemaVersion, allowedSkips = {}, allowedEmptySuites = {},
+}) {
+  if (!Number.isInteger(schemaVersion) || schemaVersion < 1) {
+    throw new Error(`${family}: expected a positive report schemaVersion`);
+  }
   assertExact(reports.map(report => report.shard), shards.map((_, index) => index + 1), `${family} reports`);
   for (const report of reports) {
-    if (report.schemaVersion !== 1 || report.family !== family || report.commit !== commit || report.passed !== true) {
+    if (report.schemaVersion !== schemaVersion || report.family !== family || report.commit !== commit || report.passed !== true) {
       throw new Error(`${family} shard ${report.shard}: invalid, failed, or stale report`);
     }
     if (!Array.isArray(report.suites)) throw new Error(`${family}: missing execution records`);
     assertExact(report.suites.map(suite => suite.id), shards[report.shard - 1], `${family} shard ${report.shard} execution`);
     for (const suite of report.suites) {
-      if (!Number.isFinite(suite.durationMs) || suite.durationMs < 0 || !Number.isInteger(suite.tests) || suite.tests < 1 ||
+      if (!Number.isFinite(suite.durationMs) || suite.durationMs < 0 || !Number.isInteger(suite.tests) || suite.tests < 0 ||
           suite.failures !== 0 || suite.errors !== 0 || !Number.isInteger(suite.skipped) || suite.skipped < 0) {
-        throw new Error(`${suite.id}: invalid metrics, empty suite, or failed tests`);
+        throw new Error(`${suite.id}: invalid metrics or failed tests`);
+      }
+      if (suite.tests === 0 && !allowedEmptySuites[suite.id]?.includes(suite.missingEnvironmentVariable)) {
+        throw new Error(`${suite.id}: empty suite without a missing opt-in variable`);
       }
       const skippedTests = suite.skippedTests ?? [];
       if (!Array.isArray(skippedTests) || skippedTests.length !== suite.skipped || suite.skipped > suite.tests) {
@@ -82,10 +92,13 @@ export function validateReports(reports, { family, shards, commit, allowedSkips 
 }
 
 export async function summarize(suites, output) {
-  const lines = ['## Validation suite timings', '', '| Family | Shard | Suite | Seconds | Tests | Opt-in skips |',
-    '| --- | ---: | --- | ---: | ---: | ---: |'];
+  const showsMissingVariable = suites.some(suite => suite.missingEnvironmentVariable);
+  const lines = ['## Validation suite timings', '',
+    '| Family | Shard | Suite | Seconds | Tests | Opt-in skips |' + (showsMissingVariable ? ' Missing opt-in variable |' : ''),
+    '| --- | ---: | --- | ---: | ---: | ---: |' + (showsMissingVariable ? ' --- |' : '')];
   for (const suite of suites.toSorted((a, b) => b.durationMs - a.durationMs)) {
-    lines.push(`| ${suite.family} | ${suite.shard} | ${suite.id} | ${(suite.durationMs / 1000).toFixed(2)} | ${suite.tests} | ${suite.skipped} |`);
+    const missingVariable = showsMissingVariable ? ` ${suite.missingEnvironmentVariable ?? ''} |` : '';
+    lines.push(`| ${suite.family} | ${suite.shard} | ${suite.id} | ${(suite.durationMs / 1000).toFixed(2)} | ${suite.tests} | ${suite.skipped} |${missingVariable}`);
   }
   const summary = `${lines.join('\n')}\n`;
   console.log(summary);
