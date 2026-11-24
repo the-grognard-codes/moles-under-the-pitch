@@ -4,7 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { platform, release, cpus } from 'node:os';
 import { chromium } from 'playwright';
 import { createServer } from './browser-test-server.mjs';
-const evidence = new URL('../../assets/game/proofs/shared-sprite-v1/qa/full-proof/', import.meta.url);
+const evidence = new URL('../../.tools/sprite-proof/full-proof/', import.meta.url);
+const pitchHost = '.proof-pitch-sprites';
+const pitchSprite = `${pitchHost} > img:not([hidden])`;
 await mkdir(evidence, { recursive: true });
 const server = await createServer({ root: fileURLToPath(new URL('../', import.meta.url)), configFile: false, server: { host: '127.0.0.1', port: 0 } });
 await server.listen();
@@ -17,17 +19,28 @@ try {
   page.on('pageerror', error => errors.push(error.message));
   page.on('response', response => { if (response.status() >= 400) errors.push(`${response.status()} ${response.url()}`); });
   await page.goto(server.resolvedUrls.local[0] + 'test/sprite-proof.html');
-  await page.waitForFunction(() => document.querySelector('.proof-pixi')?.dataset.metrics);
+  await page.locator(`${pitchHost}[data-metrics]`).waitFor({ state: 'attached' });
   await page.getByRole('button', { name: 'Pause animation', exact: true }).click();
-  const metrics = () => page.locator('.proof-pixi').evaluate(node => JSON.parse(node.dataset.metrics));
+  const metrics = () => page.locator(pitchHost).evaluate(node => JSON.parse(node.dataset.metrics));
+  const waitForSprites = (count, fallbacks, { mirrored, anchorMode } = {}) => page.waitForFunction(({ selector, count, fallbacks, mirrored, anchorMode }) => {
+    const sprites = [...document.querySelectorAll(selector)];
+    return sprites.length === count && sprites.every(image => image.complete && image.naturalWidth > 0)
+      && sprites.filter(image => !image.dataset.frame).length === fallbacks
+      && (mirrored === undefined || sprites[0].dataset.mirrored === String(mirrored))
+      && (anchorMode === undefined || sprites[0].dataset.anchorMode === anchorMode);
+  }, { selector: pitchSprite, count, fallbacks, mirrored, anchorMode });
   for (const design of ['lineman', 'halfling', 'ogre']) {
     await page.getByLabel('Animation design').selectOption(design);
     for (const direction of design === 'lineman' ? ['front45', 'back45'] : ['front45']) {
       await page.getByLabel('Animation view').selectOption(direction);
       for (const clip of ['idle', 'move', 'fall']) {
         await page.getByLabel('Animation clip').selectOption(clip);
+        await page.getByRole('button', { name: 'Restart animation', exact: true }).click();
         for (let frame = 0; frame < 4; frame++) {
-          await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+          await page.waitForFunction(({ selector, frameId }) => {
+            const image = document.querySelector(selector);
+            return image?.complete && image.naturalWidth > 0 && image.dataset.frame === frameId;
+          }, { selector: pitchSprite, frameId: `${design}-${direction}-${clip}-${frame}` });
           await page.locator('#animation-proof > .proof-green').screenshot({ path: fileURLToPath(new URL(`${design}-${direction}-${clip}-${frame}-3x.png`, evidence)) });
           await page.getByRole('button', { name: 'Next frame', exact: true }).click();
         }
@@ -49,19 +62,26 @@ try {
     await page.getByLabel('22-player synthetic scene').check();
     for (const mirror of [false, true]) {
       await page.getByLabel('Mirror pitch sprite').setChecked(mirror);
-      await page.waitForTimeout(150);
+      const fallbacks = end === 'away' ? 14 : 0;
+      await waitForSprites(22, fallbacks, { mirrored: (end === 'away') !== mirror, anchorMode: mode === 'top-down' ? 'body-center' : 'feet' });
       await page.locator('.proof-pitch-stage').screenshot({ path: fileURLToPath(new URL(`pitch-${end}-${mode}-${mirror}.png`, evidence)) });
       assert.equal((await metrics()).count, 22);
     }
   }
   await page.getByLabel('Coach end').selectOption('home'); await page.getByLabel('Proof projection').selectOption('perspective');
   await page.getByLabel('Mirror pitch sprite').uncheck(); await page.getByLabel('Animation view').selectOption('side');
-  await page.waitForTimeout(100); assert.equal((await metrics()).fallbacks, 22);
+  await waitForSprites(22, 22);
+  assert.equal((await metrics()).fallbacks, 22);
   await page.getByLabel('Animation view').selectOption('front45');
+  await waitForSprites(22, 0);
+  const linemen = page.locator(pitchSprite);
+  assert.notEqual(await linemen.nth(0).getAttribute('src'), await linemen.nth(12).getAttribute('src'));
   const primary = page.getByRole('group', { name: 'Primary color', exact: true }), secondary = page.getByRole('group', { name: 'Secondary color', exact: true });
   for (const [name, p, s] of [['light', 'White', 'White'], ['dark', 'Black', 'Black'], ['contrast', 'Red', 'Gold'], ['similar', 'Navy', 'Slate']]) {
-    await primary.getByRole('radio', { name: p, exact: true }).check(); await secondary.getByRole('radio', { name: s, exact: true }).check();
-    await page.getByLabel('Identical opposing kits').check(); await page.waitForTimeout(120);
+    await primary.getByText(p, { exact: true }).click(); await secondary.getByText(s, { exact: true }).click();
+    await page.getByLabel('Identical opposing kits').check();
+    await waitForSprites(22, 0);
+    assert.equal(await linemen.nth(0).getAttribute('src'), await linemen.nth(12).getAttribute('src'));
     await page.locator('.proof-pitch-stage').screenshot({ path: fileURLToPath(new URL(`pitch-${name}-kits.png`, evidence)) });
   }
   await page.getByRole('button', { name: 'Reset', exact: true }).click(); await page.getByLabel('Identical opposing kits').uncheck();
@@ -69,11 +89,14 @@ try {
   await page.locator('.proof-pitch-stage').scrollIntoViewIfNeeded();
   await page.waitForTimeout(10000); const animated = await metrics();
   assert.ok(animated.textures <= 96); assert.equal(animated.fallbacks, 0);
+  assert.ok(animated.samples > 0 && animated.intervalMedianMs > 0 && animated.intervalP95Ms >= animated.intervalMedianMs);
   await page.getByLabel('Accepted static baseline').check(); await page.waitForTimeout(10000); const baseline = await metrics();
+  await waitForSprites(22, 22);
   assert.equal(baseline.fallbacks, 22); assert.equal(baseline.textures, 0);
+  assert.ok(baseline.samples > 0 && baseline.intervalMedianMs > 0 && baseline.intervalP95Ms >= baseline.intervalMedianMs);
   await page.getByLabel('Accepted static baseline').uncheck();
   for (let i = 0; i < 32; i++) {
-    await primary.getByRole('radio').nth(i % 16).check(); await page.waitForTimeout(20);
+    await primary.locator('label').nth(i % 16).click(); await page.waitForTimeout(20);
     assert.ok((await metrics()).textures <= 96);
   }
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -100,7 +123,7 @@ try {
   for (const sheet of sheets) await writeFile(new URL(`${sheet.id}-256-pairs.png`, evidence), Buffer.from(sheet.data, 'base64'));
   assert.deepEqual(errors, []);
   const result = { browser: await browser.version(), os: `${platform()} ${release()}`, cpu: cpus()[0].model, headless: true,
-    renderer: 'Pixi WebGL', animated, baseline, cacheChurnPairs: 32, errors,
+    renderer: 'DOM images', animated, baseline, cacheChurnPairs: 32, errors,
     animationJsonBytes: (await stat(new URL('../../assets/game/proofs/shared-sprite-v1/delivery/animation.json', import.meta.url))).size,
     staticJsonBytes: (await stat(new URL('../../assets/game/proofs/shared-sprite-v1/delivery/pack.json', import.meta.url))).size };
   await writeFile(new URL('results.json', evidence), JSON.stringify(result, null, 2));
