@@ -31,6 +31,7 @@ Decisions 14–20 in #611 govern. These working assumptions were kept by the rev
 - **One writer per match.** Each match's storage version is chosen at activation and stored with the unpublished activation seed and the revision-zero record, so a crash or a changed setting reopens the same seed. The new storage is test-only until chat, replay, expiry and full time work. Nothing is written in both formats.
 - **Row summary.** The current-state row always carries a small summary, bound to the storage generation, with absolute expiry times and maintenance inputs.
 - **Tests move in batches:** unchanged characterization of the old storage; the same repository cases against both storages, with MariaDB (#578); shared Java and TypeScript protocol fixtures; browser role, recovery and playback; then a mixed-version rehearsal.
+- **Ownership.** When a ticket is filed, it takes its readers and writers from the ownership list in Codex's review, including `BrowserV2Adapter`, `JdbcMatchRepository`, `V2PreparationService`, `BrowserRequestTiming`, the recovery fixtures and the soak driver.
 
 ## What each operation writes
 
@@ -294,7 +295,7 @@ Filed as #654. The transcript stops owning presentation state, and the tracker t
 
 - Every request still gets its own reply, even if the record is over 256 KiB or can't be queued.
 - The browser checks the match and the base revision, and detects duplicates and gaps. A replaced or dropped update always leads to a bounded, authorized snapshot, including when no further move follows and when the repair read itself fails (#519).
-- A snapshot and a page state the revision they start from, so nothing is applied twice. Joining and reloading get a snapshot and the latest page.
+- A snapshot and a page state the revision they start from, so nothing is applied twice. Joining and reloading get a snapshot and the latest page. Playback continues across a repair without repeating or skipping a move.
 - Envelopes carry only that role's offers. Access is rechecked when an update is queued and after it was deferred. Publication still follows the commit, and staged placements keep their order.
 - Tests cover two rapid moves from different coaches, two devices on one seat, a slow connection, revocation during deferral, a reconnect with an unresolved move, and a terminal update with no later frame.
 - It works for matches in either storage. Bytes per move are reported against #650's baseline.
