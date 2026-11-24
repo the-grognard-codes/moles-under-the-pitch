@@ -149,14 +149,13 @@ node tools/dev-local.mjs --start
 ```
 
 The explicit bootstrap creates schema marker 11 without importing accounts,
-teams or matches. It can upgrade a verified marker-7 database while preserving
+teams or matches. It can upgrade a verified marker-7 through marker-10 database while preserving
 its records, rejects populated marker-5/6 schemas, and never targets the
 retained current-dev database. Do not run the laptop-copy provisioning script
 for this path. The computer-player token file must match the SHA-256 configured
 in `server.match-review.ini`; daily startup also requires Firebase CLI and nginx.
 
-Existing marker-7 review databases must run the explicit schema bootstrap before
-starting this server build. See [account skill use schema migration](../../docs/operations/skill-use-preferences-schema.md).
+For an existing marker-10 review database, stop the service and back it up before upgrading. Follow the [marker-11 rollout and rollback procedure](../../docs/operations/recovery-journal-schema.md).
 
 ## Authentication preflight
 

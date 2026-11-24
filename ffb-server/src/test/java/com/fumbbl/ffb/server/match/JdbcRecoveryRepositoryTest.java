@@ -183,7 +183,7 @@ class JdbcRecoveryRepositoryTest {
 	}
 
 	@Test void initialCheckpointsSupportEveryPublishedRecoverySchema() throws Exception {
-		for (int version : new int[] { 5, 6, 7, 8 }) {
+		for (int version : new int[] { 5, 6, 7, 8, 9, 10, 11 }) {
 			setup(); when(schema.getInt(1)).thenReturn(version);
 			when(statement.executeUpdate()).thenReturn(1);
 			assertTrue(repository.save(record(1), 0));
@@ -192,7 +192,7 @@ class JdbcRecoveryRepositoryTest {
 	}
 
 	@Test void initialCheckpointsRejectUnsupportedSchemasBeforeWriting() throws Exception {
-		for (int version : new int[] { 4, 11 }) {
+		for (int version : new int[] { 4, 12 }) {
 			setup(); when(schema.getInt(1)).thenReturn(version);
 			assertThrows(SQLException.class, () -> repository.save(record(1), 0));
 			verify(statement, never()).executeUpdate(); verify(connection, never()).commit(); verify(connection).rollback();
