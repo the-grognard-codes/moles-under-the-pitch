@@ -30,6 +30,8 @@
 .play-lobby .ai-roster { border-left: 3px solid #ffe17b; padding-left: 1rem; }
 .play-lobby .ai-roster > .builder-hint:first-child { margin-top: 0; color: #ffe17b; }
 .play-lobby .current-games .spectate-section-heading button { margin-left: auto; }
+.current-games .spectate-game-top { flex-wrap: wrap; }
+.current-games .current-game-resume-time { font-variant-numeric: tabular-nums; }
 @media (max-width: 1050px) {
   .play-lobby .ai-coaches { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

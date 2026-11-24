@@ -53,6 +53,7 @@ export class V2Client {
   private diagnosticRequests = new Map<string, { operation: string; at: number; details?: boolean }>();
   accountId = '';
   state: SetupState | null = null;
+  expiredMatchId: string | null = null;
   pending: PendingIntent | null = null;
   liveTranscript = false;
   lastAcceptedActionId: string | null = null;
@@ -224,7 +225,7 @@ export class V2Client {
     if (!uuid.test(matchId)) throw Error('Enter a valid match ID.');
     for (const [id, request] of this.requests)
       if (request.type === 'preparedMatch' && request.operation === 'load') this.requests.delete(id);
-    this.selection = { matchId, watch }; this.state = null;
+    this.selection = { matchId, watch }; this.state = null; this.expiredMatchId = null;
     this.preparationMatchId = null;
     return this.request(watch ? 'watch' : 'setup', watch ? { matchId } : { matchId, operation: concessionOnly ? 'concessionStatus' : 'load' });
   }
@@ -340,7 +341,8 @@ export class V2Client {
       return;
     }
     if (message.type === 'diagnostics') return; // Late optional response after timeout/off/reconnect.
-    this.observe('validate', () => assertV2Projection(message));
+    const request = message.requestId === null ? undefined : this.requests.get(message.requestId);
+    this.observe('validate', () => assertV2Projection(message, request?.type === 'currentMatches' && request.includeResumeDetails === true));
     diagnostics?.response(message.requestId, message.state?.revision, message.type === 'error');
     if (message.version !== 2 || typeof message.type !== 'string'
       || (!['catalog', 'teamValidation'].includes(message.type) && typeof message.code !== 'string')) throw Error('Invalid envelope');
@@ -364,7 +366,6 @@ export class V2Client {
       }
       this.disconnect(); this.options.onChange(message); return;
     }
-    const request = message.requestId === null ? null : this.requests.get(message.requestId);
     if (message.type === 'stagedPlacement') {
       if (!this.accountId || message.requestId !== null || message.code !== 'ACCEPTED' || !uuid.test(message.matchId))
         throw Error('Invalid placement notification');
@@ -544,6 +545,17 @@ export class V2Client {
       if (this.selection.watch !== (state.callerRole === 'spectator')) throw Error('Wrong recipient role');
       if (!this.state || state.revision > this.state.revision
         || state.revision === this.state.revision && (state.stageSeq ?? 0) >= (this.state.stageSeq ?? 0)) this.state = state;
+    }
+    if (this.options.initialMatch && this.selection && !this.selection.watch
+      && (this.state?.saveResume?.status === 'ABANDONED' || request?.type === 'setup' && request.matchId === this.selection.matchId
+        && ['setupState', 'error'].includes(message.type) && message.code === 'MATCH_ABANDONED')) {
+      this.expiredMatchId = this.selection.matchId;
+      // The terminal match view must be able to return to the lobby without reopening a stale intent.
+      if (this.pending?.accountId === this.accountId && this.pending.request.matchId === this.expiredMatchId
+        && ['setup', 'matchChat'].includes(this.pending.request.type)) {
+        this.pending = null;
+        this.options.storage?.removeItem(v2PendingKey);
+      }
     }
     if (message.code === 'NOT_FOUND' || message.code === 'VIEW_UNAVAILABLE') { this.state = null; this.preparationMatchId = null; }
     if (request?.type === 'setup' && request.operation === 'action' && message.code === 'ACCEPTED'

@@ -25,7 +25,7 @@ test('provisions the missing current-games index and verifies it, then startup i
   assert.equal(ensureReviewCurrentMatchesIndex(database.run), false);
   assert.equal(database.writes.length, 1);
 });
-for (const marker of ['8', '9']) test(`marker ${marker} keeps the same current-games index contract`, () => {
+for (const marker of ['8', '9', '10']) test(`marker ${marker} keeps the same current-games index contract`, () => {
   const database = fixture({ marker });
   assert.equal(ensureReviewCurrentMatchesIndex(database.run), true);
   assert.equal(ensureReviewCurrentMatchesIndex(database.run), false);
