@@ -44,7 +44,7 @@ This review produces that comment and nothing else. Filing tickets, changing lab
 ## After the review
 
 1. The maintainer settles the proposed changes, and this plan is updated.
-2. Tickets 1–3 are filed when the maintainer says so.
+2. Tickets 1–3 are filed after the review is settled (maintainer, 2026-11-24).
 3. The ADR is drafted with #650's numbers and accepted. Tickets 4–19 are then filed from the [feature template](../agents/feature-template.md).
 
 ## Suggested skills
