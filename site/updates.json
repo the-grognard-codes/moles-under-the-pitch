@@ -1,5 +1,13 @@
 [
   {
+    "number": 640,
+    "title": "Smoother pitch panning during player and ball movement",
+    "summary": "The camera responds more smoothly when you drag the pitch during a move or while a loose ball travels. Playback keeps its existing pace, and sliding panels still update the highlighted square under the pointer.",
+    "category": "Gameplay",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/640",
+    "mergedAt": "2026-11-24T04:52:22Z"
+  },
+  {
     "number": 625,
     "title": "Run server tests in parallel Java CI shards",
     "summary": "Java CI divides server and state-test classes across four jobs. The coverage gate checks that each suite appears exactly once in its assigned job.",

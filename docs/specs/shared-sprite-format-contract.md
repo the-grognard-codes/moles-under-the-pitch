@@ -6,7 +6,7 @@ Evidence: [proof outcome](shared-sprite-format-proof-outcome.md), [source pack](
 
 ## Decision
 
-Use original RGBA artwork plus an explicit material/shade index plane, one shared palette definition, and a versioned animation manifest. Recolor once when a texture/palette combination enters the cache; render ordinary textures through the existing Pixi renderer and ordinary images for bust/helmet consumers. Do not infer materials from RGB at runtime. Do not author 256 separate kit variants.
+Use original RGBA artwork plus an explicit material/shade index plane, one shared palette definition, and a versioned animation manifest. Recolor once when a texture/palette combination enters the cache; display the recolored frames, busts and helmets as images. Do not infer materials from RGB at runtime. Do not author 256 separate kit variants.
 
 This contract describes the semantics proven by the sample and the authoring handoff for further rosters. The current decoder intentionally validates the bounded three-design proof. Expanding its inventory limits and design types is a subsequent implementation task; the sample is not a general asset ingestion service.
 
@@ -49,9 +49,9 @@ Unsupported clips/facings retain an existing accepted static pose. Missing or in
 
 ## Rendering and cache lifetime
 
-The proof uses CPU palette replacement into RGBA canvases and nearest-filtered Pixi textures. Static consumers use cached PNG data URLs through the shared portrait resolver. The helmet supplies the same recolored crop to team-name and all three splash uses. Busts do not inherit body anchors and do not animate.
+The proof uses CPU palette replacement into RGBA canvases and pixelated DOM images. Static consumers use cached PNG data URLs through the shared portrait resolver. The helmet supplies the same recolored crop to team-name and all three splash uses. Busts do not inherit body anchors and do not animate.
 
-The static cache is an LRU capped at 32 entries. The animation scene owns up to 48 frames × two kit pairs = 96 textures; changing palette/scene configuration destroys old owned textures. Unmount destroys the renderer and its owned textures. Accepted static fallback textures are retained separately for the fixture lifetime. Never destroy shared production textures when implementing the product adapter.
+The static cache is an LRU capped at 32 entries. The animation scene owns up to 48 frames × two kit pairs = 96 recolored frame images. Configuration changes clear the scene cache, and unmount releases it. Accepted static fallback sprites use their asset URLs.
 
 The proof deliberately ships inspectable JSON pixel/index arrays and native PNGs. This is useful for validation, but broad roster delivery must budget loading and decoding. Preserve these semantics if introducing compressed planes, atlases or binary payloads; validate round-trip pixel identity before changing the transport. The proof does not establish an indexed-PNG browser recoloring API or require a custom shader.
 
@@ -63,7 +63,7 @@ The proof deliberately ships inspectable JSON pixel/index arrays and native PNGs
 | Shading | 16 approved discrete shades per material; finer gradients are quantized. | Can preserve continuous shading, but tint/compositing math needs its own visual contract. |
 | Alpha | One unchanged original alpha channel; no mask-edge compositing seams. | Multiple alpha edges/compositing order can produce halos if not aligned. |
 | Export | Hash-bound maps, exact bounds and deterministic output are validated. | More files/layers and blend conventions to validate. |
-| Renderer | Ordinary cached textures already work in current Pixi and DOM consumers. | Can also flatten into textures; a shader path is optional and unproven here. |
+| Renderer | The DOM consumers display cached raster images. | Can also flatten into textures; a shader path is optional and unproven here. |
 
 No concrete rendering failure required a second complete pipeline. Layers remain useful authoring inputs that can export explicit indices. Do not claim pixel-identical reproduction of arbitrary artwork with 16 shades; the approved palette deliberately simplifies fine gradients.
 
