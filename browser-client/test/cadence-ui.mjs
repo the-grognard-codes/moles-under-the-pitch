@@ -10,7 +10,7 @@ import { DICE_GROUP_INTERVAL_MS, PITCH_DICE_ROLL_MS } from '../src/presentation-
 const initial = JSON.parse(readFileSync(new URL('./fixtures/m5a-blitz-projections.json', import.meta.url), 'utf8'))[0].actor;
 const state = (revision, x = 7, y = 7) => ({ ...initial, revision, actions: [], prompt: null,
   players: initial.players.map((player, index) => index ? player : { ...player, x, y }) });
-const loose = (revision, x, playerX) => ({ ...state(revision, playerX), ball: { x, y: 7 },
+const loose = (revision, ballX, playerX) => ({ ...state(revision, playerX), ball: { x: ballX, y: 7 },
   ballState: { version: 1, inPlay: true, moving: true, carrierPlayerId: null } });
 const move = (x, y = 7) => ({ modelChangeId: 'fieldModelSetPlayerCoordinate',
   modelChangeKey: initial.players[0].id, modelChangeValue: { x, y } });
@@ -89,30 +89,39 @@ async function assertPlaybackPanHover() {
     };
     return selectors.filter((_, index) => !targets[index]);
   });
-  assert.deepEqual(probeTargets, [], 'Playback fixture renders both markers and their descendants');
-  await publish({ view: movedWithBall, records: [record(baseWithBall), record(movedWithBall, [sync([move(8), move(9)])])] });
-  await at(8, true);
-  await page.mouse.move(panStart.x, panStart.y);
-  await page.clock.runFor(34);
-  assert.equal(await hover.count(), 1, 'A stationary pointer is tracked during playback');
-  await page.mouse.down({ button: 'right' });
-  await page.mouse.move(panStart.x, panStart.y + 35);
-  await page.clock.runFor(34);
-  assert.notEqual(await scene.getAttribute('data-focus'), initialFocus, 'Drag pans the camera during playback');
-  assert.equal(await hover.count(), 0, 'Dragging clears tracked hover');
-  const noReads = { player: 0, ball: 0, overlay: 0 };
-  assert.deepEqual(await page.evaluate(() => window.hoverAnimationProbe.emit()), noReads, 'No synchronous animation reads during a drag');
-  await page.clock.runFor(34);
-  assert.deepEqual(await page.evaluate(() => window.hoverAnimationProbe.read()), noReads, 'No target is inspected during a drag');
-  await page.mouse.up({ button: 'right' });
-  await page.clock.runFor(34);
-  assert.equal(await hover.count(), 1, 'Releasing the pan restores tracked hover');
-  await at(8, true);
-  assert.deepEqual(await page.evaluate(() => window.hoverAnimationProbe.emit()), noReads, 'Event handlers defer animation reads');
-  await page.clock.runFor(34);
-  assert.deepEqual(await page.evaluate(() => window.hoverAnimationProbe.read()), { ...noReads, overlay: 1 },
-    'Only the overlay is inspected and its events share one frame read');
-  await page.evaluate(() => window.hoverAnimationProbe.restore());
+  try {
+    assert.deepEqual(probeTargets, [], 'Playback fixture renders both markers and their descendants');
+    await publish({ view: movedWithBall, records: [record(baseWithBall), record(movedWithBall, [sync([move(8), move(9)])])] });
+    await at(8, true);
+    await page.mouse.move(panStart.x, panStart.y);
+    await page.clock.runFor(34);
+    assert.equal(await hover.count(), 1, 'A stationary pointer is tracked during playback');
+    await page.mouse.down({ button: 'right' });
+    await page.mouse.move(panStart.x, panStart.y + 35);
+    await page.clock.runFor(34);
+    assert.notEqual(await scene.getAttribute('data-focus'), initialFocus, 'Drag pans the camera during playback');
+    assert.equal(await hover.count(), 0, 'Dragging clears tracked hover');
+    const noReads = { player: 0, ball: 0, overlay: 0 };
+    assert.deepEqual(await page.evaluate(() => window.hoverAnimationProbe.emit()), noReads, 'No synchronous animation reads during a drag');
+    await page.clock.runFor(34);
+    assert.deepEqual(await page.evaluate(() => window.hoverAnimationProbe.read()), noReads, 'No target is inspected during a drag');
+    await page.mouse.up({ button: 'right' });
+    await page.clock.runFor(34);
+    assert.equal(await hover.count(), 1, 'Releasing the pan restores tracked hover');
+    await at(8, true);
+    const initialZoom = await scene.getAttribute('data-zoom');
+    await page.mouse.wheel(0, -100);
+    await page.clock.runFor(34);
+    assert.notEqual(await scene.getAttribute('data-zoom'), initialZoom, 'Wheel zoom changes the camera during playback');
+    assert.equal(await hover.count(), 1, 'Wheel zoom preserves tracked hover');
+    assert.deepEqual(await page.evaluate(() => window.hoverAnimationProbe.read()), noReads, 'Zoom skips player and ball animation reads');
+    assert.deepEqual(await page.evaluate(() => window.hoverAnimationProbe.emit()), noReads, 'Event handlers defer animation reads');
+    await page.clock.runFor(34);
+    assert.deepEqual(await page.evaluate(() => window.hoverAnimationProbe.read()), { ...noReads, overlay: 1 },
+      'Only the overlay is inspected and its events share one frame read');
+  } finally {
+    await page.evaluate(() => window.hoverAnimationProbe.restore());
+  }
 }
 try {
   await page.addInitScript(input => { window.playbackInput = input; window.playbackFrames = []; },
@@ -222,7 +231,7 @@ try {
 
   // Replay speed scales movement, ball steps, roll spacing and roll animation.
   await reset(loose(0, 7));
-  const replay = { ...loose(1, 8), players: state(1, 8).players };
+  const replay = loose(1, 8, 8);
   await publish({ view: replay, records: [record(loose(0, 7)), record(replay, [sync([move(8)]), sync([], [block, injury]), sync([ball(8)])])], mode: 'replay', speed: 2 });
   await at(8, true); assert.equal((await output()).duration, 100);
   await page.clock.runFor(100);

@@ -56,8 +56,10 @@ export function usePitchHover(scene: RefObject<HTMLDivElement | null>, camera: P
       });
     };
     scheduleRefresh.current = schedule;
-    const animate = (event: Event) => {
+    const queueAnimationTarget = (event: Event) => {
       const target = event.target;
+      // Ground and player hits use the same camera-projected square. The ball ignores pointer events.
+      // Sliding panels can cover that square even while the pointer stays still.
       if (!pointer.current || !(target instanceof Element) || target.closest('.live-marker, .live-ball-marker')) return;
       pendingTargets.add(target);
       schedule();
@@ -80,8 +82,8 @@ export function usePitchHover(scene: RefObject<HTMLDivElement | null>, camera: P
     document.addEventListener('dragstart', clear, true);
     document.addEventListener('scroll', schedule, true);
     document.addEventListener('visibilitychange', visibility);
-    document.addEventListener('transitionrun', animate, true);
-    document.addEventListener('animationstart', animate, true);
+    document.addEventListener('transitionrun', queueAnimationTarget, true);
+    document.addEventListener('animationstart', queueAnimationTarget, true);
     window.addEventListener('blur', clear);
     window.addEventListener('resize', schedule);
     // Panels can open, close or resize beneath a stationary pointer without
@@ -101,8 +103,8 @@ export function usePitchHover(scene: RefObject<HTMLDivElement | null>, camera: P
       document.removeEventListener('dragstart', clear, true);
       document.removeEventListener('scroll', schedule, true);
       document.removeEventListener('visibilitychange', visibility);
-      document.removeEventListener('transitionrun', animate, true);
-      document.removeEventListener('animationstart', animate, true);
+      document.removeEventListener('transitionrun', queueAnimationTarget, true);
+      document.removeEventListener('animationstart', queueAnimationTarget, true);
       window.removeEventListener('blur', clear);
       window.removeEventListener('resize', schedule);
     };
