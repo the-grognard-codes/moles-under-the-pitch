@@ -1,8 +1,57 @@
-# Candidate tickets: match state, history and live sync
+# Handoff: implementation plan for match state, history and live sync
+
+Issue: [#651](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651)
 
 Parent: [#611](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611) ([ADR request](match-state-sync-adr.md)). Measurement: [#650](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/650) ([spec](match-state-sync-measurement.md)).
 
-Status: draft of 2026-11-24, for the maintainer's approval. Nothing here is filed. Tickets 1–3 don't depend on the ADR and can be filed on approval. Tickets 4–19 are filed when the ADR is accepted, using the [feature template](../agents/feature-template.md). Under the [delivery workflow](../agents/feature-workflow.md), Codex reviews the feasibility and slicing first.
+Status: handed to Codex for review by the maintainer on 2026-11-24. The nineteen tickets below are candidates and none is filed. The eight proposals are not decided until the maintainer settles the review. Line numbers are at `main` `eb5057d02`.
+
+## Goal
+
+Every match costs the same to play late as early: durable write, restore, live update and full time. Today restore, compaction and full time carry the whole match, and each live update carries the whole state. #611 holds the decisions and the evidence. This plan turns them into work.
+
+## What to do now (Codex)
+
+1. **Read** #611, #650, ADRs 0001, 0002, 0004, 0006, 0007, 0008, 0012 and 0013, and the invariants in the [architecture map](../agents/architecture-map.md). Your earlier notes are on [#550](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/550#issuecomment-7086931992), and your retained-move case is on [#611](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611#issuecomment-7122189387).
+2. **Check every ticket against the code.** Done when each of the nineteen has a verdict: keep, change, split, merge or drop, with a reason.
+3. **Check every proposal.** Done when each of the eight has a verdict and, where you disagree, an alternative.
+4. **Answer the questions below.** Done when each has an answer backed by `file:line`, or a statement of the prototype or measurement that would answer it.
+5. **Look for missing work and wrong edges.** Done when you have walked every reader and writer of the recovery tables, the completed artifact, the transcript and the live state message, and each has a ticket or a reason it needs none.
+6. **Post one comment on this issue** with the verdicts, the answers, and findings ranked by severity. Separate hard defects from judgement calls.
+
+This review produces that comment and nothing else. Filing tickets, changing labels, writing code and accepting the ADR come later, and the maintainer decides each.
+
+## Questions the review must answer
+
+1. **What is public?** Each view carries `actions`, `prompt`, `movementForecast`, `passing`, `kickPreview` and `playerActionMenu` for every role, spectators included (`SetupSession.java:1176-1299`). The publisher strips only `computer`, `threats`, `savedFormations` and `blockPreview` (`ActiveMatchPublisher.java:200-203`). Which fields belong in the public patch, which in a per-role envelope, and what do the waiting coach's and the spectator's screens need?
+2. **Do whole-entity patches cover everything?** Name any public field that isn't part of a player or a top-level section, or that depends on the caller's role.
+3. **Can the snapshot leave the native log out?** Cover `lastCommandNr`, `nativeCursor`, command numbering and the log epoch, and what a restored engine needs from commands that were already captured.
+4. **Two storages side by side (proposal 4), or an integration branch?** 43 server test files use `SetupSession`, 21 test files read events or transcript JSON, and about 32 browser test files build states or records. Which route is safer, and how should the test changes be batched?
+5. **Is one receipt per role enough?** Consider two devices, the computer player, save/resume, chat, and a setup refused with errors.
+6. **Does ticket 13 need only ticket 5?** Consider the acting coach's reply, staged placements, playback, slow connections and the 256 KiB live frame limit (`BrowserMatchTransport.java:30`).
+7. **What does building a record cost the engine worker?** Say where on the worker the patch and keyframe are built, and whether that fits ADR 0006's p99 of 100 ms.
+8. **What can go wrong at full time (ticket 10)?** Cover deferred and uncertain completion, retained concessions, abandonment, expiry, `MATCH_SIZE_LIMIT` and the quarantine journal.
+9. **Is each ticket small enough for one session?** Tickets 7 and 9 look largest. Propose splits where they help.
+10. **Can tickets 1–3 really start now?** Say whether any of them would have to be redone.
+
+## Known weak points
+
+- Sizes are estimates until #650 reports. Nothing here has been prototyped.
+- Ticket 7 changes storage, recovery, the lobby, computer probes and the operations tools at once.
+- Ticket 11 collects several closing jobs: the `CONTEXT.md` terms for match checkpoint, transcript and replay, the diagnostics fields (`events`, `journalEntries` and others in `BrowserRequestTiming`) and the capture tools. It may need splitting.
+- Hosted migration is named only through the operations tools in tickets 7 and 11.
+
+## After the review
+
+1. The maintainer settles the proposed changes, and this plan is updated.
+2. Tickets 1–3 are filed when the maintainer says so.
+3. The ADR is drafted with #650's numbers and accepted. Tickets 4–19 are then filed from the [feature template](../agents/feature-template.md).
+
+## Suggested skills
+
+- `to-tickets`, for the slicing rules: vertical slices, blocking edges, and expand–contract for wide changes.
+- `codebase-design`, for the history reader and the storage seam.
+- `domain-modeling`, for the glossary terms that change.
 
 ## Proposals the tickets assume
 
@@ -182,7 +231,7 @@ The longest chain is 5 or 6, then 7, 9, 10, 11 and 19. Ticket 13 needs only tick
 - Old stored data is refused with `RECOVERY_UNSUPPORTED`.
 - The journal, compaction, `events`, the request history, the game-log freezing and the completed-result size limits are deleted. `MATCH_SIZE_LIMIT` and the memory budget are removed or restated for the new sizes.
 - `analyze-history-scaling.mjs` and `analyze-checkpoint-first-warm.mjs` are adapted or deleted (from #548).
-- The architecture map and the operations guides match.
+- The architecture map, the `CONTEXT.md` terms, the diagnostics fields and capture tools, and the operations guides match.
 
 ### 12. The server fills in ADR 0007's markers
 

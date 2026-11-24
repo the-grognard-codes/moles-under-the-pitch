@@ -121,7 +121,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–13 are from 2026-11-24.
      - ADR 0013: the new storage sits behind that record's repository boundary, and the format-4 record is the "future canonical event log" it anticipated.
      - ADR 0008: its alternatives leave per-event snapshots for other actions to #548, which this ADR now takes over.
    - that ADR 0006 is unchanged.
-4. **Candidate tickets**, in `docs/specs/match-state-sync-tickets.md`, drafted on 2026-11-24. Three of the nineteen don't depend on the ADR. The rest are filed when it is accepted. They carry every item from #548.
+4. **Implementation plan**, in [#651](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651) (`docs/specs/match-state-sync-tickets.md`): nineteen candidate tickets and the eight proposals they assume. Codex reviews it first. Three tickets don't depend on the ADR, and the rest are filed when it is accepted. They carry every item from #548.
 
 **Sequencing:** #610 has merged (PR #612), so the measurement and the ADR draft are both unblocked. The measurement (#650) comes first.
 
@@ -213,7 +213,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–13 are from 2026-11-24.
   - **Drift report.** The maintainer asked whether a client can report a mismatch. It can: a bounded, rate-limited V2 request names the match, revision, client build and the differing fields, and the server logs one structured line under ADR 0006's local-logging allowance. A client can't send its whole state, because inbound messages are capped at 16 KiB (`BrowserMatchSocket.java:15`) and one state is about 16–20 KB.
   - **Rebuild check in tests.** Tests and soaks rebuild state from patches and require it to equal each keyframe. A soak fails on any drift report.
   - **Soak change.** Today's soak reads state straight from the wire (`overnight-soak.mjs:125-135`), so it bypasses the client's own state. It has to use the client's applied state or the drift reports to detect drift.
-- **The eight proposals that the candidate tickets assume** (2026-11-24): markers, patch shape, receipt window, storage version per match, order of work, row summary, the computer player, and drift checks. They are listed at the top of the candidate tickets.
+- **The eight proposals that the candidate tickets assume** (2026-11-24): markers, patch shape, receipt window, storage version per match, order of work, row summary, the computer player, and drift checks. They are listed in #651, and the maintainer settles them after Codex's review of that plan.
 - **Detail for the ADR to settle under decision 8:**
   - The native engine log leaves the restore object and is never persisted. Only the tail not yet captured stays in memory.
   - The match log coaches read is derived from the records, so the record table is the replay storage.
