@@ -66,4 +66,4 @@ Give active match publication one module that owns live viewer enrollment and re
 
 ## Further Notes
 
-The accepted [Active match publication ADR](../adr/0001-active-match-publication.md) refines ADR-004. Historical v1 recovery evidence remains useful as an R2 record but does not establish behavior for today's v2 runtime. This spec describes a behavior-preserving architecture change; tests must protect the existing access and terminal-reconciliation guarantees.
+The accepted [Active match publication ADR](../adr/0001-active-match-publication.md) refines [ADR 0013 on application seams](../adr/0013-application-seams.md). Historical v1 recovery evidence remains useful as an R2 record but does not establish behavior for today's v2 runtime. This spec describes a behavior-preserving architecture change; tests must protect the existing access and terminal-reconciliation guarantees.
