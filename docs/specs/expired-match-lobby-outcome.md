@@ -11,6 +11,7 @@ Both suspended match types count 30 days from suspension, including after a late
 | Check | Result |
 | --- | --- |
 | Pinned Java tests | 111 distinct tests passed across BrowserV2AdapterTest, SetupApplicationCheckpointTest, SetupApplicationReadOnlyLoadTest and SetupBrowseSummaryTest. |
+| Native recovery scenarios | Two RecoveryApplicationTest end-to-end scenarios passed for expired active and suspended games, including the unchanged checkpoint on cold load and durable abandonment on the next resident request. |
 | Browser contracts and types | 80 focused Node tests passed. TypeScript typecheck passed. |
 | Browser interactions | Chromium at 390 and 1440 pixels covered device clocks ten minutes ahead and behind, both zero-time outcomes, direct-link cleanup and fallback to a prior server. Lobby read bounds and preparation lifecycle drivers passed. |
 | Dev-local | Quick restart built the browser and server, verified engine health and Firebase ADC, and reached the Java authentication gate twice through the proxy. |
