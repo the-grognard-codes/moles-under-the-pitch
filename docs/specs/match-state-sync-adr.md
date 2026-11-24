@@ -3,8 +3,8 @@
 Issue: [#611](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611)
 
 Status: requested; resulting ADR not yet accepted.
-Source: [#550](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/550), [Codex's recovery, live sync and replay notes](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/550#issuecomment-7086931992), and the maintainer decisions of 2026-11-22 recorded below. The decisions move here from #550 so that #550 stays on engine structure and ruleset separation.
-Reviewed: 2026-11-22, `main` at `5f6779969b644a406de379a36fbfe05f590ef037`.
+Source: [#550](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/550), [Codex's recovery, live sync and replay notes](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/550#issuecomment-7086931992), and the maintainer decisions of 2026-11-22 to 2026-11-24 recorded below. The decisions move here from #550 so that #550 stays on engine structure and ruleset separation.
+Reviewed: 2026-11-22, `main` at `5f6779969b644a406de379a36fbfe05f590ef037`. The evidence was rechecked against the same revision on 2026-11-24, and several statements below were corrected.
 Template: [ADR request template](../agents/adr-template.md).
 
 ## Objective
@@ -21,20 +21,25 @@ This sets the server-to-client model for the rest of the project. The target is 
   - transcript records, each holding the same board snapshot again plus the native outcomes (`MatchTranscript.java:85-86`);
   - request history, up to 8,192 entries (`SetupSession.java:339-358`).
 
-  Each revision therefore stores the board twice and its outcomes twice. That is about 56 KB per revision, or 39.12 MiB at about 713 revisions in the 2026-11-20 soak (#596).
-- **The native game log is not needed after capture.** Live play reads it only after `transcript.nativeCursor`, in `NativeOutcomeCapture.since` (`SetupSession.java:1585`) and `DriveTrackerPresentation`. The full log is kept so that restore's round-trip equality check passes (`:387-388`).
-- **`events` is a leftover copy.** It is read only for the completed result's `eventCount` and by-index replay (`MatchResultJson.java:27-37`) and for the decision-limit restore (`SetupSession.java:362`).
+  Each revision therefore stores the board twice and its outcomes twice. That is about 56 KB per revision, or 39.12 MiB at about 713 revisions in the 2026-11-20 soak (#596). One full-state snapshot was about 16–20 KB in the 2026-11-15 soak (#548).
+- **Live play uses only the new tail of the native game log, but walks all of it.** `NativeOutcomeCapture.since` and `DriveTrackerPresentation` use commands after `transcript.nativeCursor`, and scan the log from command 1 to find them (`NativeOutcomeCapture.java:21-29`). Capture therefore also grows with match length. Restore compares the whole native state, log included (`SetupSession.java:387-388`), and the journal counts log entries (`RecoveryJournal.java:132`). That nothing else needs the full log is an inference to confirm.
+- **`events` duplicates the transcript's `state`, and shipped features read it.** Each of these needs a replacement before `events` is removed:
+  - the replay viewer loads each step by index (`play-entry.tsx:564`, `MatchResultJson.java:27-37`), and the result shows `eventCount`;
+  - the view after full time is the last event's state (`SetupApplication.java:1120-1123`);
+  - retained concessions (`RetainedConcession.java:41, 61`);
+  - completed-artifact validation (`MatchJson.java:268`);
+  - the decision-limit restore (`SetupSession.java:362`).
 - **Restore reads the whole history in five places:**
-  - journal assembly re-encodes the whole checkpoint (`RecoveryJournal.java:87`);
+  - journal assembly re-encodes the whole checkpoint when journal entries exist (`RecoveryJournal.java:67, 87`);
   - every event is parsed and frozen (`SetupSession.java:360-361`);
   - the decision limit is rebuilt from all events (`:362`);
   - the native round trip includes the full log (`:387-388`);
   - the request map is rebuilt (`:339-358`).
-- **Compaction rewrites everything about every 31 moves.** The journal compacts at 32 entries or 2 MiB, rewriting the whole base (`RecoveryJournal.java:12-14, 41`). Codex's isolated replay showed a one-square move triggering that rewrite, taking 3.7–4.9 s cold against the 2,000 ms budget.
-- **Full time builds the whole match.** It assembles the completed match in memory and stores it (`SetupSession.java:1601-1611`). In the soak this froze the server for 5–14 s and needed about 400 MiB of temporary heap (#593, #594).
-- **Live updates send the full board twice.**
-  - Each recipient gets a full view built for that recipient alone (`ActiveMatchPublisher.java:209-213`).
-  - Coaches with the live transcript on also get the record, which repeats the board (`LiveMatchTranscript.java:28`).
+- **Compaction rewrites the whole base at least every 31 journal entries**, and sooner once the journal passes 2 MiB (`RecoveryJournal.java:12-14, 41, 52-53`). Each entry also carries the current native state, both coach views and all chat (`SetupSession.java:497-517`), so the real interval needs measuring. Codex's isolated replay showed a one-square move triggering that rewrite, taking 3.7–4.9 s cold against the 2,000 ms budget.
+- **Full time builds the whole match.** It assembles the completed match in memory and stores it (`SetupSession.java:1601-1611`). In the soak, finishing a match of about 38 MiB needed about 400 MiB of temporary heap (#594). Requests waited more than 5 s in 38 episodes, about 25 of which began within about 20 s of a full-time result (#593). **Where that blocked time goes has not been measured**, so its link to this path is a correlation. The measurement below attributes it.
+- **Live updates send the full state twice** to connections with the live transcript on.
+  - Each coach recipient gets a full view for its role, after a `matches.load` for that recipient (`SetupApplication.java:1167-1194`). Spectators get re-parsed copies of one shared public view (`ActiveMatchPublisher.java:187-217`).
+  - Connections with the live transcript on also get the record, which repeats the state (`LiveMatchTranscript.java:28`).
   - The client replaces its state wholesale (`v2-client.ts:545-546`).
 - **Chat** keeps up to 512 messages in every checkpoint (`MatchChat.java:15`).
 - **Accepted ADRs involved:**
@@ -44,22 +49,29 @@ This sets the server-to-client model for the rest of the project. The target is 
   - ADR 0006 (single worker and request deadline)
   - ADR 0007 (presentation markers, transcript format 3)
   - ADR 0008 (staged placements)
-  - the founding versioned browser protocol decision (notes ADR-003, promoted to `docs/adr` by #610 in PR #612)
-  - the founding application-seams decision (notes ADR-004, promoted the same way). It put match storage behind a repository interface and anticipated "a future canonical event log".
+  - ADR 0012 (versioned JSON over WebSockets)
+  - ADR 0013 (application seams). It put match storage behind a repository interface and anticipated "a future canonical event log".
 - **Limits of the evidence:** the split of the 39 MiB by field is estimated, not measured. The size of the native snapshot alone, and its growth over a match, are not measured. Soak figures come from computer-driven matches of about 113 decisions each.
 
-## Maintainer decisions (2026-11-22)
+## Maintainer decisions
+
+Decisions 1–6 are from 2026-11-22. Decisions 7–11 are from 2026-11-24.
 
 1. **Scope.** This issue owns the storage and sync decision and its ADR. #550 keeps engine structure and the ruleset-boundary review, and treats this ADR as an input: it settles the persistence and presentation seams that #550's review maps.
 2. **One record serves live play, catch-up and replay.** The transcript record evolves to format 4:
    - It keeps the decision, ordered outcomes (dice, movement, resolved effects) and the ADR 0007 presentation markers.
-   - It replaces the full `state` with a **public patch**, plus a **public-state digest**. A client whose state diverges detects the mismatch and requests a fresh snapshot.
+   - It replaces the full `state` with a **public patch**. An earlier version of this request also listed a public-state digest here, but the maintainer had not decided it. It is now under the open decisions.
    - **Keyframes** (a full public snapshot) are written periodically for seeking.
    - Live viewers receive the record, catch-up reads it, and replay plays it.
 3. **Replay storage is written in the move's own transaction.** The transaction updates the restore snapshot, writes the exact-request receipt, and appends the record plus any keyframe. There is no background replay worker. Revisit only if storage cost requires it.
 4. **Publish after commit**, as today.
 5. **Old formats are retired.** All existing matches are cleared, active and completed. Older artifacts are refused with `RECOVERY_UNSUPPORTED`, as in ADRs 0007 and 0008.
 6. **Required outcome: the cost of a move does not grow with match length.** It is held to ADR 0006's p99 ≤ 100 ms per task. The numbers are set after the measurement below.
+7. **The new storage and the replay reader are built together.** Which part comes first within that work is open.
+8. **Match log and chat.** The records are the durable log. The client caches and pages what it has received. Neither the game log nor chat is in the restore object.
+9. **Full-time and load timing are part of this measurement**, replacing #593's instrumentation.
+10. **#596's interim risk is accepted for now.** Until the new storage ships, a long match could stop at the size limit. This ADR and its resulting work are the next task on the schedule.
+11. **Order of work.** #548 is the first item completed after this review. #550 starts after this issue is settled.
 
 ## Scope and deliverables
 
@@ -68,21 +80,28 @@ This sets the server-to-client model for the rest of the project. The target is 
    - a breakdown by field of a soak-sized match's restore object (native snapshot, game log, events, transcript `state` and `native`, request history, chat, views);
    - the size of a compact restore snapshot at about revision 50 and about revision 700;
    - the time to write that snapshot plus append one record in MariaDB, early and late in a match;
-   - the time to restore from the compact snapshot.
+   - the time to restore from the compact snapshot;
+   - the time full time spends in each phase on the serial worker: materializing events and transcript, building and validating the artifact, serializing, the store, and release, with the decoded size and the queue length at the start (from #593);
+   - the time a `setup/load` restore spends in each phase (from #593);
+   - checkpoint, `complete()` and JDBC store timing, with JFR and GC logging on any request over 500 ms, reported as p50, p90 and maximum (from #548);
+   - the cost of a first compaction in a fresh JVM (from #548);
+   - the journal entry size and the real compaction interval;
+   - the cost of native capture, early and late in a match.
+
+   Measure against decoded size (about 23–28 MB at 320–500 revisions), not the 0.7 MiB compressed size (#548). Prefer JFR or harness timing. If phases can't be separated without production instrumentation, that instrumentation goes in its own reviewed PR.
 3. **Proposed ADR**, `docs/adr/<slug>.md`, status `proposed`. It is numbered when the maintainer accepts it, before merge, under the rule set by #610. It states:
    - which records it **supersedes wholly**: ADR 0002 and ADR 0004. Their governing choice, where durable match state lives and what a stored record is, changes. A partial supersession of 0002, which 0004, 0007 and 0008 have already amended, would leave readers combining four or five records to find the rule in force. The ADR therefore restates every surviving guarantee itself (see "Carried-forward guarantees" below).
    - which it **amends**:
      - ADR 0001: publication sends records plus a per-role envelope.
      - ADR 0007: format 3 moves to 4, with the markers in the record.
-     - The promoted versioned browser protocol record (0012 in #612): full-snapshot recovery and full resync for slow clients become a snapshot plus revisioned deltas. Its governing choice, versioned JSON over WebSockets, still holds, so under #610's template rule this is an amendment, not a supersession.
-   - which it **extends with a dated history entry**: the promoted application-seams record (0013 in #612). The new storage sits behind that record's repository boundary, and the format-4 record is the "future canonical event log" it anticipated.
+     - ADR 0012: full-snapshot recovery and full resync for slow clients become a snapshot plus revisioned deltas. Its governing choice, versioned JSON over WebSockets, still holds, so under #610's template rule this is an amendment, not a supersession.
+   - which it **extends with a dated history entry**: ADR 0013. The new storage sits behind that record's repository boundary, and the format-4 record is the "future canonical event log" it anticipated.
    - that ADR 0006 is unchanged.
 4. **Candidate tickets** in the ADR or an outcome note, not filed until acceptance:
-   - storage: the current-state row, revision records, the receipt and chat rows; full time marks the match finished; the journal and compaction are deleted;
-   - replay: format-4 patches and keyframes;
-   - live protocol: deltas, a per-role envelope, the digest, a catch-up tail, and a snapshot on join or resync.
+   - storage and replay reader, built together (decision 7): the current-state row, revision records, the receipt and chat rows; format-4 patches and keyframes; replacements for every reader of `events` listed above; full time marks the match finished; the journal and compaction are deleted;
+   - live protocol: deltas, a per-role envelope, a catch-up tail, a snapshot on join or resync, and any divergence detection that is adopted.
 
-**Sequencing:** the measurement can start at once. Draft the ADR after #610 merges, so that it can cite the promoted records by number.
+**Sequencing:** #610 has merged (PR #612), so the measurement and the ADR draft are both unblocked. #548 goes first (decision 11).
 
 **Excluded:**
 - Production code changes. Measurement scripts are allowed.
@@ -100,12 +119,12 @@ This sets the server-to-client model for the rest of the project. The target is 
 - **Format-4 record:**
   - fields, recording domain facts only: the accepted decision, dice, resolved effects, presentation markers, and patches to public entities. Never browser commands or diffs of the rendered view. The application-seams record says "Do not equate recorded UI commands with a stable domain-event schema";
   - the shape of the public patch (for example, whole-entity replacement keyed by player, ball and team ID);
-  - the digest's definition;
+  - whether divergence is detected beyond revision gaps, and how (see the open decisions);
   - keyframe cadence.
 - **Public and private:** records and patches carry public facts only. The per-role envelope carries prompt, actions, forecasts and other private data, and never enters the record. The public projection is built once per revision.
-- **Live delivery and catch-up:** join and resync send a snapshot plus the latest page; the size of the bounded in-memory tail; gap detection; behaviour when the digest mismatches; spectators. This stays consistent with ADR 0001's best-effort delivery and ADR 0008's staged-placement messages.
+- **Live delivery and catch-up:** join and resync send a snapshot plus the latest page; the size of the bounded in-memory tail; gap detection; behaviour when divergence is detected, if detection is adopted; spectators. This stays consistent with ADR 0001's best-effort delivery and ADR 0008's staged-placement messages.
 - **Transaction:** what the move's transaction writes; behaviour on uncertain commit; exact retry; crash between commit and publish.
-- **Match log and chat:** see the open decisions below.
+- **Match log and chat:** as decided (decision 8), settling the detail listed below.
 - **Server memory:** no history stays resident beyond the tail. State the consequences for `MatchMemoryBudget` and for #543's frozen history.
 - **Ruleset neutrality:** record and patch shapes in shared protocol code carry no BB2025-specific types, consistent with #550's ruleset-separation principle.
 - **Compatibility:** retire the old formats (decision 5); new version markers; refuse old data explicitly.
@@ -122,6 +141,9 @@ This sets the server-to-client model for the rest of the project. The target is 
     - Staged placements create no record (ADR 0008's amendments to 0002 and 0004).
     - Missing durable records never silently roll a match back. This was the reason for 0004's separate head and base generations. Now, restore checks that the snapshot's revision matches the newest stored record, and treats a gap as `RECOVERY_CORRUPT`.
     - Computer-coach availability (0004's schema marker 10, `computer_work_until_epoch_ms`) is committed in the same transaction as the move. It moves to the current-state row.
+    - Restore validates the native state through the existing native restore path.
+    - Every accepted revision is indexed.
+    - A terminal digest covers the completed transcript.
     - The computer coach's cold load path keeps working. `RecoveryCheckpoint.computerReply` reads stored per-role views from the checkpoint, so the snapshot either keeps those views or the ADR says how they are rebuilt.
   - **Replace:**
     - the single-blob artifact;
@@ -131,6 +153,8 @@ This sets the server-to-client model for the rest of the project. The target is 
   - **Retire:**
     - freezing each native log command's JSON for recovery, since the native log is no longer persisted;
     - readers for older formats (decision 5);
+    - invalidating recovery cursors when a native log is reset or replaced;
+    - classifying legacy recovery heads for computer availability, since existing matches are cleared;
     - the format-1 cleanup.
 - **Budget:** targets for durable write, restore, publication and full time, set from the measurement, all flat in match length.
 - **Revisit conditions:** for example, storage cost per match, row counts, or measured payload sizes that justify binary encoding.
@@ -139,7 +163,10 @@ This sets the server-to-client model for the rest of the project. The target is 
 
 | Risk / trigger | Consequence | Required mitigation or decision | Owner / tracking | Remaining risk |
 | --- | --- | --- | --- | --- |
-| A client applies a patch wrongly or misses one | Board shown differs from the server | Digest per record; resync on mismatch or gap | This ADR; live protocol ticket | Silent divergence between digests, if the digest omits a field |
+| A client misses a record | Pitch shown differs from the server | Revision-gap detection; catch-up or resync | This ADR; live protocol ticket | — |
+| A client or server defect makes a patch wrong at the right revision | Pitch shown differs from the server; replay shows it too | Divergence detection, per the open decision | This ADR | Depends on that decision |
+| A reader of `events` is missed | Replay, the full-time view or a concession breaks | Decision 7; the list of readers above | Storage and replay ticket | — |
+| A long match reaches the size limit before the new storage ships (#596) | The match stops early with `MATCH_SIZE_LIMIT` | Accepted for now (decision 10) | Maintainer | Until the new storage ships |
 | The native snapshot hides data that grows | Cost grows with match length again | Measure at revisions 50 and 700; size regression test | This ADR; storage ticket | Rare paths not covered by the measured matches |
 | Response lost after commit | Coach retries a move | Bounded receipt written in the same transaction | Storage ticket | Retries older than the window are rejected as stale |
 | Crash between commit and publish | Viewers miss a record | Catch-up from the tail or the record table; snapshot on reconnect | ADR 0001 behaviour, this ADR | None beyond today's best effort |
@@ -155,7 +182,12 @@ This sets the server-to-client model for the rest of the project. The target is 
 - **Rebuild state by re-executing inputs deterministically.** Rejected: ADR 0004's rule that recovery never reruns commands stands.
 
 **Open, for the maintainer:**
-- **Match log and chat placement (proposed 2026-11-22, under review):**
+- **Divergence detection.** The maintainer asked on 2026-11-24 to discuss this. The options are:
+  - none beyond revision gaps, and a snapshot on join or resync;
+  - sending the periodic keyframes live, so that a client compares its rebuilt state with each one;
+  - a digest on every record, checked by each client.
+- **Order of work inside the combined storage and replay delivery** (decision 7).
+- **Detail for the ADR to settle under decision 8:**
   - The native engine log leaves the restore object and is never persisted. Only the tail not yet captured stays in memory.
   - The match log coaches read is derived from the records, so the record table is the replay storage.
   - Each chat message is an appended row in the same ordered sequence, and the restore object keeps only counters and the deduplication window.
@@ -167,9 +199,9 @@ This sets the server-to-client model for the rest of the project. The target is 
 ## Related tickets
 
 - **#593, #594 and #596 are superseded by this design.** The ADR PR references all three. Each is closed as *not planned* once that PR merges; GitHub closing keywords would close them as *completed*, so close them by hand. They are labelled `wontfix` until then.
-- **#548 (proposed, not yet decided).** Its full-time timing and compaction budget are superseded too. Its other items stand on their own: retiring the browser's `COMPLETION_PENDING` handling, decoupling `MatchTranscript` from presentation, and tidying the analysis scripts. Splitting them out is proposed.
-- **#550** consumes this ADR as an input. #595 and #597 are unaffected.
-- **#610** (PR #612) promotes the founding records and sets numbering on acceptance, before merge.
+- **#548.** Its completion timing, first-compaction measurement and serialization budget move here (2026-11-24). The budget becomes decision 6's flat-cost targets. #548 keeps its other items. Two of those touch storage that this design replaces: the real-play memory soak, and the per-commit turn summary requested after #575. Whether they stay is a question for the maintainer.
+- **#550** consumes this ADR as an input, and starts after this issue is settled. #595 and #597 don't depend on this design.
+- **#610** (PR #612, merged) promoted the founding records as ADRs 0010–0013 and numbers an ADR on acceptance, before merge.
 
 ## Acceptance criteria
 
@@ -187,8 +219,8 @@ This sets the server-to-client model for the rest of the project. The target is 
 - The maintainer's approval is recorded with a date.
 - In the same PR, under #610's template:
   - ADRs 0002 and 0004 are marked `superseded`, with links both ways;
-  - ADRs 0001 and 0007 and the versioned browser protocol record carry dated amendments;
-  - the application-seams record carries a dated history entry;
+  - ADRs 0001, 0007 and 0012 carry dated amendments;
+  - ADR 0013 carries a dated history entry;
   - the architecture map's invariants on durable boundaries, recovery and stored formats are updated.
 - No accepted ADR gains a forward pointer to this decision before acceptance.
 - The follow-up tickets are filed.
@@ -198,4 +230,4 @@ This sets the server-to-client model for the rest of the project. The target is 
 
 - **Now:** documentation and measurement scripts only. Check links, and confirm the cited symbols at the reviewed revision.
 - **Branch and PR:** create a new branch. The PR says `Part of #<this issue>`. Do not merge, and do not mark the ADR accepted without the maintainer's approval.
-- **Later:** the implementation tickets prove decision 6 with early- and late-match comparisons at the default heap, zero history reads on restore, and process-death tests around the commit.
+- **Later:** the implementation tickets prove decision 6 with early- and late-match comparisons at the default heap, zero history reads on restore, and process-death tests around the commit. They also run the [retained-move acceptance case](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611#issuecomment-7122189387): a legal move whose checkpoint write fails before commit, retried once through cold recovery, advances the durable revision exactly once within the request budget. The `codex/retained-move-retry` patch is on hold until that check runs.
