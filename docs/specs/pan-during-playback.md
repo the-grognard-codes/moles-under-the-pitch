@@ -1,6 +1,6 @@
 # Feature: Keep pitch panning responsive during player and ball playback
 
-Issue: #638
+[Issue #638](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/638) · [Slice 1 outcome](pan-during-playback-outcome.md)
 
 ## Abstract
 
