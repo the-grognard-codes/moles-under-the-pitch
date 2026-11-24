@@ -3,7 +3,7 @@
 Issue: [#611](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611)
 
 Status: requested; resulting ADR not yet accepted.
-Source: [#550](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/550), [Codex's recovery, live sync and replay notes](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/550#issuecomment-7086931992), and the maintainer decisions of 2026-11-22 to 2026-11-24 recorded below. The decisions move here from #550 so that #550 stays on engine structure and ruleset separation.
+Source: [#550](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/550), [Codex's recovery, live sync and replay notes](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/550#issuecomment-7086931992), and the maintainer decisions of 2026-11-22 to 2026-11-24 recorded below. The decisions move here from #550 so that #550 stays on engine structure and ruleset separation. The remaining work of [#548](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/548) is folded in (decision 13).
 Reviewed: 2026-11-22, `main` at `5f6779969b644a406de379a36fbfe05f590ef037`. The evidence was rechecked against the same revision on 2026-11-24, and several statements below were corrected.
 Template: [ADR request template](../agents/adr-template.md).
 
@@ -29,10 +29,11 @@ This sets the server-to-client model for the rest of the project. The target is 
   - retained concessions (`RetainedConcession.java:41, 61`);
   - completed-artifact validation (`MatchJson.java:268`);
   - the decision-limit restore (`SetupSession.java:362`).
-- **Restore reads the whole history in five places:**
+- **Restore reads the whole history in six places:**
   - journal assembly re-encodes the whole checkpoint when journal entries exist (`RecoveryJournal.java:67, 87`);
   - every event is parsed and frozen (`SetupSession.java:360-361`);
   - the decision limit is rebuilt from all events (`:362`);
+  - every transcript record is parsed, checked and re-added (`:366`, `MatchTranscript.java:34-57`);
   - the native round trip includes the full log (`:387-388`);
   - the request map is rebuilt (`:339-358`).
 - **Compaction rewrites the whole base at least every 31 journal entries**, and sooner once the journal passes 2 MiB (`RecoveryJournal.java:12-14, 41, 52-53`). Each entry also carries the current native state, both coach views and all chat (`SetupSession.java:497-517`), so the real interval needs measuring. Codex's isolated replay showed a one-square move triggering that rewrite, taking 3.7–4.9 s cold against the 2,000 ms budget.
@@ -42,12 +43,16 @@ This sets the server-to-client model for the rest of the project. The target is 
   - Connections with the live transcript on also get the record, which repeats the state (`LiveMatchTranscript.java:28`).
   - The client replaces its state wholesale (`v2-client.ts:545-546`).
 - **Chat** keeps up to 512 messages in every checkpoint (`MatchChat.java:15`).
+- **A parked computer worker's fallback load reads the whole checkpoint** to find that the game is still waiting for the same human (`SetupApplication.java:344`, `RecoveryCheckpoint.java:45`). That was about 20 MB in the workload reported on #548 after #575.
+- **`MatchTranscript` owns presentation state.** It holds a `DriveTrackerPresentation.History` and feeds it every record (`MatchTranscript.java:18, 124, 156`). That history covers only the current drive, but it reads each record's `state` and `native` (`DriveTrackerPresentation.java:87-100`), which format 4 changes, and restore rebuilds it by reading every record.
+- **`COMPLETION_PENDING` is no longer sent.** #537 (merged 2026-11-15, `0261fd53e`) removed it from the server, and nothing under `ffb-server/src/main` mentions it. The browser (`setup-protocol.ts:15, 39`, `setup-recovery.ts:28`, `v2-client.ts:30`) and the computer player (`computer-player/src/main.mjs:150`) still handle it.
+- **ADR 0007 is accepted but not built.** The code writes transcript format 2 (`MatchTranscript.java:15`), and the phase markers don't exist yet. No open ticket for them was found on 2026-11-24. #603 leaves the marker schema and the transcript readers and writers out of scope, and points here for the storage cutover.
 - **Accepted ADRs involved:**
   - ADR 0001 (publication)
   - ADR 0002 (bounded transcript)
   - ADR 0004 (recovery journal)
   - ADR 0006 (single worker and request deadline)
-  - ADR 0007 (presentation markers, transcript format 3)
+  - ADR 0007 (presentation markers, transcript format 3; accepted, not built)
   - ADR 0008 (staged placements)
   - ADR 0012 (versioned JSON over WebSockets)
   - ADR 0013 (application seams). It put match storage behind a repository interface and anticipated "a future canonical event log".
@@ -55,7 +60,7 @@ This sets the server-to-client model for the rest of the project. The target is 
 
 ## Maintainer decisions
 
-Decisions 1–6 are from 2026-11-22. Decisions 7–12 are from 2026-11-24.
+Decisions 1–6 are from 2026-11-22. Decisions 7–13 are from 2026-11-24.
 
 1. **Scope.** This issue owns the storage and sync decision and its ADR. #550 keeps engine structure and the ruleset-boundary review, and treats this ADR as an input: it settles the persistence and presentation seams that #550's review maps.
 2. **One record serves live play, catch-up and replay.** The transcript record evolves to format 4:
@@ -71,8 +76,9 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–12 are from 2026-11-24.
 8. **Match log and chat.** The records are the durable log. The client caches and pages what it has received. Neither the game log nor chat is in the restore object.
 9. **Full-time and load timing are part of this measurement**, replacing #593's instrumentation.
 10. **#596's interim risk is accepted for now.** Until the new storage ships, a long match could stop at the size limit. This ADR and its resulting work are the next task on the schedule.
-11. **Order of work.** #548 is the first item completed after this review. #550 starts after this issue is settled.
+11. **Order of work.** #550 starts after this issue is settled. #548 was to be the first item completed after this review, until decision 13 folded it in here.
 12. **No state digest for now.** Revisit if the server and client are found to disagree about the pitch state.
+13. **#548 is folded into this issue and marked superseded.** With it gone, decision 10 makes this issue the next work.
 
 ## Scope and deliverables
 
@@ -87,22 +93,36 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–12 are from 2026-11-24.
    - checkpoint, `complete()` and JDBC store timing, with JFR and GC logging on any request over 500 ms, reported as p50, p90 and maximum (from #548);
    - the cost of a first compaction in a fresh JVM (from #548);
    - the journal entry size and the real compaction interval;
-   - the cost of native capture, early and late in a match.
+   - the cost of native capture, early and late in a match;
+   - the cost of a parked computer worker's fallback load (from #548).
 
    Measure against decoded size (about 23–28 MB at 320–500 revisions), not the 0.7 MiB compressed size (#548). Prefer JFR or harness timing. If phases can't be separated without production instrumentation, that instrumentation goes in its own reviewed PR.
+
+   These rules come from #548:
+   - Measure the live server path, with real repositories and MariaDB, not mocks.
+   - Use a separate compose project. Don't touch the shared soak stack or ADC while a soak runs.
+   - Keep large raw evidence local and commit a summary.
+   - The scripts share the statistics and file helpers that `tools/diagnostics/analyze-history-scaling.mjs` and `analyze-checkpoint-first-warm.mjs` now duplicate, and have a `*.test.mjs`. They normalize line endings before hashing, so that `analyzerSha256` matches on LF and CRLF checkouts.
 3. **Proposed ADR**, `docs/adr/<slug>.md`, status `proposed`. It is numbered when the maintainer accepts it, before merge, under the rule set by #610. It states:
    - which records it **supersedes wholly**: ADR 0002 and ADR 0004. Their governing choice, where durable match state lives and what a stored record is, changes. A partial supersession of 0002, which 0004, 0007 and 0008 have already amended, would leave readers combining four or five records to find the rule in force. The ADR therefore restates every surviving guarantee itself (see "Carried-forward guarantees" below).
    - which it **amends**:
      - ADR 0001: publication sends records plus a per-role envelope.
-     - ADR 0007: format 3 moves to 4, with the markers in the record.
+     - ADR 0007: its format 3, which isn't built, becomes format 4, with the markers in the record.
      - ADR 0012: full-snapshot recovery and full resync for slow clients become a snapshot plus revisioned deltas. Its governing choice, versioned JSON over WebSockets, still holds, so under #610's template rule this is an amendment, not a supersession.
-   - which it **extends with a dated history entry**: ADR 0013. The new storage sits behind that record's repository boundary, and the format-4 record is the "future canonical event log" it anticipated.
+   - which it **extends with a dated history entry**:
+     - ADR 0013: the new storage sits behind that record's repository boundary, and the format-4 record is the "future canonical event log" it anticipated.
+     - ADR 0008: its alternatives leave per-event snapshots for other actions to #548, which this ADR now takes over.
    - that ADR 0006 is unchanged.
 4. **Candidate tickets** in the ADR or an outcome note, not filed until acceptance:
-   - storage and replay reader, built together (decision 7): the current-state row, revision records, the receipt and chat rows; format-4 patches and keyframes; replacements for every reader of `events` listed above; full time marks the match finished; the journal and compaction are deleted;
+   - storage and replay reader, built together (decision 7): the current-state row, revision records, the receipt and chat rows; format-4 patches and keyframes; replacements for every reader of `events` listed above; full time marks the match finished; the journal and compaction are deleted. This ticket also carries these items from #548:
+     - the turn summary for computer probes, unless the open decision below drops it;
+     - the transcript no longer depends on presentation classes: the drive tracker's history moves to its own type, or to an append listener. The snapshot carries its current-drive summary, because restore no longer reads records;
+     - `COMPLETION_PENDING` handling is removed from the browser, the computer player, `browser-client/disconnect.md`, the soak driver and their tests;
+     - the real-play memory run;
+     - `analyze-history-scaling.mjs` and `analyze-checkpoint-first-warm.mjs` both compare journal writes with compaction, so each is adapted or deleted;
    - live protocol: deltas, a per-role envelope, a catch-up tail, a snapshot on join or resync, and any drift detection that is adopted.
 
-**Sequencing:** #610 has merged (PR #612), so the measurement and the ADR draft are both unblocked. #548 goes first (decision 11).
+**Sequencing:** #610 has merged (PR #612), so the measurement and the ADR draft are both unblocked. The measurement comes first.
 
 **Excluded:**
 - Production code changes. Measurement scripts are allowed.
@@ -117,6 +137,10 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–12 are from 2026-11-24.
   - Proof that its size does not grow with match length.
   - Restore reads no history.
 - **Exact-request receipt:** its window (for example, the last accepted request per role), and how a retry from outside the window is rejected.
+- **Turn summary for computer probes (from #548).** Each committed move stores a small summary in the current-state row: gameplay revision, actor and prompt actor, bound to the same durable revision.
+  - An unchanged probe is answered from it, without reading or hashing the snapshot.
+  - It accounts for everything `RecoveryCheckpoint.computerReply` checks today: failed and terminal state, save/resume state, a pending reactive decision, and the human-inactivity deadline. It also accounts for pending maintenance.
+  - When it can't answer safely, the full restore path answers.
 - **Format-4 record:**
   - fields, recording domain facts only: the accepted decision, dice, resolved effects, presentation markers, and patches to public entities. Never browser commands or diffs of the rendered view. The application-seams record says "Do not equate recorded UI commands with a stable domain-event schema";
   - the shape of the public patch (for example, whole-entity replacement keyed by player, ball and team ID);
@@ -126,7 +150,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–12 are from 2026-11-24.
 - **Live delivery and catch-up:** join and resync send a snapshot plus the latest page; the size of the bounded in-memory tail; gap detection; drift detection and reporting (see the open decisions); spectators. This stays consistent with ADR 0001's best-effort delivery and ADR 0008's staged-placement messages.
 - **Transaction:** what the move's transaction writes; behaviour on uncertain commit; exact retry; crash between commit and publish.
 - **Match log and chat:** as decided (decision 8), settling the detail listed below.
-- **Server memory:** no history stays resident beyond the tail. State the consequences for `MatchMemoryBudget` and for #543's frozen history.
+- **Server memory:** no history stays resident beyond the tail. State the consequences for `MatchMemoryBudget`, for #543's frozen history, and for the drive tracker's current-drive summary, which restore now rebuilds from every record.
 - **Ruleset neutrality:** record and patch shapes in shared protocol code carry no BB2025-specific types, consistent with #550's ruleset-separation principle.
 - **Compatibility:** retire the old formats (decision 5); new version markers; refuse old data explicitly.
 - **Carried-forward guarantees.** Because 0002 and 0004 are superseded wholly, the ADR classifies each of their rules, so that none is lost by accident.
@@ -189,6 +213,8 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–12 are from 2026-11-24.
   - **Rebuild check in tests.** Tests and soaks rebuild state from patches and require it to equal each keyframe. A soak fails on any drift report.
   - **Soak change.** Today's soak reads state straight from the wire (`overnight-soak.mjs:125-135`), so it bypasses the client's own state. It has to use the client's applied state or the drift reports to detect drift.
 - **Order of work inside the combined storage and replay delivery** (decision 7).
+- **Where ADR 0007's markers are built.** Format 3 isn't built. Proposed: build the markers straight into format 4, so that existing matches are cleared once rather than twice.
+- **Whether the turn summary is still needed.** It avoids reading a checkpoint of about 20 MB. Once the snapshot is compact, that read may already be cheap. Decide after the measurement.
 - **Detail for the ADR to settle under decision 8:**
   - The native engine log leaves the restore object and is never persisted. Only the tail not yet captured stays in memory.
   - The match log coaches read is derived from the records, so the record table is the replay storage.
@@ -200,8 +226,18 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–12 are from 2026-11-24.
 
 ## Related tickets
 
-- **#593, #594 and #596 are superseded by this design.** The ADR PR references all three. Each is closed as *not planned* once that PR merges; GitHub closing keywords would close them as *completed*, so close them by hand. They are labelled `wontfix` until then.
-- **#548.** Its completion timing, first-compaction measurement and serialization budget move here (2026-11-24). The budget becomes decision 6's flat-cost targets. #548 keeps its other items. Two of those touch storage that this design replaces: the real-play memory soak, and the per-commit turn summary requested after #575. Whether they stay is a question for the maintainer.
+- **#548, #593, #594 and #596 are superseded by this design.** The ADR PR references all four. Each is closed as *not planned* once that PR merges; GitHub closing keywords would close them as *completed*, so close them by hand. They are labelled `wontfix` until then.
+- **Where #548's work went** (decision 13):
+
+  | #548 item | Place here |
+  | --- | --- |
+  | Completion timing; first compaction in a fresh JVM | Measurement |
+  | Serialization budget, and the action when a match reaches it | Decision 6's flat-cost targets |
+  | Real-play memory (#524 AC3 and AC4) | Storage and replay ticket, run on the new storage, because today's figures describe history this design removes |
+  | Per-commit turn summary (after #575) | Measurement; required decision content; storage and replay ticket |
+  | Transcript decoupled from presentation | Storage and replay ticket |
+  | Client `COMPLETION_PENDING` handling | Storage and replay ticket, and it now includes the computer player |
+  | Analysis scripts | Measurement; storage and replay ticket |
 - **#550** consumes this ADR as an input, and starts after this issue is settled. #595 and #597 don't depend on this design.
 - **#610** (PR #612, merged) promoted the founding records as ADRs 0010–0013 and numbers an ADR on acceptance, before merge.
 
@@ -214,7 +250,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–12 are from 2026-11-24.
 - It names the records it supersedes, amends and extends, and states its consistency with ADRs 0006, 0007 and 0008 and with #550's ruleset principle.
 - It contains the carried-forward classification of every rule in ADRs 0002 and 0004.
 - The open decisions are either resolved with the maintainer's recorded approval, or listed as open.
-- The candidate tickets are listed. Links are checked, and every cited symbol exists at the reviewed revision.
+- The candidate tickets are listed, and they carry every item that came from #548. Links are checked, and every cited symbol exists at the reviewed revision.
 
 ### Accepted
 
@@ -222,14 +258,20 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–12 are from 2026-11-24.
 - In the same PR, under #610's template:
   - ADRs 0002 and 0004 are marked `superseded`, with links both ways;
   - ADRs 0001, 0007 and 0012 carry dated amendments;
-  - ADR 0013 carries a dated history entry;
+  - ADRs 0008 and 0013 carry dated history entries;
   - the architecture map's invariants on durable boundaries, recovery and stored formats are updated.
 - No accepted ADR gains a forward pointer to this decision before acceptance.
 - The follow-up tickets are filed.
-- #593, #594 and #596 are closed as *not planned*, each with a link to the ADR.
+- #548, #593, #594 and #596 are closed as *not planned*, each with a link to the ADR.
 
 ## Validation and handoff
 
 - **Now:** documentation and measurement scripts only. Check links, and confirm the cited symbols at the reviewed revision.
 - **Branch and PR:** create a new branch. The PR says `Part of #<this issue>`. Do not merge, and do not mark the ADR accepted without the maintainer's approval.
 - **Later:** the implementation tickets prove decision 6 with early- and late-match comparisons at the default heap, zero history reads on restore, and process-death tests around the commit. They also run the [retained-move acceptance case](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611#issuecomment-7122189387): a legal move whose checkpoint write fails before commit, retried once through cold recovery, advances the durable revision exactly once within the request budget. The `codex/retained-move-retry` patch is on hold until that check runs.
+- **Later, from #548:**
+  - **Real-play memory (#524 AC3 and AC4).** Sequential computer-coach matches, completed and abandoned, then a long soak at `-Xmx768m`. Report retained heap per session against the 32-session cap (`MatchMemoryBudget.java:10`), and link the evidence from #524.
+  - **Turn summary, if kept.** Unchanged probes neither read nor hash the snapshot, and a committed human move still wakes the computer.
+  - **Full time.** With `COMPLETION_PENDING` handling removed, a completed match still shows full time in the browser, and the computer player still ends its work.
+  - **Decoupling.** The transcript has no dependency on presentation classes, and the moved drive-tracker history has unit tests.
+  - **Scripts.** `analyzerSha256` matches on LF and CRLF checkouts, and the shared helpers have tests.
