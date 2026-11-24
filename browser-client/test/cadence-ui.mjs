@@ -4,11 +4,14 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
 import { createServer } from './browser-test-server.mjs';
+import { setCameraAngle } from './camera-controls.mjs';
 import { DICE_GROUP_INTERVAL_MS, PITCH_DICE_ROLL_MS } from '../src/presentation-timing.ts';
 
 const initial = JSON.parse(readFileSync(new URL('./fixtures/m5a-blitz-projections.json', import.meta.url), 'utf8'))[0].actor;
 const state = (revision, x = 7, y = 7) => ({ ...initial, revision, actions: [], prompt: null,
   players: initial.players.map((player, index) => index ? player : { ...player, x, y }) });
+const loose = (revision, x, playerX) => ({ ...state(revision, playerX), ball: { x, y: 7 },
+  ballState: { version: 1, inPlay: true, moving: true, carrierPlayerId: null } });
 const move = (x, y = 7) => ({ modelChangeId: 'fieldModelSetPlayerCoordinate',
   modelChangeKey: initial.players[0].id, modelChangeValue: { x, y } });
 const ball = x => ({ modelChangeId: 'fieldModelSetBallCoordinate', modelChangeValue: { x, y: 7 } });
@@ -45,6 +48,72 @@ const reset = async (view = state(0)) => {
   await publish({ view, records: [record(view)] });
   await page.evaluate(() => { window.playbackFrames = []; });
 };
+async function assertPlaybackPanHover() {
+  await setCameraAngle(page, 50);
+  // Hold a real player step on the clock while panning and restoring hover.
+  const baseWithBall = loose(0, 12);
+  const movedWithBall = loose(1, 12, 9);
+  await reset(baseWithBall);
+  await page.locator('.live-ball-marker[data-ball-x="12"]').waitFor({ state: 'attached' });
+  const scene = page.locator('.live-pitch-scene');
+  const initialFocus = await scene.getAttribute('data-focus');
+  const bounds = await scene.boundingBox();
+  const panStart = { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 };
+  const hover = page.locator('.live-hover-square');
+  const probeTargets = await page.evaluate(() => {
+    const overlay = document.createElement('aside');
+    overlay.style.cssText = 'position:fixed;top:0;left:0;width:12px;height:12px';
+    document.body.append(overlay);
+    const calls = { player: 0, ball: 0, overlay: 0 };
+    const getAnimations = Element.prototype.getAnimations;
+    Element.prototype.getAnimations = function (...args) {
+      if (this.closest('.live-marker')) calls.player++;
+      if (this.closest('.live-ball-marker')) calls.ball++;
+      if (this === overlay) calls.overlay++;
+      return getAnimations.apply(this, args);
+    };
+    const selectors = ['.live-marker', '.live-marker .live-number', '.live-ball-marker', '.live-ball-highlight'];
+    const targets = selectors.map(selector => document.querySelector(selector));
+    window.hoverAnimationProbe = {
+      // Exercise both event paths on every target independently of CSS timing.
+      emit() {
+        for (const target of [overlay, ...targets]) {
+          target.dispatchEvent(new TransitionEvent('transitionrun', { bubbles: true, propertyName: 'left' }));
+          target.dispatchEvent(new TransitionEvent('transitionrun', { bubbles: true, propertyName: 'top' }));
+          target.dispatchEvent(new AnimationEvent('animationstart', { bubbles: true }));
+        }
+        return { ...calls };
+      },
+      read: () => ({ ...calls }),
+      restore() { Element.prototype.getAnimations = getAnimations; overlay.remove(); },
+    };
+    return selectors.filter((_, index) => !targets[index]);
+  });
+  assert.deepEqual(probeTargets, [], 'Playback fixture renders both markers and their descendants');
+  await publish({ view: movedWithBall, records: [record(baseWithBall), record(movedWithBall, [sync([move(8), move(9)])])] });
+  await at(8, true);
+  await page.mouse.move(panStart.x, panStart.y);
+  await page.clock.runFor(34);
+  assert.equal(await hover.count(), 1, 'A stationary pointer is tracked during playback');
+  await page.mouse.down({ button: 'right' });
+  await page.mouse.move(panStart.x, panStart.y + 35);
+  await page.clock.runFor(34);
+  assert.notEqual(await scene.getAttribute('data-focus'), initialFocus, 'Drag pans the camera during playback');
+  assert.equal(await hover.count(), 0, 'Dragging clears tracked hover');
+  const noReads = { player: 0, ball: 0, overlay: 0 };
+  assert.deepEqual(await page.evaluate(() => window.hoverAnimationProbe.emit()), noReads, 'No synchronous animation reads during a drag');
+  await page.clock.runFor(34);
+  assert.deepEqual(await page.evaluate(() => window.hoverAnimationProbe.read()), noReads, 'No target is inspected during a drag');
+  await page.mouse.up({ button: 'right' });
+  await page.clock.runFor(34);
+  assert.equal(await hover.count(), 1, 'Releasing the pan restores tracked hover');
+  await at(8, true);
+  assert.deepEqual(await page.evaluate(() => window.hoverAnimationProbe.emit()), noReads, 'Event handlers defer animation reads');
+  await page.clock.runFor(34);
+  assert.deepEqual(await page.evaluate(() => window.hoverAnimationProbe.read()), { ...noReads, overlay: 1 },
+    'Only the overlay is inspected and its events share one frame read');
+  await page.evaluate(() => window.hoverAnimationProbe.restore());
+}
 try {
   await page.addInitScript(input => { window.playbackInput = input; window.playbackFrames = []; },
     { view: state(0), records: [record(state(0))], enabled: true, mode: 'live' });
@@ -102,8 +171,6 @@ try {
   await page.clock.runFor(1); await at(7, false); await page.locator('#required-choice').waitFor();
 
   // A catch result belongs between the ball's arriving and departing squares.
-  const loose = (revision, x) => ({ ...state(revision), ball: { x, y: 7 },
-    ballState: { version: 1, inPlay: true, moving: true, carrierPlayerId: null } });
   await reset(loose(0, 7));
   const bobble = loose(1, 10);
   await publish({ view: bobble, records: [record(loose(0, 7)), record(bobble, [sync([ball(8)]),
@@ -261,6 +328,7 @@ try {
   await hosted.clock.runFor(1000); await replayAt(15);
   await hosted.close();
   writeFileSync(resolve(evidence, 'frames.json'), JSON.stringify(await page.evaluate(() => window.playbackFrames), null, 2));
+  await assertPlaybackPanHover();
   assert.deepEqual(errors, []);
-  console.log('PASS: fixed coach/spectator cadence, prompt gating, grouped rolls, ball/catch order, reduced motion, replay rates/seek/skip, background recovery.');
+  console.log('PASS: playback pan hover, fixed coach/spectator cadence, prompt gating, grouped rolls, ball/catch order, reduced motion, replay rates/seek/skip, background recovery.');
 } finally { await browser.close(); await server.close(); }
