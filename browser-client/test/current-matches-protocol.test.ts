@@ -53,18 +53,20 @@ test('resume details require an opted-in response with a valid server time', () 
     assert.throws(() => assertV2Projection({ ...envelope, matches: [invalid] }, true));
 });
 
-test('formats resume time with day, hour and rounded minute thresholds', () => {
+test('formats resume time with day, hour and whole units and omits zero lower units', () => {
   const minute = 60_000;
   const hour = 60 * minute;
   const day = 24 * hour;
   for (const [remaining, label] of [
     [29 * day + 23 * hour, '29d 23h to resume'],
-    [day, '1d 0h to resume'],
+    [day, '1d to resume'],
+    [day - 1, '23h 59m to resume'],
     [22 * hour + 16 * minute, '22h 16m to resume'],
-    [hour, '1h 0m to resume'],
-    [hour - 1, '60m to resume'],
-    [8 * minute + 1, '9m to resume'],
-    [1, '1m to resume'],
+    [hour, '1h to resume'],
+    [hour - 1, '59m to resume'],
+    [9 * minute, '9m to resume'],
+    [minute - 1, '0m to resume'],
+    [1, '0m to resume'],
     [0, 'Checking match status'],
   ] as const) assert.equal(resumeTimeLabel(remaining), label);
 });

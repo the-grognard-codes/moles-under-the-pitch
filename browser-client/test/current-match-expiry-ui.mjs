@@ -62,8 +62,8 @@ async function openLobby(width, clockSkew, refreshOutcome) {
           else page([match], false);
         } else if (window.currentMatchesReads.length === 1) {
           page([{ ...match, resumeUntil: serverNow + deadline },
-            game('bd', 'Patient Reavers', 29 * day + 23.5 * hour), game('be', 'Evening Reavers', 22 * hour + 15.5 * minute),
-            game('bf', 'Quick Reavers', 8.5 * minute), game('c0', 'Active Reavers')], true);
+            game('bd', 'Patient Reavers', 29 * day + 23.5 * hour), game('be', 'Evening Reavers', 22 * hour + 16.5 * minute),
+            game('bf', 'Quick Reavers', 9.5 * minute), game('c0', 'Active Reavers')], true);
         } else {
           window.releaseRefresh = () => page([refreshOutcome === 'expired' ? { ...match, lifecycle: 'EXPIRED' } : match], true);
         }
@@ -79,13 +79,13 @@ try {
   for (const [width, skew, outcome] of [[1440, 600_000, 'resumable'], [390, -600_000, 'expired']]) {
     const { page, errors } = await openLobby(width, skew, outcome);
     const late = page.getByRole('article', { name: 'Late Reavers vs. Raiders' });
-    await late.getByText('1m to resume', { exact: true }).waitFor();
+    await late.getByText('0m to resume', { exact: true }).waitFor();
     for (const label of ['29d 23h to resume', '22h 16m to resume', '9m to resume'])
       assert.equal(await page.getByText(label, { exact: true }).isVisible(), true);
     const active = page.getByRole('article', { name: 'Active Reavers vs. Raiders' });
     assert.equal(await active.getByText(/to resume$/).count(), 0);
     assert.equal(await late.getByRole('link', { name: 'Resume', exact: true }).isVisible(), true);
-    assert.equal(await late.getByText('1m to resume', { exact: true }).evaluate(element => element.closest('[role="status"],[aria-live]')), null);
+    assert.equal(await late.getByText('0m to resume', { exact: true }).evaluate(element => element.closest('[role="status"],[aria-live]')), null);
     await late.getByRole('button', { name: 'Concede', exact: true }).click();
     await late.getByText('Checking match status', { exact: true }).waitFor();
     await page.waitForFunction(() => window.currentMatchesReads.length === 2);

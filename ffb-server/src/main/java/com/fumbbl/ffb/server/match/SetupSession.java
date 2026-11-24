@@ -2097,8 +2097,8 @@ public final class SetupSession {
 		}
 
 		private long retentionStart(boolean computerMatch) {
-			if (suspended()) return suspendedAt;
-			return computerMatch ? humanDecisionSince : lastPlayerActivityAt;
+			if (!computerMatch) return lastPlayerActivityAt;
+			return suspended() ? suspendedAt : humanDecisionSince;
 		}
 
 		private long retentionMillis(boolean computerMatch) {

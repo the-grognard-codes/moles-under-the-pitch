@@ -45,14 +45,17 @@ export function currentMatchStatus(match: CurrentMatch): string {
   return 'In progress';
 }
 
-const minute = 60_000;
-const hour = 60 * minute;
-const day = 24 * hour;
-
 export function resumeTimeLabel(remaining: number): string {
   if (remaining <= 0) return 'Checking match status';
-  if (remaining >= day) return `${Math.floor(remaining / day)}d ${Math.floor(remaining % day / hour)}h to resume`;
-  const minutes = Math.ceil(remaining / minute);
-  if (remaining >= hour) return `${Math.floor(minutes / 60)}h ${minutes % 60}m to resume`;
+  const minutes = Math.floor(remaining / 60_000);
+  const hours = Math.floor(minutes / 60);
+  if (hours >= 24) {
+    const extra = hours % 24;
+    return `${Math.floor(hours / 24)}d${extra ? ` ${extra}h` : ''} to resume`;
+  }
+  if (hours > 0) {
+    const extra = minutes % 60;
+    return `${hours}h${extra ? ` ${extra}m` : ''} to resume`;
+  }
   return `${minutes}m to resume`;
 }

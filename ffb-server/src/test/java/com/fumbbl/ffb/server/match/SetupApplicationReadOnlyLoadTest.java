@@ -197,9 +197,14 @@ class SetupApplicationReadOnlyLoadTest {
 	@Test void savedComputerMatchIsAbandonedAtThirtyDaysAfterSuspension() throws Exception {
 		Fixture fixture = new Fixture("away");
 		moveToActor(fixture, "home");
-		fixture.now.addAndGet(HOUR - 1);
-		saveComputerMatch(fixture, fixture.application());
-		fixture.now.addAndGet(SAVED_RETENTION - 1);
+		long suspendedAt = fixture.now.addAndGet(HOUR - 1);
+		SetupApplication application = fixture.application();
+		JsonObject suspended = saveComputerMatch(fixture, application);
+		long resumedActivity = fixture.now.addAndGet(HOUR);
+		stateOf(application.handle("home", proposal(fixture, suspended, "resumeRequest", "computer-resume-pending")));
+		assertEquals(resumedActivity, retainedSave(fixture).getLong("lastPlayerActivityAt", -1));
+		assertEquals(suspendedAt + SAVED_RETENTION, lobbyState(fixture, fixture.application()).getLong("resumeUntil", -1));
+		fixture.now.set(suspendedAt + SAVED_RETENTION - 1);
 		assertEquals("SUSPENDED", saveStatus(stateOf(fixture.application().handleComputerWithOutcome("away", fixture.load()).response())));
 		fixture.now.incrementAndGet();
 		assertEquals("MATCH_ABANDONED", fixture.application().handleComputerWithOutcome("away", fixture.load()).response().getString("code", null));
@@ -298,7 +303,7 @@ class SetupApplicationReadOnlyLoadTest {
 		assertFalse(retainedSave(fixture).getBoolean("abandoned", true));
 	}
 
-	@Test void suspendedLobbyCountsFromSuspensionEvenAfterASubsequentProposal() throws Exception {
+	@Test void suspendedHumanMatchRestartsTheQuietWindowAndRetentionAfterResumeActivity() throws Exception {
 		Fixture fixture = new Fixture();
 		SetupApplication application = fixture.application();
 		JsonObject active = stateOf(application.handle("home", fixture.load()));
@@ -307,9 +312,24 @@ class SetupApplicationReadOnlyLoadTest {
 		JsonObject suspended = stateOf(application.handle("away", proposal(fixture, pending, "saveAccept", "saved")
 			.add("proposalId", pending.get("saveResume").asObject().get("proposalId"))));
 		assertNull(lobbyState(fixture, application).get("resumeUntil"));
-		fixture.now.addAndGet(5 * 60_000);
+		long resumeActivityAt = fixture.now.addAndGet(HOUR);
+		assertEquals(suspendedAt + SAVED_RETENTION, lobbyState(fixture, application).getLong("resumeUntil", -1));
 		stateOf(application.handle("home", proposal(fixture, suspended, "resumeRequest", "resume-pending")));
-		assertEquals(suspendedAt + SAVED_RETENTION, lobbyState(fixture, fixture.application()).getLong("resumeUntil", -1));
+		assertNull(lobbyState(fixture, application).get("resumeUntil"));
+		fixture.now.set(resumeActivityAt + 5 * 60_000 - 1);
+		assertNull(lobbyState(fixture, fixture.application()).get("resumeUntil"));
+		fixture.now.incrementAndGet();
+		long deadline = resumeActivityAt + SAVED_RETENTION;
+		assertEquals(deadline, lobbyState(fixture, fixture.application()).getLong("resumeUntil", -1));
+		fixture.now.set(suspendedAt + SAVED_RETENTION);
+		SetupApplication restored = fixture.application();
+		assertEquals(deadline, lobbyState(fixture, restored).getLong("resumeUntil", -1));
+		assertEquals("ACCEPTED", restored.handle("home", fixture.load()).getString("code", null));
+		fixture.now.set(deadline - 1);
+		assertEquals("ACCEPTED", restored.handle("home", fixture.load()).getString("code", null));
+		fixture.now.incrementAndGet();
+		assertEquals("ABANDONED", saveStatus(restored.expireDecisions().get(fixture.id).state()));
+		assertTrue(lobbyState(fixture, restored).getBoolean("expired", false));
 	}
 
 	@Test void computerRetentionLetsOnlyTimeoutsStrictlyBeforeTheDeadlineResolveFirst() {
