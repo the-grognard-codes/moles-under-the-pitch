@@ -11,7 +11,7 @@ On acceptance, amends: [ADR 0001](0001-active-match-publication.md), [ADR 0007](
 
 Today a match's whole history is part of its recovery document. Compaction, restore, full time and replay all read or write it, and a move that triggers compaction gets slower as the match goes on. Each browser also receives the full state on every move. This ADR stores a compact current state and one append-only record per accepted decision, in one transaction, and sends browsers the same record. **The cost of a move then doesn't grow with match length.**
 
-This is a draft. **D1–D20** mark the maintainer decisions recorded in #611. Everything else is proposed and becomes a decision only when this ADR is accepted.
+This is a draft. **D1–D21** mark the maintainer decisions recorded in #611. Everything else is proposed and becomes a decision only when this ADR is accepted.
 
 ## Decision and boundaries
 
@@ -132,6 +132,8 @@ Log lines and replay derive from recorded outcomes without running the engine. N
 Full time and concession store the final state, seal the digest and record the result, without rebuilding the match. The result, the prepared match's lifecycle and the terminal state change together, or every intermediate state is recoverable to the same result after a restart, with no second record or concession.
 
 **Expiry and abandonment aren't full time.** The match stays activated, the lobby derives its status from deadlines, and dismissal stays per account (#639, #643, #644).
+
+A finished match keeps all its records (D21). It stops counting toward the limit on matches held for recovery, which today counts every match ever activated.
 
 The out-of-memory quarantine journal, its cooldown and the admission guard are separate and stay.
 
@@ -288,7 +290,7 @@ Applied only on acceptance, in the accepting revision:
 - ADR 0007's markers aren't built (ticket 12; #603 settles the touchdown order first).
 - The public view is not yet defined field by field (ticket 20). Today's views send every role the actions, prompts and forecasts.
 - Old history is checked when it is read or audited, not at restore.
-- How long finished matches keep their records isn't decided. Today activation stops when `ffb_match_recovery` holds 1,024 matches (`JdbcRecoveryRepository.java:31`), the server never deletes those rows, and a finished match is kept inside its prepared match.
+- Records of finished matches accumulate (D21), so storage grows with the number of matches played. Today activation stops when `ffb_match_recovery` holds 1,024 matches (`JdbcRecoveryRepository.java:31`), the server never deletes those rows, and a finished match is kept inside its prepared match. What happens to abandoned and expired matches isn't decided.
 - `docs/specs/match-state-sync-tickets.md` lists the twenty-six tickets. #652, #653 and #654 are filed. The rest are filed on acceptance.
 
 ## Open before acceptance
@@ -299,7 +301,7 @@ Applied only on acceptance, in the accepting revision:
 | What each operation writes | The table above | Maintainer |
 | Whether chat advances the storage generation | No | Maintainer, with ticket 8 |
 | What the digest covers | Record bytes only, not keyframes or chat | Maintainer |
-| How long finished matches keep their records | Not proposed | Maintainer |
+| Whether abandoned and expired matches count toward the 1,024 limit, and how long they are kept | Not proposed | Maintainer |
 | The public view, field by field | The list above | Maintainer, with ticket 20's fixtures |
 | Patch shape, one storage version per match, row summary | As above, kept by Codex's review | Maintainer |
 
