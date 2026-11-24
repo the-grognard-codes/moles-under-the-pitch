@@ -65,7 +65,7 @@ is currently deferred while game polish, graphics, UI, and additional teams take
 | `ffb-server/` | Browser endpoints and authoritative game engine. Game sequences use `Step` and `SequenceGenerator` classes. |
 | `ffb-tools/` | Roster and engine development utilities. |
 | `ffb-statetest/` | Native game-state regression tests. |
-| `browser-client/` | TypeScript/React/Pixi V2 browser application and development previews. |
+| `browser-client/` | TypeScript/React V2 browser application and development previews. |
 | `assets/game/` | Canonical browser artwork and asset tooling. |
 | `site/` | Public site, authentication entry and merged-PR updates. |
 | `computer-player/` | Browser-protocol computer opponent. |

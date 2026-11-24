@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Review animated sprites on a DOM pitch using the live player placement helpers. Retired the development renderer comparison and removed the PixiJS dependency.
+
 - Reduce pitch panning stalls while players and the ball are moving.
 
 - Skip Java Checks for pull requests confined to allowlisted documentation, notes, and Development history. Pushes, manual runs, and other changes still run full Java verification.

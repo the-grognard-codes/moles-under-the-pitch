@@ -5,6 +5,7 @@ import { chromium } from 'playwright';
 import { createServer } from './browser-test-server.mjs';
 
 const evidence = new URL('../../.tools/sprite-proof/review-helmet/', import.meta.url);
+const pitchSprite = '.proof-pitch-sprites > img:not([hidden])';
 await mkdir(evidence, { recursive: true });
 const server = await createServer({ root: fileURLToPath(new URL('../', import.meta.url)), configFile: false, server: { host: '127.0.0.1', port: 0 } });
 await server.listen();
@@ -19,30 +20,56 @@ try {
   await page.goto(server.resolvedUrls.local[0] + 'test/sprite-proof.html');
   await page.getByRole('heading', { name: 'Shared sprite format', exact: true }).waitFor();
   await page.evaluate(() => document.fonts.ready);
-  await page.waitForFunction(() => {
-    const canvas = document.querySelector('#animation-proof canvas');
-    return canvas && canvas.getContext('2d').getImageData(0, 0, 64, 64).data.some((value, index) => index % 4 === 3 && value > 0);
-  });
+  const waitForSprite = (frame, mirrored) => page.waitForFunction(({ selector, frame, mirrored }) => {
+    const image = document.querySelector(selector);
+    return image?.complete && image.naturalWidth > 0 && (image.dataset.frame ?? null) === frame
+      && image.dataset.mirrored === String(mirrored);
+  }, { selector: pitchSprite, frame, mirrored });
   await page.getByRole('button', { name: 'Pause animation', exact: true }).click();
   await page.getByRole('button', { name: 'Restart animation', exact: true }).click();
-  assert.equal(await page.locator('[data-animation-frame]').getAttribute('data-animation-frame'), '0');
-  await page.getByRole('button', { name: 'Next frame', exact: true }).click();
-  assert.equal(await page.locator('[data-animation-frame]').getAttribute('data-animation-frame'), '1');
+  await waitForSprite('lineman-front45-idle-0', false);
+  assert.equal(await page.locator(pitchSprite).count(), 1);
+  for (const clip of ['idle', 'move', 'fall']) {
+    await page.getByLabel('Animation clip').selectOption(clip);
+    for (const direction of ['front45', 'back45', 'side']) {
+      await page.getByLabel('Animation view').selectOption(direction);
+      for (const mirrored of [false, true]) {
+        await page.getByLabel('Mirror pitch sprite').setChecked(mirrored);
+        await page.getByRole('button', { name: 'Restart animation', exact: true }).click();
+        if (direction === 'side') {
+          await waitForSprite(null, mirrored);
+          assert.equal(await page.getByRole('button', { name: 'Next frame', exact: true }).isDisabled(), true);
+          continue;
+        }
+        for (let frame = 0; frame < 4; frame++) {
+          await waitForSprite(`lineman-${direction}-${clip}-${frame}`, mirrored);
+          assert.equal(await page.locator('[data-animation-frame]').getAttribute('data-animation-frame'), String(frame));
+          assert.equal(await page.locator(pitchSprite).getAttribute('data-anchor-mode'), clip === 'fall' && frame === 3 ? 'ground' : 'feet');
+          if (frame < 3) await page.getByRole('button', { name: 'Next frame', exact: true }).click();
+        }
+      }
+    }
+  }
+  await page.getByLabel('Mirror pitch sprite').uncheck();
+  await page.getByLabel('Animation clip').selectOption('idle');
   for (const direction of ['front45', 'back45']) {
     await page.getByLabel('Animation view').selectOption(direction);
+    await waitForSprite(`lineman-${direction}-idle-0`, false);
     await page.locator('#animation-proof').screenshot({ path: fileURLToPath(new URL(`animation-${direction}.png`, evidence)) });
   }
   await page.getByLabel('Animation clip').selectOption('fall');
   await page.getByRole('button', { name: 'Play animation', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('[data-animation-frame]').dataset.animationFrame === '3');
+  await waitForSprite('lineman-back45-fall-3', false);
   await page.waitForTimeout(900);
   assert.equal(await page.locator('[data-animation-frame]').getAttribute('data-animation-frame'), '3');
+  assert.equal(await page.locator(pitchSprite).getAttribute('data-frame'), 'lineman-back45-fall-3');
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.getByLabel('Animation clip').selectOption('move');
+  await waitForSprite('lineman-back45-move-0', false);
   assert.equal(await page.locator('[data-animation-frame]').getAttribute('data-animation-frame'), '0');
   assert.equal(await page.getByRole('button', { name: 'Next frame', exact: true }).isDisabled(), true);
   await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await page.waitForFunction(() => [...document.images].every(image => image.complete && image.naturalWidth));
+  await page.waitForFunction(() => [...document.querySelectorAll('img:not([hidden])')].every(image => image.complete && image.naturalWidth));
   for (const mode of ['perspective', 'top-down']) {
     await page.getByLabel('Anchor mode').selectOption(mode);
     for (const mirrored of [false, true]) {
@@ -59,6 +86,10 @@ try {
   const original = await page.getByAltText('body Original').getAttribute('src');
   const initial = await page.getByAltText('body Recolored').getAttribute('src');
   const initialHelmet = await page.getByAltText('helmet Recolored').getAttribute('src');
+  await page.getByRole('button', { name: 'Pause animation', exact: true }).click();
+  await page.getByRole('button', { name: 'Restart animation', exact: true }).click();
+  await waitForSprite('lineman-back45-move-0', false);
+  const initialPitch = await page.locator(pitchSprite).getAttribute('src');
   const primary = page.getByRole('group', { name: 'Primary color', exact: true });
   const secondary = page.getByRole('group', { name: 'Secondary color', exact: true });
   assert.equal(await primary.getByRole('radio').count(), 16);
@@ -73,6 +104,10 @@ try {
   assert.equal(await primary.getByRole('radio', { name: 'Red', exact: true }).isChecked(), true);
   assert.equal(await secondary.getByRole('radio', { name: 'Gold', exact: true }).isChecked(), true);
   assert.notEqual(await page.getByAltText('body Recolored').getAttribute('src'), initial);
+  await page.waitForFunction(({ selector, initial }) => {
+    const image = document.querySelector(selector);
+    return image?.complete && image.naturalWidth > 0 && image.src !== initial;
+  }, { selector: pitchSprite, initial: initialPitch });
   assert.equal(await page.getByAltText('body Original').getAttribute('src'), original);
   const busts = await page.locator('.proof-consumers img').evaluateAll(images => images.map(image => image.src));
   assert.equal(busts.length, 4); assert.equal(new Set(busts).size, 1);
@@ -80,7 +115,7 @@ try {
   assert.notEqual(helmetUrl, initialHelmet);
   assert.equal(await page.getByAltText('Team name helmet').getAttribute('src'), helmetUrl);
   assert.deepEqual(await page.locator('.proof-splash-previews img').evaluateAll(images => images.map(image => image.getAttribute('src'))), Array(3).fill(helmetUrl));
-  for (const headline of ['START OF TURN 3', 'TURNOVER', 'TOUCHDOWN']) assert.equal(await page.getByRole('heading', { name: headline, exact: true }).count(), 1);
+  for (const headline of ['START OF TURN 3', 'TURNOVER', 'TOUCHDOWN!']) assert.equal(await page.getByRole('heading', { name: headline, exact: true }).count(), 1);
   await page.locator('.proof-helmet-images').screenshot({ path: fileURLToPath(new URL('helmet-original-and-materials.png', evidence)) });
   await page.locator('.proof-splash-previews').screenshot({ path: fileURLToPath(new URL('helmet-splashes.png', evidence)) });
   await page.getByLabel('Enlargement').selectOption('1');
@@ -111,6 +146,7 @@ try {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'mobile overflow stays inside scrollable sheets');
   assert.deepEqual(errors, []);
   await writeFile(new URL('browser-results.json', evidence), JSON.stringify({ browser: await browser.version(), platform: process.platform,
-    cases: ['two 16-color radio grids', 'keyboard selection', 'independent palette changes', 'original unchanged', 'four shared bust consumers', 'mirror', 'anchor modes', 'equal-color pairs', 'both 256-pair sheets', 'mobile selection/reduced-motion static'], errors }, null, 2));
+    cases: ['DOM pitch clip frames and side fallback in both mirror settings', 'fall hold and reduced-motion poses', 'pitch recoloring',
+      'two 16-color radio grids', 'keyboard selection', 'independent palette changes', 'original unchanged', 'four shared bust consumers', 'mirror', 'anchor modes', 'equal-color pairs', 'three 256-pair sheets', 'mobile selection/reduced-motion static'], errors }, null, 2));
   console.log('Sprite proof browser checks passed; evidence: ' + fileURLToPath(evidence));
 } finally { await browser?.close(); await server.close(); }

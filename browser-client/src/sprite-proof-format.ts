@@ -58,6 +58,18 @@ export function recolorProofImage(image: ProofImage, primary: ProofRamp, seconda
   return output;
 }
 
+export function proofImageCanvas(image: ProofImage, pixels: Uint8ClampedArray): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Canvas rendering is unavailable');
+  const data = context.createImageData(image.width, image.height);
+  data.data.set(pixels);
+  context.putImageData(data, 0, 0);
+  return canvas;
+}
+
 /** Bounded per-fixture cache; an unmatched source retains the existing static fallback URL. */
 export class SpriteProofTextures {
   private readonly cache = new Map<string, string>();
