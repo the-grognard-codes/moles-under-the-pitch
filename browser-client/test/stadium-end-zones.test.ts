@@ -168,6 +168,13 @@ function northWord(name: string, width = PITCH.width) {
   return nameMarks(ctx, true);
 }
 
+test('a missing team name keeps the weathered field paint without ink', () => {
+  const ctx = new PaintLog();
+  drawGatehouseEndZones(ctx, PITCH, SQUARE, { ...CLUBS, north: { ...CLUBS.north, name: null } });
+  assert.deepEqual(nameMarks(ctx, true), []);
+  assert.ok(nameMarks(ctx, false).length > 0);
+});
+
 test('normalizes accents and punctuation and uses an appropriate mark when names cannot fit', () => {
   assert.deepEqual(northWord('Étoile — L’hiver 12'), northWord("ETOILE - L'HIVER 12"));
   assert.deepEqual(northWord('漢字 🛡️'), northWord(''));

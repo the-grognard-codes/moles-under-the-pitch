@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Skip Java Checks for pull requests confined to allowlisted documentation, notes, and Development history. Pushes, manual runs, and other changes still run full Java verification.
+
+- Fix the Windows app picker that could open when running GitHub CLI through the GitHub App wrapper from a worktree.
+- Run each server and state-test class in one Java Checks shard. Register new classes from either module in the native shard manifest.
+- Retry rate-limited Maven downloads during bootstrap and use the Apache archive as a fallback. Java checks cache the verified ZIP and reuse dependencies after POM changes.
+
+- Play Old World Classic matches inside the Gatehouse stadium in the 90° camera, with team-coloured stands and painted end zones visible from either coach end.
+- Support schema version 10 in the dev-local game cleanup command.
+
 - Accelerate live playback bursts from eight queued revisions until caught up, retaining every move and roll while animated splashes play at full length. Required choices wait for queued announcements, including held splashes. Touchdown scores appear with their splash, while seeking and recovery show the current score immediately.
 
 - Retain frozen replay events and transcript records as compact JSON between reads, reducing resident match memory without changing recovery or replay formats.

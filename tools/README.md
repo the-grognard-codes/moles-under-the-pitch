@@ -60,10 +60,15 @@ Java version. Browser validation remains separate; see the root README.
 
 ## Reproducibility and offline use
 
-Maven's ZIP is verified against the manifest SHA512 before extraction. Bootstrap
-reuses `.tools/downloads` or the historical Maven audit archive before downloading
-from Maven Central. Offline setup requires the pinned Maven archive and an
-installed JDK: `./tools/bootstrap.ps1 -JavaHome /path/to/jdk -Offline`.
+Bootstrap verifies the Maven ZIP against the manifest SHA-512 before extraction.
+It checks `.tools/downloads` and the historical Maven audit archive first. For
+downloads, Maven Central is the primary source and the Apache archive is the
+fallback. Bootstrap retries transient HTTP and connection failures with bounded
+backoff. If a download fails its checksum, bootstrap reports each source it
+tried and stops. Rerun bootstrap for a fresh download.
+
+Offline setup requires the pinned Maven archive and an installed JDK. Run
+`./tools/bootstrap.ps1 -JavaHome /path/to/jdk -Offline`.
 After dependencies have been downloaded, add `-Offline` to the build launcher.
 
 The launcher uses the project Maven installation, `.tools/repository`, checked-in
@@ -75,8 +80,13 @@ Built-By metadata, so fixed tools do not imply byte-identical archives.
 
 Tooling checks exercise offline setup, corrupt archives, paths containing spaces,
 Java version rejection, caller environment restoration and Maven failure propagation.
-CI uses the same bootstrap with the pinned Java 21 JDK. Only the dependency cache
-is reused; a clean build recompiles project classes for release 21.
+A loopback HTTP server tests retries, `Retry-After`, the Apache fallback path,
+checksum diagnostics and cleanup after interrupted downloads.
+
+CI uses the same bootstrap with the pinned Java 21 JDK. Validate and the Java
+state-test shards restore the Maven ZIP before bootstrap. They share a separate
+dependency cache that can restore a previous key after a POM change. A clean
+build recompiles project classes for release 21.
 
 ## Historical references and runtime retirement
 

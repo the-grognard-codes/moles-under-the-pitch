@@ -1,9 +1,14 @@
 # GitHub App identity for agents
 
-Codex can work through a GitHub App instead of the maintainer's account. Its pushes,
-PRs and comments then appear as `<app-slug>[bot]`, it gets its own API rate limit
-(5,000 requests an hour, separate from the maintainer's), and the maintainer can
-formally approve its PRs, which GitHub never allows for a PR you authored yourself.
+Each agent uses its own GitHub App. Codex acts as `grognard-codex[bot]` and
+Claude acts as `grognard-claude[bot]`. GitHub attributes pushes, PRs, and
+comments to the app that performed them. The maintainer can formally approve
+PRs opened by either bot.
+
+If app authentication fails, diagnose and retry with the app. Using the
+maintainer's GitHub identity for a write, including through the connected
+GitHub account, requires an explicit request for that action. A publishing
+handoff authorizes the work under the configured app identity.
 
 One app can serve every repository on the account. The tooling lives in this
 repository, but once set up it works for Codex in any repository the app is installed on.
@@ -147,12 +152,46 @@ Codex settings don't.
 - The token cache is encrypted for one Windows account on one machine, so it can't be
   copied anyway. Each machine mints its own tokens; both act as the same bot.
 
+## Running a second agent app on the same machine
+
+Register and install the second app as described in [one-time setup](#one-time-setup-maintainer).
+Use a separate key folder and set `MUTP_GITHUB_APP_HOME` to a separate
+data folder. This gives the second app its own config, token cache, and
+`gh` configuration. Run this from the checkout in a dedicated PowerShell 7 session.
+
+```powershell
+$env:MUTP_GITHUB_APP_HOME = Join-Path $env:LOCALAPPDATA 'mutp-github-app-claude'
+./tools/github-app/setup-machine.ps1 `
+  -AppSlug 'grognard-claude' `
+  -ClientId '<Claude app client ID>' `
+  -KeyFolder 'C:\secure\grognard-claude' `
+  -SkipCodexConfig
+. ./tools/github-app/enter.ps1
+```
+
+Use the second app's Client ID from its GitHub settings. Launch Claude from
+that session so its `gh` and Git commands inherit the second app's identity.
+`-SkipCodexConfig` keeps Codex on its existing app configuration.
+
 ## Requiring approval
 
-With Codex authoring as the bot, branch protection on a repository's `main` can require
-one approving review. You can then approve Codex's PRs, and nobody can merge an unreviewed one.
-Settings → Branches (or Rules) → protect `main` → Require a pull request before
-merging → Require approvals: 1.
+Two active rulesets govern `main`.
+
+- `main-branch-protection` requires a PR, one formal approving review, and
+  the required status, code quality, and code scanning checks. GitHub dismisses
+  stale approvals on push.
+- `main-agent-lock` restricts updates to configured bypass actors. The
+  maintainer handles updates to `main` through the administrative bypass.
+  The agent apps use topic branches and PRs.
+
+Claude posts a comment review. The maintainer provides formal approval and
+handles the merge under the [delivery workflow](feature-workflow.md#pr-review-and-merge).
+Check the current rules and required checks before handing off the PR.
+
+```powershell
+gh api repos/the-grognard-codes/moles-under-the-pitch/rules/branches/main
+gh pr checks --required
+```
 
 ## Rotating or revoking
 

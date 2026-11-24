@@ -1,7 +1,7 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertDependencies, assertExact, assertShards, loadBrowserManifest, summarize, validateReports } from './coverage.mjs';
+import { BROWSER_REPORT_SCHEMA_VERSION, assertDependencies, assertExact, assertShards, loadBrowserManifest, summarize, validateReports } from './coverage.mjs';
 
 const repository = fileURLToPath(new URL('../../', import.meta.url));
 const [family, directory, ...extra] = process.argv.slice(2);
@@ -10,6 +10,8 @@ if (!['static', 'browser', 'native'].includes(family) || !directory || extra.len
   throw new Error('Use coverage-gate.mjs static|browser|native report-directory with a validation commit and VALIDATION_NEEDS');
 }
 const needs = JSON.parse(process.env.VALIDATION_NEEDS);
+// An inconclusive classification requires Java. Only execution dependencies count in this gate.
+if (family === 'native') delete needs.changes;
 const dependencies = {
   native: ['target-shards'],
   static: ['static-checks', 'hosted-browser', 'browser-interactions'],
@@ -19,12 +21,16 @@ assertDependencies(needs, dependencies[family]);
 const configurations = [];
 if (family !== 'native') {
   const manifest = await loadBrowserManifest(repository);
-  configurations.push({ family: 'interaction', shards: manifest.interactionShards }, { family: 'hosted', shards: [manifest.hosted] });
+  configurations.push(
+    { family: 'interaction', shards: manifest.interactionShards, schemaVersion: BROWSER_REPORT_SCHEMA_VERSION },
+    { family: 'hosted', shards: [manifest.hosted], schemaVersion: BROWSER_REPORT_SCHEMA_VERSION },
+  );
 } else {
   const manifest = JSON.parse(await readFile(join(repository, 'tools/validation/native-shards.json'), 'utf8'));
-  if (manifest.schemaVersion !== 1) throw new Error('Unsupported native manifest');
+  if (manifest.schemaVersion !== 2) throw new Error('Unsupported native manifest');
   assertShards(manifest.shards, 'Native manifest');
-  configurations.push({ family: 'native', shards: manifest.shards, allowedSkips: manifest.allowedSkips });
+  configurations.push({ family: 'native', shards: manifest.shards, schemaVersion: manifest.schemaVersion,
+    allowedSkips: manifest.allowedSkips, allowedEmptySuites: manifest.allowedEmptySuites });
 }
 const reportDirectory = resolve(repository, directory);
 const files = (await readdir(reportDirectory)).filter(name => name.endsWith('.json'));

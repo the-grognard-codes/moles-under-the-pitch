@@ -9,6 +9,8 @@ import { createServer } from './browser-test-server.mjs';
 import { squarePosition, travelToFocus } from './projected-pitch-helper.mjs';
 import { resolvePlayerArt } from '../src/player-art.ts';
 import { PitchProjection } from '../src/pitch-projection.ts';
+import { bowl } from '../src/stadium-bowl-study.ts';
+import { teamColorRamps } from '../src/team-color-art.ts';
 
 // Rendering/input regression evidence only; full live acceptance uses real v2.
 const initial = JSON.parse(readFileSync(new URL('./fixtures/m5a-blitz-projections.json', import.meta.url), 'utf8'))[0].actor;
@@ -24,21 +26,28 @@ await server.listen();
 const browser = await chromium.launch({ headless: true, executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
   || (process.platform === 'win32' ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' : undefined) });
 const errors = [];
-const stadiumRequests = [];
+const stadiumRequests = new WeakMap();
+const gatehousePath = '/pitch/stadiums/gatehouse/';
 const evidence = process.env.PITCH_SCENE_EVIDENCE_DIR;
 if (evidence) await mkdir(evidence, { recursive: true });
 async function open(role, failArt = false, diceMoment = null, pitchOptions = {}) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 660 } });
-  page.on('request', request => { if (request.url().includes('/pitch/stadiums/')) stadiumRequests.push(request.url()); });
+  const requests = [];
+  stadiumRequests.set(page, requests);
+  page.on('request', request => { if (request.url().includes('/pitch/stadiums/')) requests.push(request.url()); });
   page.on('pageerror', error => errors.push(error.message));
   if (pitchOptions.failTurf) await page.route('**/pitch/stadium-v1.png', route => route.fulfill({ status: 404, body: '' }));
   if (failArt) await page.route('**/poses/**/master/*.png', route => route.fulfill({ status: 404, body: '' }));
-  await page.addInitScript(({ state, dice, actions, pinnedAction }) => { window.initial = state; window.initialDice = dice;
-    window.initialActions = actions; window.initialPinnedAction = pinnedAction; window.intents = []; },
+  if (pitchOptions.failGatehouse) await page.route('**/pitch/stadiums/gatehouse/**', route => route.fulfill({ status: 404, body: '' }));
+  await page.addInitScript(({ state, dice, actions, pinnedAction, zoom }) => { window.initial = state; window.initialDice = dice;
+    window.initialActions = actions; window.initialPinnedAction = pinnedAction; window.initialZoom = zoom; window.intents = []; },
     { state: { ...initial, players: pitchOptions.players ?? players, callerRole: role, activePlayerId: 'human', ball: pitchOptions.ball ?? { x: 12, y: 8 },
       ballState: pitchOptions.ballState ?? { version: 1, carrierPlayerId: null, inPlay: true, moving: true },
-      homeTeamArt: pitchOptions.homeTeamArt ?? initial.homeTeamArt, awayTeamArt: pitchOptions.awayTeamArt ?? initial.awayTeamArt,
-      phase: typeof diceMoment === 'string' ? diceMoment : pitchOptions.phase ?? initial.phase }, dice: typeof diceMoment === 'string' ? null : diceMoment, actions: pitchOptions.actions, pinnedAction: pitchOptions.pinnedAction });
+      homeTeamArt: pitchOptions.homeTeamArt ?? { ...initial.homeTeamArt, league: null },
+      awayTeamArt: pitchOptions.awayTeamArt ?? initial.awayTeamArt,
+      homeTeamName: pitchOptions.homeTeamName ?? initial.homeTeamName, awayTeamName: pitchOptions.awayTeamName ?? initial.awayTeamName,
+      phase: typeof diceMoment === 'string' ? diceMoment : pitchOptions.phase ?? initial.phase }, dice: typeof diceMoment === 'string' ? null : diceMoment,
+      actions: pitchOptions.actions, pinnedAction: pitchOptions.pinnedAction, zoom: pitchOptions.zoom });
   await page.route('**/scene-test', route => route.fulfill({ contentType: 'text/html', body: `
     <style>html,body{margin:0;height:100%;background:#101c2b}.play-runtime{height:100%}#app .live-pitch{height:100%;display:flex;flex-direction:column;margin:0;padding:0;box-sizing:border-box}#app .live-pitch-viewport{flex:1;max-height:none;min-height:0;aspect-ratio:auto}</style>
     <div id="app" class="play-runtime"></div><script type="module" src="/test/projected-pitch-harness.tsx"></script>` }));
@@ -100,6 +109,100 @@ async function assertProjectedBallAndPitch(page, role, mode, angle, ball = { x: 
   assert.notEqual(rendered.arrowFill, 'none');
   await assertPitchWithoutStadium(page);
   assert.equal(await scene.locator('.live-ball-arrow').count(), 4);
+}
+
+async function assertGatehouseAlignment(page, end) {
+  const scene = page.locator('.live-pitch-scene');
+  const scenery = scene.locator(`.pitch-gatehouse[data-end="${end}"] canvas`);
+  await scenery.waitFor({ state: 'attached' });
+  assert.equal(await scene.locator('.pitch-stadium-turf').count(), 0);
+  const rendered = await scenery.evaluate((canvas, opening) => {
+    const stadium = canvas.closest('.pitch-gatehouse');
+    const scene = canvas.closest('.live-pitch-scene');
+    const matrix = new DOMMatrix(getComputedStyle(stadium).transform);
+    const { pitchX, pitchY } = opening;
+    const corners = [[pitchX, pitchY], [pitchX + 480, pitchY], [pitchX, pitchY + 832],
+      [pitchX + 480, pitchY + 832]].map(([u, v]) => {
+      const point = matrix.transformPoint(new DOMPoint(u, v));
+      return { x: point.x / point.w, y: point.y / point.w };
+    });
+    return {
+      camera: { width: parseFloat(scene.style.width), height: parseFloat(scene.style.height),
+        focus: +scene.dataset.focus, transverseFocus: +scene.dataset.transverseFocus,
+        zoom: +scene.dataset.zoom, end: scene.dataset.end, mode: scene.dataset.projection },
+      corners, size: [canvas.width, canvas.height], pointerEvents: getComputedStyle(canvas).pointerEvents,
+      sampling: getComputedStyle(canvas).imageRendering,
+    };
+  }, bowl);
+  assert.deepEqual(rendered.size, [bowl.width, bowl.height]);
+  assert.equal(rendered.pointerEvents, 'none');
+  assert.equal(rendered.sampling, 'pixelated');
+  const camera = new PitchProjection(rendered.camera);
+  const world = end === 'home' ? [[26, 0], [26, 15], [0, 0], [0, 15]] : [[0, 15], [0, 0], [26, 15], [26, 0]];
+  for (const [index, [x, y]] of world.entries()) {
+    const expected = camera.project({ x, y });
+    const actual = rendered.corners[index];
+    assert.ok(Math.hypot(actual.x - expected.x, actual.y - expected.y) < .5,
+      `${end} ${camera.zoom}× native pitch corner ${x},${y} projects to its canonical square`);
+  }
+}
+
+async function assertGatehouseArtwork(page, end, teams) {
+  const ramp = id => teamColorRamps.find(ramp => ramp.id === id).colors;
+  const teamRamps = Object.fromEntries(Object.entries(teams).map(([role, team]) => [role, ramp(team.colors.primary)]));
+  const worldOwners = end === 'home' ? { left: 'home', right: 'away', top: 'away', bottom: 'home' }
+    : { left: 'away', right: 'home', top: 'home', bottom: 'away' };
+  const result = await page.locator('.pitch-gatehouse canvas').evaluate(async (canvas, { teams, teamRamps, worldOwners, bowl }) => {
+    const context = canvas.getContext('2d');
+    function countMatching({ x, y, width, height }, expected) {
+      const { data } = context.getImageData(x, y, width, height);
+      let count = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (expected.has((data[i] << 16) + (data[i + 1] << 8) + data[i + 2])) count++;
+      }
+      return count;
+    }
+    const { pitchX, pitchY } = bowl;
+    const regions = { left: { x: 14, y: pitchY + 48, width: 80, height: 735 },
+      right: { x: 694, y: pitchY + 48, width: 80, height: 735 } };
+    const fans = Object.fromEntries(Object.entries(regions).map(([side, region]) => {
+      const owner = worldOwners[side];
+      const other = owner === 'home' ? 'away' : 'home';
+      const count = role => countMatching(region, new Set(teamRamps[role].map(color => parseInt(color.slice(1), 16))));
+      return [side, [count(owner), count(other)]];
+    }));
+    const paint = document.createElement('canvas');
+    paint.width = canvas.width;
+    paint.height = canvas.height;
+    const expected = paint.getContext('2d');
+    const { drawGatehouseEndZones } = await import('/src/stadium-end-zones.ts');
+    const zoneTeam = side => {
+      const { name, colors } = teams[worldOwners[side]];
+      return { name, primary: colors.primary };
+    };
+    drawGatehouseEndZones(expected, { x: pitchX, y: pitchY, width: 480, height: 832 }, 32,
+      { north: zoneTeam('top'), south: zoneTeam('bottom') });
+    const endZones = [pitchY, pitchY + 800].map(top => {
+      const target = expected.getImageData(pitchX, top, 480, 32).data;
+      const live = context.getImageData(pitchX, top, 480, 32).data;
+      let count = 0, same = 0;
+      for (let i = 0; i < target.length; i += 4) {
+        const rgb = (target[i] << 16) + (target[i + 1] << 8) + target[i + 2];
+        if (rgb !== 0xfdf6e1 && rgb !== 0x07080b) continue;
+        count++;
+        if (target.subarray(i, i + 4).every((channel, offset) => live[i + offset] === channel)) same++;
+      }
+      return [count, same];
+    });
+    return { fans, endZones };
+  }, { teams, teamRamps, worldOwners, bowl });
+  if (teams.home.colors.primary !== teams.away.colors.primary) {
+    for (const [side, [own, other]] of Object.entries(result.fans))
+      assert.ok(own > 100 && own > other * 2, `owner kit dominates the ${side} crowd from the ${end} end (${own} vs ${other})`);
+  }
+  for (const [total, matching] of result.endZones) {
+    assert.ok(total > 300 && matching / total > .9, `${end} end-zone paint keeps the defending team's name upright`);
+  }
 }
 try {
   {
@@ -352,6 +455,89 @@ try {
     await setup.close();
   }
   const humanArt = { rosterId:'human',league:'Old World Classic' }, orcArt = { rosterId:'orc',league:'Badlands Brawl' };
+  const teams = {
+    home: { name: 'Ironbank Rovers', colors: { version: 1, primary: 'navy', secondary: 'gold' } },
+    away: { name: 'Cinderclaw Crew', colors: { version: 1, primary: 'red', secondary: 'ivory' } },
+  };
+  const gatehouseOptions = {
+    homeTeamArt: { ...humanArt, colors: teams.home.colors }, homeTeamName: teams.home.name,
+    awayTeamArt: { ...orcArt, colors: teams.away.colors }, awayTeamName: teams.away.name,
+  };
+  for (const end of ['home', 'away']) {
+    const page = await open(end, false, null, { ...gatehouseOptions, zoom: .5 });
+    const scene = page.locator('.live-pitch-scene');
+    await assertPitchWithoutStadium(page);
+    assert.deepEqual(stadiumRequests.get(page), [], 'angled Old World Classic requests only turf');
+    await setCameraMode(page, 'top-down');
+    await assertGatehouseAlignment(page, end);
+    await assertGatehouseArtwork(page, end, teams);
+    await page.evaluate(() => { window.retainedGatehouse = document.querySelector('.pitch-gatehouse canvas'); });
+    const sameCanvas = () => page.evaluate(() => window.retainedGatehouse === document.querySelector('.pitch-gatehouse canvas'));
+    const initialRequests = [...stadiumRequests.get(page)];
+    assert.ok(initialRequests.some(url => url.includes(gatehousePath)), 'runtime loads only the Gatehouse delivery directory');
+    for (let revision = 1; revision <= 10; revision++) {
+      const x = revision % 2 ? 11 : 12;
+      await page.evaluate(({ revision, x }) => window.updatePitchView({ ...window.initial,
+        revision: window.initial.revision + revision,
+        players: window.initial.players.map(player => player.id === 'human' ? { ...player, x } : player) }), { revision, x });
+      await scene.locator(`[data-player-id="human"][data-x="${x}"]`).waitFor();
+      assert.equal(await sameCanvas(), true, 'moving players keeps the cached native composition');
+    }
+    await page.locator('.live-pitch-viewport').dispatchEvent('wheel', { deltaY: -2400 });
+    await page.waitForFunction(() => document.querySelector('.live-pitch-scene').dataset.zoom === '3');
+    await assertGatehouseAlignment(page, end);
+    await page.getByRole('button', { name: 'Fit', exact: true }).click();
+    await assertGatehouseAlignment(page, end);
+    await scene.locator('[data-player-id="human"]').click();
+    const x = end === 'home' ? 0 : 25, y = 0;
+    const edge = await squarePosition(page, x, y);
+    await scene.hover({ position: edge });
+    await scene.locator(`[data-hover-square="${x},${y}"]`).waitFor({ state: 'attached' });
+    await scene.click({ position: edge });
+    assert.deepEqual(await page.evaluate(() => window.intents), [{ player: 'human' }, { x, y }]);
+    await setCameraAngle(page, '40');
+    await assertPitchWithoutStadium(page);
+    await setCameraMode(page, 'top-down');
+    await assertGatehouseAlignment(page, end);
+    assert.equal(await sameCanvas(), true, 'returning from the angled camera reattaches the cached canvas');
+    assert.deepEqual(stadiumRequests.get(page), initialRequests, 'zoom, travel and angle changes do not reload Gatehouse');
+    await page.getByRole('button', { name: 'Midfield', exact: true }).click();
+    await scene.locator('[data-selection="human"]').waitFor({ state: 'attached' });
+    await scene.locator('.live-ball-marker[data-ball-x="12"][data-ball-y="8"]').waitFor({ state: 'attached' });
+    if (evidence) {
+      await page.screenshot({ path: `${evidence}/gatehouse-${end}.png` });
+    }
+    console.log(`Gatehouse ${end} native composition: ${Math.round(Number(await scene.locator('.pitch-gatehouse').getAttribute('data-compose-ms')))} ms.`);
+    await page.close();
+  }
+  const matchingKits = await open('away', false, null, { ...gatehouseOptions, awayTeamArt: { ...orcArt, colors: teams.home.colors } });
+  await setCameraMode(matchingKits, 'top-down');
+  await assertGatehouseAlignment(matchingKits, 'away');
+  await assertGatehouseArtwork(matchingKits, 'away', { ...teams, away: { ...teams.away, colors: teams.home.colors } });
+  await matchingKits.close();
+  for (const [reason, options] of [
+    ['missing venue', { homeTeamArt: { ...humanArt, league: null } }],
+    ['unknown venue', { homeTeamArt: { ...humanArt, league: 'Unknown venue' } }],
+    ['missing Gatehouse assets', { ...gatehouseOptions, failGatehouse: true }],
+  ]) {
+    const page = await open('home', false, null, options);
+    const diagnostic = options.failGatehouse ? page.waitForEvent('console', {
+      predicate: message => message.type() === 'warning' && message.text().includes('Gatehouse unavailable'),
+    }) : undefined;
+    await setCameraMode(page, 'top-down');
+    if (options.failGatehouse) {
+      await diagnostic;
+      assert.ok(stadiumRequests.get(page).some(url => url.includes(gatehousePath)));
+    } else {
+      assert.deepEqual(stadiumRequests.get(page), [], reason + ' makes no stadium requests');
+    }
+    await assertPitchWithoutStadium(page);
+    const edge = await squarePosition(page, 0, 0);
+    await page.locator('.live-pitch-scene').click({ position: edge });
+    assert.deepEqual(await page.evaluate(() => window.intents), [{ x: 0, y: 0 }]);
+    await page.close();
+  }
+  console.log('PASS: native Gatehouse registration, edge targeting, kits, end zones, cache, and turf fallbacks from both coach ends.');
   for (const [host,homeTeamArt,awayTeamArt] of [['human',humanArt,orcArt],['orc',orcArt,humanArt]]) for (const role of ['home','away']) {
     const page=await open(role,false,null,{homeTeamArt,awayTeamArt});
     await page.emulateMedia({reducedMotion:'reduce'});
@@ -368,16 +554,21 @@ try {
       for (const [position,focus] of [['near',role==='home'?1:25],['mid',13],['far',role==='home'?25:1]]) {
         await travelToFocus(page,focus);
         assert.equal(await page.locator('[data-cell-x]').count(),390);
-        await assertPitchWithoutStadium(page);
+        if (mode === 90 && host === 'human') await assertGatehouseAlignment(page, role);
+        else await assertPitchWithoutStadium(page);
         if(evidence)await page.screenshot({path:evidence+'/stadium-'+host+'-'+role+'-'+mode+'-'+position+'.png'});
       }
     }
     await page.evaluate(()=>window.updatePitchView({...window.initial,revision:window.initial.revision+1,actor:'away',half:2,homeTurn:8,awayTurn:8,players:[]}));
     await page.waitForFunction(()=>document.querySelectorAll('[data-player-id]').length===0);
-    await assertPitchWithoutStadium(page);
+    if (host === 'human') await assertGatehouseAlignment(page, role);
+    else {
+      await assertPitchWithoutStadium(page);
+      assert.deepEqual(stadiumRequests.get(page), [], 'unsupported venue makes no stadium requests');
+    }
     await page.close();
   }
-  console.log('PASS: 48 Human/Orc hosting, coach-end, angle and camera-position cases preserve the pitch without stadium or crowds.');
+  console.log('PASS: 48 venue, coach-end, angle and camera-position cases select the correct scenery.');
   const readonly = await open('spectator');
   await readonly.locator('[data-player-id="human"]').click();
   await readonly.locator('.live-pitch-viewport').dispatchEvent('wheel', { deltaY: 90 });
@@ -456,7 +647,7 @@ try {
   await missingTurf.locator('[data-player-id="human"]').click();
   assert.deepEqual(await missingTurf.evaluate(() => window.intents), [{ player: 'human' }]);
   await missingTurf.close();
-  assert.deepEqual(stadiumRequests, [], 'no stadium or crowd atlases are requested');
+  assert.deepEqual(stadiumRequests.get(missingTurf), [], 'a turf-only pitch makes no stadium requests');
   assert.deepEqual(errors, []);
   console.log('PASS: both coach ends preserve canonical intents, bounded 30° scenery, player anchors/shadows, right-pan and wheel zoom, centered dice, kickoff targeting, and unavailable-art fallback.');
 } finally { if (errors.length) console.error(errors); await browser.close(); await server.close(); }

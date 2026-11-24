@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -11,9 +12,9 @@ import { checkoutBrowserCommit, resolveBrowserCommit } from '../validation/resol
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const shards = [['suite1'], ['suite2'], ['suite3'], ['suite4']];
-const reports = () => shards.map((suites, index) => ({ schemaVersion: 1, family: 'native', shard: index + 1,
+const reports = () => shards.map((suites, index) => ({ schemaVersion: 2, family: 'native', shard: index + 1,
   commit: 'current', passed: true, suites: suites.map(id => ({ id, tests: 2, durationMs: 10, failures: 0, errors: 0, skipped: 0 })) }));
-const configuration = { family: 'native', shards, commit: 'current' };
+const configuration = { family: 'native', shards, commit: 'current', schemaVersion: 2 };
 const tap = '# tests 2\n# pass 2\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n';
 
 test('browser source resolver accepts only its own workflow source or exact verified main history', () => {
@@ -44,6 +45,7 @@ test('browser checkout occurs only after source validation and uses the verified
 
 test('coverage rejects missing, duplicate, misassigned, stale, failed, and empty executions', () => {
   assert.equal(validateReports(reports(), configuration).length, 4);
+  assert.throws(() => validateReports(reports(), { ...configuration, schemaVersion: undefined }), /schemaVersion/);
   for (const mutate of [
     value => value.pop(),
     value => value.push(value[0]),
@@ -74,6 +76,20 @@ test('only existing exact opt-in skip identities and reasons may pass coverage',
   assert.throws(() => validateReports(value, configuration), /unexpected skip/);
   value[0].suites[0].skippedTests = [];
   assert.throws(() => validateReports(value, { ...configuration, allowedSkips }), /accounting mismatch/);
+});
+
+test('coverage accepts zero cases only with a manifest-approved missing opt-in variable', () => {
+  const value = reports();
+  const suite = value[0].suites[0];
+  suite.tests = 0;
+  const config = { ...configuration, allowedEmptySuites: { suite1: ['FIXTURE_OPT_IN'] } };
+  assert.throws(() => validateReports(value, config), /empty suite/);
+  suite.missingEnvironmentVariable = 'UNRELATED_VARIABLE';
+  assert.throws(() => validateReports(value, config), /empty suite/);
+  suite.missingEnvironmentVariable = 'FIXTURE_OPT_IN';
+  assert.equal(validateReports(value, config).length, 4);
+  suite.failures = 1;
+  assert.throws(() => validateReports(value, config), /failed tests/);
 });
 
 test('aggregate job gate rejects skipped, cancelled, failed, and absent dependencies', () => {
@@ -144,24 +160,36 @@ test('project browser inventory covers every harness with an explicit CI or stan
   await loadBrowserManifest(root);
 });
 
-test('actual CI gate accepts complete reports and rejects missing artifacts or failed matrix dependencies', async () => {
+test('actual CI gate requires current native reports, all server suites, and successful matrix jobs', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'validation-gate-'));
   try {
     const native = JSON.parse(await readFile(join(root, 'tools/validation/native-shards.json'), 'utf8'));
-    for (const [index, ids] of native.shards.entries()) {
-      const report = { schemaVersion: 1, family: 'native', shard: index + 1, commit: 'current', passed: true,
-        suites: ids.map(id => ({ id, tests: 1, durationMs: 0, failures: 0, errors: 0, skipped: 0 })) };
-      await writeFile(join(directory, `native-${index + 1}.json`), JSON.stringify(report));
-    }
+    const nativeReports = native.shards.map((ids, index) => ({
+      schemaVersion: 2, family: 'native', shard: index + 1, commit: 'current', passed: true,
+      suites: ids.map(id => ({ id, tests: 1, durationMs: 0, failures: 0, errors: 0, skipped: 0 })),
+    }));
+    const writeReport = report => writeFile(join(directory, `native-${report.shard}.json`), JSON.stringify(report));
+    await Promise.all(nativeReports.map(writeReport));
     const runGate = result => spawnSync(process.execPath, ['tools/validation/coverage-gate.mjs', 'native', directory], {
       cwd: root, encoding: 'utf8', windowsHide: true,
       env: { ...process.env, GITHUB_SHA: 'current', GITHUB_STEP_SUMMARY: '',
-        VALIDATION_NEEDS: JSON.stringify({ 'target-shards': { result } }) },
+        VALIDATION_NEEDS: JSON.stringify({ changes: { result: 'failure' }, 'target-shards': { result } }) },
     });
     const passed = runGate('success');
     assert.equal(passed.status, 0, passed.stderr);
     assert.match(passed.stdout, /PASS complete native validation coverage/);
     assert.match(runGate('cancelled').stderr, /Required job target-shards: cancelled/);
+    const first = nativeReports[0];
+    await writeReport({ ...first, schemaVersion: 1 });
+    assert.match(runGate('success').stderr, /invalid, failed, or stale report/);
+    await writeReport(first);
+    const serverSource = join(root, 'ffb-server', 'src', 'test', 'java');
+    const serverSuite = native.shards.flat().find(id => existsSync(join(serverSource, `${id.replaceAll('.', '/')}.java`)));
+    assert.ok(serverSuite, 'native manifest must contain a suite from ffb-server');
+    const serverReport = nativeReports.find(report => report.suites.some(suite => suite.id === serverSuite));
+    await writeReport({ ...serverReport, suites: serverReport.suites.filter(suite => suite.id !== serverSuite) });
+    assert.ok(runGate('success').stderr.includes(`missing=${serverSuite}`));
+    await writeReport(serverReport);
     await rm(join(directory, 'native-4.json'));
     const missing = runGate('success');
     assert.equal(missing.status, 1);
@@ -195,6 +223,7 @@ test('release browser gate uses the release commit and rejects stale, partial, o
     const passed = runGate();
     assert.equal(passed.status, 0, passed.stderr);
     assert.match(passed.stdout, /PASS complete browser validation coverage for release/);
+    assert.doesNotMatch(passed.stdout, /Missing opt-in variable/);
     assert.equal(runGate('workflow-main').status, 1);
     assert.match(runGate('release', 'cancelled').stderr, /Required job browser-interactions: cancelled/);
     await rm(join(directory, 'interaction-4.json'));

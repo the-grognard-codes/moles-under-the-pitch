@@ -13,7 +13,8 @@ architecture, plans, specs and code, and changes code only when the user asks.
 - Report findings ranked by severity, each with `file:line`, the concrete
   failure scenario, and a suggested fix. Separate hard defects from judgement
   calls.
-- Write review results where Codex will read them: a PR comment, an issue
-  comment, or a Markdown file beside the spec, as the user directs.
+- Post PR reviews in comment mode and use inline comments for line-specific
+  findings. Use an issue comment or a Markdown file beside the spec when the
+  maintainer directs. Follow [the review loop](docs/agents/feature-workflow.md#pr-review-and-merge).
 - Repository skills live in `.agents/skills/`; `.claude/skills/` holds thin
   pointers to the ones used for review and planning.
