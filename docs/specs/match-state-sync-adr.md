@@ -55,12 +55,12 @@ This sets the server-to-client model for the rest of the project. The target is 
 
 ## Maintainer decisions
 
-Decisions 1–6 are from 2026-11-22. Decisions 7–11 are from 2026-11-24.
+Decisions 1–6 are from 2026-11-22. Decisions 7–12 are from 2026-11-24.
 
 1. **Scope.** This issue owns the storage and sync decision and its ADR. #550 keeps engine structure and the ruleset-boundary review, and treats this ADR as an input: it settles the persistence and presentation seams that #550's review maps.
 2. **One record serves live play, catch-up and replay.** The transcript record evolves to format 4:
    - It keeps the decision, ordered outcomes (dice, movement, resolved effects) and the ADR 0007 presentation markers.
-   - It replaces the full `state` with a **public patch**. An earlier version of this request also listed a public-state digest here, but the maintainer had not decided it. It is now under the open decisions.
+   - It replaces the full `state` with a **public patch**. An earlier version of this request also listed a public-state digest here, but the maintainer had not decided it. Decision 12 now rules it out for now.
    - **Keyframes** (a full public snapshot) are written periodically for seeking.
    - Live viewers receive the record, catch-up reads it, and replay plays it.
 3. **Replay storage is written in the move's own transaction.** The transaction updates the restore snapshot, writes the exact-request receipt, and appends the record plus any keyframe. There is no background replay worker. Revisit only if storage cost requires it.
@@ -72,6 +72,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–11 are from 2026-11-24.
 9. **Full-time and load timing are part of this measurement**, replacing #593's instrumentation.
 10. **#596's interim risk is accepted for now.** Until the new storage ships, a long match could stop at the size limit. This ADR and its resulting work are the next task on the schedule.
 11. **Order of work.** #548 is the first item completed after this review. #550 starts after this issue is settled.
+12. **No state digest for now.** Revisit if the server and client are found to disagree about the pitch state.
 
 ## Scope and deliverables
 
@@ -99,7 +100,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–11 are from 2026-11-24.
    - that ADR 0006 is unchanged.
 4. **Candidate tickets** in the ADR or an outcome note, not filed until acceptance:
    - storage and replay reader, built together (decision 7): the current-state row, revision records, the receipt and chat rows; format-4 patches and keyframes; replacements for every reader of `events` listed above; full time marks the match finished; the journal and compaction are deleted;
-   - live protocol: deltas, a per-role envelope, a catch-up tail, a snapshot on join or resync, and any divergence detection that is adopted.
+   - live protocol: deltas, a per-role envelope, a catch-up tail, a snapshot on join or resync, and any drift detection that is adopted.
 
 **Sequencing:** #610 has merged (PR #612), so the measurement and the ADR draft are both unblocked. #548 goes first (decision 11).
 
@@ -119,10 +120,10 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–11 are from 2026-11-24.
 - **Format-4 record:**
   - fields, recording domain facts only: the accepted decision, dice, resolved effects, presentation markers, and patches to public entities. Never browser commands or diffs of the rendered view. The application-seams record says "Do not equate recorded UI commands with a stable domain-event schema";
   - the shape of the public patch (for example, whole-entity replacement keyed by player, ball and team ID);
-  - whether divergence is detected beyond revision gaps, and how (see the open decisions);
+  - no digest (decision 12);
   - keyframe cadence.
 - **Public and private:** records and patches carry public facts only. The per-role envelope carries prompt, actions, forecasts and other private data, and never enters the record. The public projection is built once per revision.
-- **Live delivery and catch-up:** join and resync send a snapshot plus the latest page; the size of the bounded in-memory tail; gap detection; behaviour when divergence is detected, if detection is adopted; spectators. This stays consistent with ADR 0001's best-effort delivery and ADR 0008's staged-placement messages.
+- **Live delivery and catch-up:** join and resync send a snapshot plus the latest page; the size of the bounded in-memory tail; gap detection; drift detection and reporting (see the open decisions); spectators. This stays consistent with ADR 0001's best-effort delivery and ADR 0008's staged-placement messages.
 - **Transaction:** what the move's transaction writes; behaviour on uncertain commit; exact retry; crash between commit and publish.
 - **Match log and chat:** as decided (decision 8), settling the detail listed below.
 - **Server memory:** no history stays resident beyond the tail. State the consequences for `MatchMemoryBudget` and for #543's frozen history.
@@ -164,7 +165,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–11 are from 2026-11-24.
 | Risk / trigger | Consequence | Required mitigation or decision | Owner / tracking | Remaining risk |
 | --- | --- | --- | --- | --- |
 | A client misses a record | Pitch shown differs from the server | Revision-gap detection; catch-up or resync | This ADR; live protocol ticket | — |
-| A client or server defect makes a patch wrong at the right revision | Pitch shown differs from the server; replay shows it too | Divergence detection, per the open decision | This ADR | Depends on that decision |
+| A client or server defect makes a patch wrong at the right revision | Pitch shown differs from the server; replay shows it too | Live keyframes, drift reports and rebuild checks, as proposed under the open decisions | This ADR | A wrong pitch can last until the next keyframe |
 | A reader of `events` is missed | Replay, the full-time view or a concession breaks | Decision 7; the list of readers above | Storage and replay ticket | — |
 | A long match reaches the size limit before the new storage ships (#596) | The match stops early with `MATCH_SIZE_LIMIT` | Accepted for now (decision 10) | Maintainer | Until the new storage ships |
 | The native snapshot hides data that grows | Cost grows with match length again | Measure at revisions 50 and 700; size regression test | This ADR; storage ticket | Rare paths not covered by the measured matches |
@@ -182,10 +183,11 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–11 are from 2026-11-24.
 - **Rebuild state by re-executing inputs deterministically.** Rejected: ADR 0004's rule that recovery never reruns commands stands.
 
 **Open, for the maintainer:**
-- **Divergence detection.** The maintainer asked on 2026-11-24 to discuss this. The options are:
-  - none beyond revision gaps, and a snapshot on join or resync;
-  - sending the periodic keyframes live, so that a client compares its rebuilt state with each one;
-  - a digest on every record, checked by each client.
+- **Drift detection and reporting (proposed 2026-11-24).** The digest is ruled out for now (decision 12). Proposed in its place:
+  - **Live keyframes.** The periodic keyframes are also sent live. The client compares its rebuilt public state with each one, at the same revision and before adopting it. Staged placements and provisional moves are left out of the comparison.
+  - **Drift report.** The maintainer asked whether a client can report a mismatch. It can: a bounded, rate-limited V2 request names the match, revision, client build and the differing fields, and the server logs one structured line under ADR 0006's local-logging allowance. A client can't send its whole state, because inbound messages are capped at 16 KiB (`BrowserMatchSocket.java:15`) and one state is about 16–20 KB.
+  - **Rebuild check in tests.** Tests and soaks rebuild state from patches and require it to equal each keyframe. A soak fails on any drift report.
+  - **Soak change.** Today's soak reads state straight from the wire (`overnight-soak.mjs:125-135`), so it bypasses the client's own state. It has to use the client's applied state or the drift reports to detect drift.
 - **Order of work inside the combined storage and replay delivery** (decision 7).
 - **Detail for the ADR to settle under decision 8:**
   - The native engine log leaves the restore object and is never persisted. Only the tail not yet captured stays in memory.
