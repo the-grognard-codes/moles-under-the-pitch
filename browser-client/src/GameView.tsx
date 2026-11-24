@@ -149,7 +149,7 @@ function GameViewContent({ view, connected, pending: requestPending, mutate, acc
   const blurPlayer = () => { if (hoverTimer.current) clearTimeout(hoverTimer.current); setHoverPlayer(null); };
   useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current); }, []);
   const [x, setX] = useState(0); const [y, setY] = useState(0);
-  const { pitchView, presentationRevision, provisionalActive, playbackActive, diceMoment, diceSnapshot, synchronizing, movementDuration, movement, beginProvisional,
+  const { pitchView, presentationRevision, provisionalActive, playbackActive, diceMoment, diceSnapshot, synchronizing, movement, beginProvisional,
     splash, announcement, announcementExiting } =
     usePitchPlayback(view, logRecords, hosted && connected && !logUnavailable, 1, 'live', requestPending);
   useDiagnosticPresentation(view.revision, pitchView.revision, playbackActive, synchronizing, !!announcement, !!requestPending, 'live', 1, view.matchId, presentationRevision, provisionalActive);
@@ -1141,7 +1141,7 @@ function GameViewContent({ view, connected, pending: requestPending, mutate, acc
       {!hosted && <p>Ball {view.ball ? `${view.ball.x}, ${view.ball.y}` : 'off pitch'} · active player {view.activePlayerId ?? 'none'}</p>}
       {hosted && <><div className="match-layout"><div className="match-board">
       <LivePitch view={pitchView} selectedId={kickoff && !kickoff.selected.includes(playerId) ? '' : playerId} selectedIds={kickoff?.selected ?? []}
-        movementDuration={playbackActive ? movementDuration : 0} movement={playbackActive ? movement : null}
+        movement={movement}
         splash={splash}
         interactionBlocked={!connected || !!pending || playBlocked}
         actions={playbackActive ? [] : pitchActions} pinnedAction={playbackActive ? undefined : pinnedAction}

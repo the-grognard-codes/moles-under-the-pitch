@@ -1,10 +1,12 @@
 import { useSyncExternalStore } from 'react';
 import type { Point } from './pitch-projection.ts';
 import type { SetupState } from './setup-protocol.ts';
+import { pitchBallState } from './kickoff-ball-presentation.ts';
 
 type SquarePath = { from: Point; to: Point };
-export type MovingSquare = SquarePath & { clock: MovementClock };
-export type PitchMovement = { clock: MovementClock; playerId?: string; player: MovingSquare | null; ball: MovingSquare | null };
+export type PiecePath = SquarePath & { clock: MovementClock };
+export type BallMovement = { path: PiecePath; kind: 'carried' | 'loose' };
+export type PitchMovement = { duration: number; clock: MovementClock; playerId?: string; player: PiecePath | null; ball: BallMovement | null };
 
 /** One clock publishes a shared sample for every layer participating in a beat. */
 class MovementClock {
@@ -80,7 +82,7 @@ function squareOf(view: SetupState, playerId: string): Point | null {
   return player?.x != null && player.y != null ? { x: player.x, y: player.y } : null;
 }
 
-function pathBetween(from: Point | null, to: Point | null, previous?: MovingSquare | null): SquarePath | null {
+function pathBetween(from: Point | null, to: Point | null, previous?: PiecePath | null): SquarePath | null {
   if (!from || !to || from.x === to.x && from.y === to.y) return null;
   return { from: previous ? sampleSquare(previous, previous.clock.snapshot()) : from, to };
 }
@@ -90,22 +92,28 @@ export function pitchMovement(before: SetupState, after: SetupState, duration: n
   if (duration <= 0) return null;
   const playerPath = playerId ? pathBetween(squareOf(before, playerId), squareOf(after, playerId),
     previous?.playerId === playerId ? previous.player : null) : null;
-  const carrier = after.ballState?.carrierPlayerId;
-  const ballPath = !carrier && before.ballState?.inPlay !== false && after.ballState?.inPlay !== false
-    ? pathBetween(before.ball, after.ball, previous?.ball) : null;
+  const beforeBall = pitchBallState(before), afterBall = pitchBallState(after);
+  const carried = !!playerId && beforeBall?.carrierPlayerId === playerId && afterBall?.carrierPlayerId === playerId;
+  let ballPath: SquarePath | null = null;
+  if (!carried && before.ball && after.ball && beforeBall?.inPlay !== false && afterBall?.inPlay !== false) {
+    ballPath = pathBetween(before.ball, after.ball, previous?.ball?.path);
+    // A mover reaches an already-loose ball before the pickup is visible.
+    if (!ballPath && playerPath && beforeBall?.carrierPlayerId === null && afterBall?.carrierPlayerId === playerId)
+      ballPath = { from: before.ball, to: after.ball };
+  }
   if (!playerPath && !ballPath) return null;
   const clock = new MovementClock(duration);
   const player = playerPath ? { ...playerPath, clock } : null;
-  // A possession change to a stationary player places the ring on that player immediately.
-  const ball = after.ball && carrier && carrier === playerId ? player : ballPath ? { ...ballPath, clock } : null;
-  return { clock, playerId, player, ball };
+  const ball: BallMovement | null = carried && player && before.ball && after.ball
+    ? { path: player, kind: 'carried' } : ballPath ? { path: { ...ballPath, clock }, kind: 'loose' } : null;
+  return { duration, clock, playerId, player, ball };
 }
 
 const subscribeIdle = () => () => {};
 const idleSnapshot = () => 1;
 
 /** Static pieces subscribe to an idle source and never re-render on an animation frame. */
-export function useMovingSquare(square: Point, motion?: MovingSquare | null): Point {
-  const progress = useSyncExternalStore(motion?.clock.subscribe ?? subscribeIdle, motion?.clock.snapshot ?? idleSnapshot);
-  return motion ? sampleSquare(motion, progress) : square;
+export function useDisplayedPosition(square: Point, path?: PiecePath | null): { position: Point; inMotion: boolean } {
+  const progress = useSyncExternalStore(path?.clock.subscribe ?? subscribeIdle, path?.clock.snapshot ?? idleSnapshot);
+  return { position: path ? sampleSquare(path, progress) : square, inMotion: progress < 1 };
 }

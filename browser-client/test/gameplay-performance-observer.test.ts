@@ -8,12 +8,14 @@ test('distributions retain incomplete cohorts and negative transcript ordering',
     { kind: 'trace', documentId: 'one', requestId: 'a', phase: 'PLAY', operation: 'action', actionKind: 'move', sentAt: 100,
       responseAt: 120, transcriptAt: 110, movementPaintAt: 150, code: 'ACCEPTED' },
     { kind: 'trace', documentId: 'two', requestId: 'a', phase: 'PLAY', operation: 'action', actionKind: 'block', sentAt: 200 },
-    { kind: 'motion', documentId: 'one', requestId: 'a', at: 130, x: 10, y: 20 },
+    { kind: 'motion', documentId: 'one', requestId: 'a', at: 130, x: 10, y: 20,
+      inlineLeft: 7, inlineTop: 18, computedLeft: 7, computedTop: 18, sceneLeft: 3, sceneTop: 2 },
   ]);
   assert.equal(report.traces.length, 2, 'Reloaded documents cannot collide');
   assert.equal(report.coverage.blocks.accepted, 0);
   assert.equal(report.coverage.rolls.requested, 0);
-  assert.deepEqual(report.routeMotion[0].samples, [[130, 10, 20]]);
+  assert.equal(report.formatVersion, 2);
+  assert.deepEqual(report.routeMotion[0].samples, [[130, 10, 20, 7, 18, 7, 18, 3, 2]]);
   assert.equal(report.distributionsMs['PLAY/action/move'].responseToTranscriptMs.mean, -10);
   assert.equal(report.distributionsMs['PLAY/action/move'].requiredDataToMovementPaintOpportunityMs.mean, 30);
 });

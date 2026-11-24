@@ -24,7 +24,6 @@ type QueuedAnnouncement = {
 };
 
 const responseKinds = new Set(['blockDie', 'rerollDie', 'proTestReroll', 'reroll', 'skill', 'kickSkill', 'pileDriver', 'push', 'followUp', 'apothecary', 'argueTheCall', 'bribe', 'interception', 'reactiveSkill', 'reactiveSquare', 'reactionMove', 'reactionEnd']);
-const noMovement = { movementDuration: 0, movement: null };
 
 function sequenceKey(view: SetupState): string {
   return [view.matchId, view.half, view.actor, view.turn, view.turnMode, view.activePlayerId].join(':');
@@ -44,7 +43,7 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
   const [active, setActive] = useState(false);
   const [diceMoment, setDiceMoment] = useState<DiceMoment | null>(null);
   const [tick, setTick] = useState(0);
-  const [movementPresentation, setMovementPresentation] = useState<{ movementDuration: number; movement: PitchMovement | null }>(noMovement);
+  const [movement, setMovement] = useState<PitchMovement | null>(null);
   const [synchronizing, setSynchronizing] = useState(false);
   const [announcement, setAnnouncement] = useState<MatchAnnouncement | null>(null);
   const [announcementExiting, setAnnouncementExiting] = useState(false);
@@ -89,13 +88,13 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
   const clearMovement = () => {
     currentMovement.current?.clock.stop();
     currentMovement.current = null;
-    setMovementPresentation(noMovement);
+    setMovement(null);
   };
-  const presentMovement = (before: SetupState, after: SetupState, movementDuration: number, playerId?: string) => {
-    const movement = pitchMovement(before, after, movementDuration, playerId, currentMovement.current);
+  const presentMovement = (before: SetupState, after: SetupState, duration: number, playerId?: string) => {
+    const nextMovement = pitchMovement(before, after, duration, playerId, currentMovement.current);
     currentMovement.current?.clock.stop();
-    currentMovement.current = movement;
-    setMovementPresentation(movementDuration ? { movement, movementDuration } : noMovement);
+    currentMovement.current = nextMovement;
+    setMovement(nextMovement);
   };
   const cancel = () => {
     catchingUp.current = false;
@@ -380,7 +379,8 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
         // timer tasks alone can still be batched, especially in reduced motion.
         const delay = beat.kind === 'block' || beat.kind === 'player' ? 16 : beat.kind === 'ball' ? BALL_STEP_MS / rate
           : movementBeatMillis(rate, reduced);
-        presentMovement(current, next, reduced || beat.kind === 'block' ? 0 : delay, beat.kind === 'move' ? beat.move.playerId : undefined);
+        if (reduced || beat.kind === 'block' || beat.kind === 'player') clearMovement();
+        else presentMovement(current, next, delay, beat.kind === 'move' ? beat.move.playerId : undefined);
         const nextIndex = index + 1;
         pendingBeat.current = { view: next, delay, advance: () => advance(nextIndex) };
         presentationRevision.current = record.revision;
@@ -480,7 +480,8 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
     onSkipGap: !announcement && announcementShadeHeld && announcementExiting ? dismissAnnouncement : undefined,
   } : undefined;
   const playbackActive = active || !!pendingAnnouncement.current || announcementFading;
-  return { pitchView, presentationRevision: playbackActive ? Math.max(pitchView.revision, presentationRevision.current, diceMoment?.revision ?? -1) : pitchView.revision, provisionalActive: !!provisional.current, playbackActive, diceMoment, synchronizing, ...movementPresentation, beginProvisional,
+  return { pitchView, presentationRevision: playbackActive ? Math.max(pitchView.revision, presentationRevision.current, diceMoment?.revision ?? -1) : pitchView.revision, provisionalActive: !!provisional.current,
+    playbackActive, diceMoment, synchronizing, movement: playbackActive ? movement : null, beginProvisional,
     splash, announcement, announcementExiting, changeHoldAnnouncements: announcementPreferences.changeHoldAnnouncements,
     diceSnapshot: pitchView.revision === snapshotRevision.current };
 }

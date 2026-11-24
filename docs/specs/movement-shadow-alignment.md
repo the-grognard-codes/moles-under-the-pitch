@@ -1,18 +1,18 @@
 # Bug: Player sprites separate from their shadows during movement playback
 
-Issue: #635
+Implementation and acceptance evidence for [issue #635](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/635) are in the [outcome report](movement-shadow-alignment-outcome.md). The reproduction and code references below describe the original renderer at `64f9878bb`.
 
 ## Abstract
 
 While a move plays back, every player sprite and the ball marker trail the camera by up to 200 ms. The ground shadows, turf and grid follow the camera at once. Panning, zooming or revealing during the move therefore pulls each sprite off its shadow and the ball off its square. The coach saw this at 50°: stationary teammates were affected as well as the moving player.
 
-The source shows a second symptom, not yet observed: with the camera still, the moving player's shadow and selection square jump to each new square at the start of a step while the sprite is still on its way there.
+The browser reproduction confirmed a second symptom: with the camera still, the moving player's shadow and selection square jump to each new square at the start of a step while the sprite is still on its way there.
 
 ## Objective
 
 During movement and ball playback, each player's sprite, its shadow and the ball share one projected ground position in every frame, whatever the camera does.
 
-## Context / Existing Behavior
+## Context on the original build
 
 ### Reproduction
 
@@ -22,7 +22,7 @@ During movement and ball playback, each player's sprite, its shadow and the ball
 
 Evidence (local archive, outside git): `archive/performance-reviews/616-pan-during-movement/old-world-50-shadows-one-square-start.json.gz`.
 
-### Cause (read from source; not yet confirmed against the trace)
+### Cause confirmed by the match filmstrip and browser reproduction
 
 1. While playback is active, [GameView.tsx:1143](../../browser-client/src/GameView.tsx) and [HostedResult.tsx:140](../../browser-client/src/HostedResult.tsx) pass `movementDuration` to `LivePitch`, which sets `--pitch-move-duration` on the whole pitch section ([LivePitch.tsx:365](../../browser-client/src/LivePitch.tsx)). A player step sets it to `PLAYER_STEP_MS / rate`, which is 200 ms at normal speed; a ball step sets it to `BALL_STEP_MS / rate`, which is 250 ms ([use-pitch-playback.ts:365-367](../../browser-client/src/use-pitch-playback.ts), [presentation-timing.ts:3-4](../../browser-client/src/presentation-timing.ts)). It stays set between steps until a dice or block beat arrives or playback ends.
 2. [live-pitch.css:501-505](../../browser-client/src/live-pitch.css) transitions `left`, `top`, `width` and `height` on every `.live-marker` and its `img` over that duration. It applies to every player, not only the moving one. Lines 506-508 transition the ball marker's `left` and `top` and the ball highlight's `transform`.
@@ -37,14 +37,14 @@ Evidence (local archive, outside git): `archive/performance-reviews/616-pan-duri
 - Match replay (`HostedResult`) and computer-player moves use the same playback path. The coach's own moves go through the provisional path ([use-pitch-playback.ts:195-212](../../browser-client/src/use-pitch-playback.ts)), which sets the same duration.
 - With `prefers-reduced-motion`, these transitions are off ([live-pitch.css:509-511](../../browser-client/src/live-pitch.css)), so the defect should not appear. That is a cheap check of the cause.
 
-### Code that depends on the current animation
+### Code that depended on the original animation
 
 - [live-pitch.css:46](../../browser-client/src/live-pitch.css) gives every `.play-runtime .live-marker` a permanent 200 ms `left`/`top` transition. Only the more specific rule at line 501 overrides it. If that rule loses its `transition` declaration, every marker eases on every pan, including idle pans.
 - [CircularSkillPrompt.tsx:49](../../browser-client/src/CircularSkillPrompt.tsx), [RectangularDecisionPrompt.tsx:63](../../browser-client/src/RectangularDecisionPrompt.tsx) and [MatchDecisionDialog.tsx:33-40](../../browser-client/src/MatchDecisionDialog.tsx) place prompts from the `.live-marker` bounding boxes.
 - [gameplay-performance-observer.mjs:83 and 297-299](../../browser-client/test/gameplay-performance-observer.mjs) records the marker's CSS transition in its traces and describes movement in terms of it. This is the tool #616 measures with.
 - [cadence-ui.mjs:252](../../browser-client/test/cadence-ui.mjs) checks that a replay seek moves a marker with no transition.
 
-### Coverage gap
+### Original coverage gap
 
 [projected-pitch-ui.mjs:279-367](../../browser-client/test/projected-pitch-ui.mjs) checks shadow alignment only when the pitch is at rest. No test samples a frame during a step. [playback-ui-harness.tsx](../../browser-client/test/playback-ui-harness.tsx) already drives playback and is a likely base for one.
 
@@ -85,17 +85,17 @@ Evidence (local archive, outside git): `archive/performance-reviews/616-pan-duri
 
 ## Acceptance Criteria
 
-- [ ] In the 50° reproduction, a stationary teammate keeps its at-rest boot-to-shadow offset, within 1 CSS pixel, in every sampled frame during the drag and after release.
-- [ ] With the camera still, the moving player's shadow and selection square stay under its boots for every step of a multi-square move.
-- [ ] When the camera reverses direction mid-step, the moving player's shadow stays under its boots.
-- [ ] During a pan, a carried ball's highlight stays under its carrier, and a loose ball's scatter or bounce lands on its authoritative square. In every sampled frame, the highlight ring matches the ground-plane projection at the ball's displayed position.
-- [ ] The first four criteria also hold at 90° top-down and at 30°, from both coach ends.
-- [ ] Wheel zoom during a move keeps every sprite on its shadow.
-- [ ] After playback, every piece rests on its authoritative square with the at-rest offsets that `projected-pitch-ui.mjs` already checks.
-- [ ] A match replay passes the stationary-teammate check at 1× and 2× speed. Seek and "Skip animations" move pieces with no animation.
-- [ ] An idle pan, with no playback, moves every marker with the camera and no easing.
-- [ ] With reduced motion, pieces move without animation and players stay on their shadows.
-- [ ] At 50°, the frame intervals of a pan during a multi-square move are no worse than before the change (p50 and p95, same machine and capture method).
+- [x] In the 50° reproduction, a stationary teammate keeps its at-rest boot-to-shadow offset, within 1 CSS pixel, in every sampled frame during the drag and after release.
+- [x] With the camera still, the moving player's shadow and selection square stay under its boots for every step of a multi-square move.
+- [x] When the camera reverses direction mid-step, the moving player's shadow stays under its boots.
+- [x] During a pan, a carried ball's highlight stays under its carrier, and a loose ball's scatter or bounce lands on its authoritative square. In every sampled frame, the highlight ring matches the ground-plane projection at the ball's displayed position.
+- [x] The first four criteria also hold at 90° top-down and at 30°, from both coach ends.
+- [x] Wheel zoom during a move keeps every sprite on its shadow.
+- [x] After playback, every piece rests on its authoritative square with the at-rest offsets that `projected-pitch-ui.mjs` already checks.
+- [x] A match replay passes the stationary-teammate check at 1× and 2× speed. Seek and "Skip animations" move pieces with no animation.
+- [x] An idle pan, with no playback, moves every marker with the camera and no easing.
+- [x] With reduced motion, pieces move without animation and players stay on their shadows.
+- [x] At 50°, the frame intervals of a pan during a multi-square move are no worse than before the change (p50 and p95, same machine and capture method).
 
 ## Constraints
 

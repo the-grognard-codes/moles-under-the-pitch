@@ -15,6 +15,7 @@ declare global {
     playbackInput: Input;
     publishPlayback: (input: Input) => void;
     playbackActions: string[];
+    playbackIntents: ({ playerId: string } | { x: number; y: number })[];
     beginProvisional: (route: RoutePreview) => void;
     holdPlaybackAnnouncements: (hold: boolean) => void;
     playbackFrames: { monotonicMs: number; authoritativeRevision: number; announcementExiting: boolean; announcementRate: number; ms: number; revision: number; x: number | null; actorX: number | null; ballX: number | null;
@@ -25,12 +26,14 @@ function Harness() {
   const [input, setInput] = useState(window.playbackInput);
   window.publishPlayback = setInput;
   window.playbackActions ??= [];
-  const { pitchView, playbackActive, diceMoment, diceSnapshot, movementDuration, movement, beginProvisional, synchronizing,
+  window.playbackIntents ??= [];
+  const { pitchView, playbackActive, diceMoment, diceSnapshot, movement, beginProvisional, synchronizing,
     announcement, announcementExiting, splash, changeHoldAnnouncements } =
     usePitchPlayback(input.view, input.records, input.enabled, input.speed ?? 1, input.mode, input.requestPending ?? null, input.snapshotKey);
   window.beginProvisional = beginProvisional;
   window.holdPlaybackAnnouncements = changeHoldAnnouncements;
   const announcementRate = splash?.rate ?? 1;
+  const movementDuration = movement?.duration ?? 0;
   useLayoutEffect(() => {
     window.playbackFrames.push({ monotonicMs: performance.now(), authoritativeRevision: input.view.revision, announcementExiting, announcementRate, ms: Date.now(), revision: pitchView.revision, x: pitchView.players[0]?.x ?? null,
       actorX: pitchView.players.find(player => player.id === 'actor')?.x ?? null,
@@ -44,10 +47,10 @@ function Harness() {
     <LivePitch view={pitchView} selectedId={input.selectedId ?? ''} actions={[]} diceMoment={diceMoment} readOnly={!input.interactive || playbackActive} playback={playbackActive}
       splash={splash}
       diceSnapshot={diceSnapshot && !playbackActive}
-      movementDuration={playbackActive ? movementDuration : 0} movement={playbackActive ? movement : null}
+      movement={movement}
       decision={input.interactive && !playbackActive ? matchDecision(input.view, input.view.actions) : null}
       onDecisionAction={id => window.playbackActions.push(id)}
-      onSelectPlayer={() => {}} onSquare={() => {}}/>
+      onSelectPlayer={playerId => window.playbackIntents.push({ playerId })} onSquare={(x, y) => window.playbackIntents.push({ x, y })}/>
     <div id="dice-specimens">{['1','2','3','4','5','6','SKULL','BOTH DOWN','PUSHBACK','PUSHBACK','POW/PUSH','POW','unknown'].map((face,index) => <DiceFace key={index} face={face} selected={index===11}/>)}</div>
   </main>;
 }

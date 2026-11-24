@@ -19,10 +19,7 @@ export function summarizeGameplayPerformance(events, metadata = {}) {
       const key = `${event.documentId}:${event.requestId}`;
       const motion = routeMotion.get(key) ?? { documentId: event.documentId, requestId: event.requestId, role: event.role, samples: [] };
       const sample = [event.at, event.x, event.y];
-      // Keep the sample layout comparable with captures of the CSS transition.
-      const inlineLeft = event.inlineLeft ?? event.targetLeft;
-      const inlineTop = event.inlineTop ?? event.targetTop;
-      if (Number.isFinite(inlineLeft)) sample.push(inlineLeft, inlineTop,
+      if (Number.isFinite(event.inlineLeft)) sample.push(event.inlineLeft, event.inlineTop,
         event.computedLeft, event.computedTop, event.sceneLeft, event.sceneTop);
       motion.samples.push(sample); routeMotion.set(key, motion); continue;
     }
@@ -79,7 +76,7 @@ export function summarizeGameplayPerformance(events, metadata = {}) {
       pendingRemovedBeforePaint: matches.filter(trace => trace.pendingRemovedBeforePaint === true).length,
       missingTranscript: matches.filter(trace => trace.code === 'ACCEPTED' && !Number.isFinite(trace.transcriptAt)).length };
   };
-  return { formatVersion: 1, metadata: { platform: platform(), osRelease: release(), cpu: cpus()[0]?.model,
+  return { formatVersion: 2, metadata: { platform: platform(), osRelease: release(), cpu: cpus()[0]?.model,
     logicalProcessors: cpus().length, memoryBytes: totalmem(), ...metadata },
     semantics: { clock: 'performance.timeOrigin + performance.now(), milliseconds',
       paint: 'requestAnimationFrame paint opportunity; not actual GPU presentation or physical display latency',
@@ -299,7 +296,8 @@ export function installGameplayPerformanceObserver() {
       const rect = marker.getBoundingClientRect();
       const style = getComputedStyle(marker);
       if (!trace.motionAnimation) {
-        trace.motionAnimation = { space: 'pitch', stepDurationMs: Number(marker.closest('.projected-pitch').dataset.movementDuration),
+        const duration = marker.closest('.projected-pitch')?.dataset.movementDuration;
+        trace.motionAnimation = { space: 'pitch', stepDurationMs: duration === undefined ? null : Number(duration),
           reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches };
         send(trace);
       }

@@ -29,8 +29,7 @@ function Harness() {
       records={input.records} logLoading={false} logUnavailable={false}/>
     <LivePitch view={playback.pitchView} selectedId="" actions={[]} showToolbar={false} debugOpen={false}
       readOnly={playback.playbackActive} playback={playback.playbackActive}
-      diceMoment={playback.diceMoment} movementDuration={playback.playbackActive ? playback.movementDuration : 0}
-      movement={playback.playbackActive ? playback.movement : null}
+      diceMoment={playback.diceMoment} movement={playback.movement}
       splash={playback.splash ? { ...playback.splash, colors: input.colors } : undefined}
       onSquare={() => { window.pitchClicks++; }} onSelectPlayer={() => { window.pitchClicks++; }}/>
     </div></div></div>

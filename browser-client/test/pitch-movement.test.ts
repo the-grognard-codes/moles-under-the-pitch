@@ -33,10 +33,43 @@ test('an interrupted step starts at the last displayed position and a late frame
   const next = pitchMovement(atSquare(8), atSquare(9), 200, carrier, first)!;
   first.clock.stop();
   assert.deepEqual(next.player?.from, { x: 7.375, y: 7 });
-  assert.deepEqual(next.ball?.from, next.player?.from);
-  assert.deepEqual(next.ball?.to, { x: 9, y: 7 });
+  assert.equal(next.ball?.kind, 'carried');
+  assert.equal(next.ball?.path, next.player);
+  assert.deepEqual(next.ball?.path.to, { x: 9, y: 7 });
   next.clock.start();
   now += 800;
   nextFrame!(now);
   assert.equal(next.clock.snapshot(), 1);
+});
+
+test('an independent ball path retains travel when a native beat gives it a carrier', () => {
+  const { ballState, ...base } = atSquare(7);
+  const loose = { ...base, ball: { x: 4, y: 5 }, ballState: { ...ballState, moving: true, carrierPlayerId: null } };
+  const caught = pitchMovement(loose, atSquare(7), 250, undefined, null);
+  assert.equal(caught?.ball?.kind, 'loose');
+  assert.deepEqual(caught?.ball?.path.from, { x: 4, y: 5 });
+  assert.deepEqual(caught?.ball?.path.to, { x: 7, y: 7 });
+
+  const pickup = pitchMovement({ ...loose, ball: { x: 8, y: 7 } }, atSquare(8), 200, carrier, null);
+  assert.ok(pickup?.player);
+  assert.equal(pickup.ball?.kind, 'loose', 'The ball remains loose while the player approaches');
+  assert.deepEqual(pickup.ball.path.from, { x: 8, y: 7 });
+  assert.deepEqual(pickup.ball.path.to, pickup.ball.path.from, 'The ball stays on the pickup square');
+  assert.equal(pickup.ball.path.clock, pickup.player.clock);
+});
+
+test('kickoff travels when the pitch displays a ball outside native play', () => {
+  const kickoff = (x: number) => {
+    const state = atSquare(x);
+    return { ...state, actions: [], driveTracker: { version: 1 as const, receivingRole: 'home' as const, phase: 'KICKOFF' as const,
+      secretWeapons: false, knockouts: false, event: null, eventComplete: false },
+      ballState: { ...state.ballState, inPlay: false, carrierPlayerId: null } };
+  };
+  const before = kickoff(5);
+  const after = kickoff(8);
+  const kick = pitchMovement(before, after, 250, undefined, null);
+  assert.equal(kick?.ball?.kind, 'loose');
+  assert.deepEqual(kick?.ball?.path.from, { x: 5, y: 7 });
+  assert.deepEqual(kick?.ball?.path.to, { x: 8, y: 7 });
+  assert.equal(pitchMovement({ ...before, driveTracker: undefined }, { ...after, driveTracker: undefined }, 250, undefined, null), null);
 });
