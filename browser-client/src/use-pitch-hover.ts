@@ -33,22 +33,33 @@ export function usePitchHover(scene: RefObject<HTMLDivElement | null>, camera: P
     const document = scene.current!.ownerDocument, window = document.defaultView!;
     let frame = 0;
     const animations = new Set<Animation>();
+    const pendingTargets = new Set<Element>();
     const schedule = () => {
       if (!frame && pointer.current) frame = window.requestAnimationFrame(() => {
-        frame = 0; refresh.current();
+        frame = 0;
+        if (!pointer.current) {
+          pendingTargets.clear();
+          animations.clear();
+          return;
+        }
+        for (const target of pendingTargets) {
+          for (const animation of target.getAnimations()) {
+            // Infinite decorative effects must not keep the hover loop alive.
+            if (animation.playState === 'running' && Number.isFinite(animation.effect?.getComputedTiming().endTime))
+              animations.add(animation);
+          }
+        }
+        pendingTargets.clear();
+        refresh.current();
         for (const animation of animations) if (animation.playState !== 'running') animations.delete(animation);
         if (animations.size) schedule();
       });
     };
     scheduleRefresh.current = schedule;
     const animate = (event: Event) => {
-      if (!(event.target instanceof Element)) return;
-      for (const animation of event.target.getAnimations()) {
-        // Recheck sliding/resizing panels during their transition. Infinite
-        // decorative effects must not turn hover into a permanent render loop.
-        if (animation.playState === 'running' && Number.isFinite(animation.effect?.getComputedTiming().endTime))
-          animations.add(animation);
-      }
+      const target = event.target;
+      if (!pointer.current || !(target instanceof Element) || target.closest('.live-marker, .live-ball-marker')) return;
+      pendingTargets.add(target);
       schedule();
     };
     const move = (event: PointerEvent) => {
