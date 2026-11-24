@@ -15,9 +15,11 @@ they help a reviewer assess the trade-off.
   Draft it on the PR branch as `docs/adr/<slug>.md` and refer to it by the
   issue number. Link the draft to its request and issue.
 - When the maintainer accepts the decision as ready for use, the PR author
-  records `accepted`, the date and the approval link. In that same revision,
-  take the next unused four-digit number on current `main`, rename the file to
-  `docs/adr/NNNN-<slug>.md`, and update its references and the architecture map.
+  records `accepted`, the date and the approval link. Approval of an ADR
+  requirement is distinct from acceptance of its final policy. In that same
+  revision, take the next unused four-digit number on current `main`, rename
+  the file to `docs/adr/NNNN-<slug>.md`, and update its references and the
+  architecture map.
   Submit that numbered revision for the approving PR review and required checks.
 - Recheck the number against `main` immediately before merge. If another ADR
   has taken it, update the number and references and have the revised head
