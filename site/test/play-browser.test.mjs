@@ -698,9 +698,12 @@ test('observer correlates wire data and changed DOM while ignoring stale dice', 
     assert.equal(provisional.provisionalMovementObserved, true);
     assert.ok(provisional.movementPaintAt >= provisional.movementDomAt);
     await waitForObserver(() => events.filter(event => event.kind === 'motion').length >= 3);
-    const motion = summarizeGameplayPerformance(events).routeMotion[0];
-    assert.ok(new Set(motion.samples.map(sample => sample[1])).size > 1, 'rAF geometry captures interpolated travel separately from the committed target coordinate');
-    assert.ok(summarizeGameplayPerformance(events).traces.find(item => item.requestId === 'request-b').firstScreenMovementAt >= provisional.movementDomAt);
+    const report = summarizeGameplayPerformance(events);
+    const motion = report.routeMotion[0];
+    assert.ok(new Set(motion.samples.map(sample => sample[1])).size > 1, 'Successive frames capture distinct displayed marker positions');
+    const moved = report.traces.find(item => item.requestId === 'request-b');
+    assert.equal(moved.motionAnimation.stepDurationMs, null, 'Markers outside a projected pitch have no reported step duration');
+    assert.ok(moved.firstScreenMovementAt >= provisional.movementDomAt);
     assert.equal(JSON.stringify(events).includes('geometryPlayerId'), false);
     const beforeReload = summarizeGameplayPerformance(events).traces.length;
     await page.reload();

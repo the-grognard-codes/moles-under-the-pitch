@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Keep players, their shadows, selection squares and the ball aligned with the pitch while moving, panning and zooming in live matches and replays.
 - Acknowledge an expired match from its lobby card or direct link to remove it for your account across devices. Each coach controls their own listing. The server now requires schema 11.
 
 - Show the remaining resume time for quiet matches in the lobby and explain when a match has expired on its direct link.

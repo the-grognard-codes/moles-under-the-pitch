@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { PitchProjection, type Point } from './pitch-projection.ts';
 
+const pitchPieces = '.live-marker, .live-ball-marker, .live-player-shadow, [data-selection]';
+
 /** Track physical hover independently of selection, keyboard focus and game intents. */
 export function usePitchHover(scene: RefObject<HTMLDivElement | null>, camera: PitchProjection, enabled: boolean) {
   const pointer = useRef<Point | null>(null);
@@ -60,7 +62,7 @@ export function usePitchHover(scene: RefObject<HTMLDivElement | null>, camera: P
       const target = event.target;
       // Ground and player hits use the same camera-projected square. The ball ignores pointer events.
       // Sliding panels can cover that square even while the pointer stays still.
-      if (!pointer.current || !(target instanceof Element) || target.closest('.live-marker, .live-ball-marker')) return;
+      if (!pointer.current || !(target instanceof Element) || target.closest(pitchPieces)) return;
       pendingTargets.add(target);
       schedule();
     };
@@ -87,8 +89,10 @@ export function usePitchHover(scene: RefObject<HTMLDivElement | null>, camera: P
     window.addEventListener('blur', clear);
     window.addEventListener('resize', schedule);
     // Panels can open, close or resize beneath a stationary pointer without
-    // rerendering LivePitch. Coalesce their DOM changes into one hit test.
-    const observer = new MutationObserver(schedule);
+    // rerendering LivePitch. Piece geometry does not change the ground hit.
+    const observer = new MutationObserver(records => {
+      if (pointer.current && records.some(({ target }) => !(target instanceof Element) || !target.closest(pitchPieces))) schedule();
+    });
     observer.observe(document.body, { subtree: true, childList: true, attributes: true,
       attributeFilter: ['class', 'style', 'hidden', 'open'] });
     return () => {

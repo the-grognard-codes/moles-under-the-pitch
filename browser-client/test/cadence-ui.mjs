@@ -38,6 +38,7 @@ mkdirSync(evidence, { recursive: true });
 const publish = input => page.evaluate(input => window.publishPlayback(input), { enabled: true, mode: 'live', ...input });
 const output = () => page.locator('#playback-state').evaluate(out => ({ x: Number(out.dataset.x),
   revision: Number(out.dataset.revision), active: out.dataset.active === 'true', duration: Number(out.dataset.duration) }));
+const shownPlayerY = () => page.locator(`.live-marker[data-player-id="${initial.players[0].id}"]`).getAttribute('data-center-y');
 const at = (x, active) => page.waitForFunction(({ x, active }) => {
   const out = document.querySelector('#playback-state');
   return Number(out.dataset.x) === x && out.dataset.active === String(active);
@@ -121,6 +122,63 @@ async function assertPlaybackPanHover() {
       'Only the overlay is inspected and its events share one frame read');
   } finally {
     await page.evaluate(() => window.hoverAnimationProbe.restore());
+  }
+}
+async function assertReplayMovementDoesNotRefreshHover() {
+  const base = loose(0, 12), target = loose(1, 13, 8);
+  await reset(base);
+  const scene = page.locator('.live-pitch-scene');
+  const bounds = await scene.boundingBox();
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.clock.runFor(34);
+  assert.equal(await page.locator('.live-hover-square').count(), 1);
+  await publish({ view: target, records: [record(base), record(target, [sync([move(8), ball(13)])])], mode: 'replay' });
+  await at(8, true);
+  await page.clock.runFor(34);
+  const ballCenter = () => page.locator('.live-ball-marker').evaluate(marker => marker.style.top);
+  const firstCenter = await ballCenter();
+  await page.evaluate(() => {
+    const hitTest = document.elementFromPoint;
+    window.replayHoverHits = 0;
+    document.elementFromPoint = function (x, y) {
+      window.replayHoverHits++;
+      return hitTest.call(this, x, y);
+    };
+  });
+  try {
+    for (let frame = 0; frame < 6; frame++) await page.clock.runFor(17);
+    assert.notEqual(await ballCenter(), firstCenter, 'The ball continues moving while the pointer rests');
+    assert.equal(await page.evaluate(() => window.replayHoverHits), 0, 'Moving pieces introduce no redundant hover hit tests');
+    assert.equal(await page.locator('.live-hover-square').count(), 1, 'Replay retains the hover square under the pointer');
+  } finally {
+    await page.evaluate(() => { delete document.elementFromPoint; });
+  }
+}
+async function assertMovementTimerCompletesWithoutFrames() {
+  await reset(state(0, 8));
+  const intermediateY = await shownPlayerY();
+  await reset();
+  const startY = await shownPlayerY();
+  assert.notEqual(startY, intermediateY);
+  await page.evaluate(() => {
+    const request = window.requestAnimationFrame;
+    const cancel = window.cancelAnimationFrame;
+    window.requestAnimationFrame = () => -1;
+    window.cancelAnimationFrame = id => { if (id !== -1) cancel(id); };
+    window.restoreCadenceFrames = () => {
+      window.requestAnimationFrame = request;
+      window.cancelAnimationFrame = cancel;
+    };
+  });
+  try {
+    await publish({ view: state(1, 9), records: [record(state(0)), record(state(1, 9), [sync([move(8), move(9)])])] });
+    await at(8, true);
+    assert.equal(await shownPlayerY(), startY, 'The first step has no frame in which to advance');
+    await page.clock.runFor(200);
+    await at(9, true);
+    assert.equal(await shownPlayerY(), intermediateY, 'The timer settles the first step before the next uses its position');
+  } finally {
+    await page.evaluate(() => { window.restoreCadenceFrames(); delete window.restoreCadenceFrames; });
   }
 }
 try {
@@ -251,11 +309,14 @@ try {
   await page.clock.runFor(1000); await at(23, false);
 
   // Background tabs consume current snapshots rather than building a backlog.
+  await reset(state(0, 10));
+  const backgroundTargetY = await shownPlayerY();
   await reset();
   const route = record(state(1, 10), [sync([move(8), move(9), move(10)])]);
   await publish({ view: route.state, records: [record(state(0)), route] }); await at(8, true);
   await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: true }); document.dispatchEvent(new Event('visibilitychange')); });
   await at(10, false);
+  assert.equal(await shownPlayerY(), backgroundTargetY, 'Hiding the tab settles the displayed marker at the latest snapshot');
   const restored = { ...state(2, 12), actions: [{ id: 'block', kind: 'blockDie', actor: 'home', label: 'Choose POW (die 1)', sourcePlayerId: 'home1', target: null }] };
   await publish({ view: restored, records: [record(state(0)), route, record(restored, [sync([], [block])])] }); await at(12, false);
   await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: false }); document.dispatchEvent(new Event('visibilitychange')); });
@@ -321,16 +382,33 @@ try {
   const replayMarker = hosted.locator(`.replay-board .live-marker[data-player-id="${initial.players[0].id}"]`);
   const replayAt = x => hosted.waitForFunction(({ id, x }) => document.querySelector(`.replay-board [data-player-id="${id}"]`)
     ?.getAttribute('aria-label')?.endsWith(`square ${x}, 7`), { id: initial.players[0].id, x });
+  const assertReplayPosition = async x => {
+    const delta = await replayMarker.evaluate(async (marker, x) => {
+      const { PitchProjection } = await import('/src/pitch-projection.ts');
+      const scene = marker.closest('.live-pitch-scene');
+      const camera = new PitchProjection({
+        width: parseFloat(scene.style.width), height: parseFloat(scene.style.height), end: scene.dataset.end,
+        mode: scene.dataset.projection, perspectiveElevation: Number(scene.dataset.elevation) === 90 ? 50 : Number(scene.dataset.elevation),
+        zoom: Number(scene.dataset.zoom), focus: Number(scene.dataset.focus), transverseFocus: Number(scene.dataset.transverseFocus),
+      });
+      const expected = camera.project({ x: x + .5, y: 7.5 });
+      const surface = scene.getBoundingClientRect(), rect = marker.getBoundingClientRect();
+      return Math.hypot(rect.left - surface.left + rect.width / 2 - expected.x,
+        rect.top - surface.top + rect.height / 2 - expected.y);
+    }, x);
+    assert.ok(delta < 1, `Hosted replay immediately renders square ${x}, 7 (offset ${delta} CSS pixels)`);
+  };
   await replayAt(7);
   await hosted.getByLabel('Event', { exact: true }).fill('2');
   await hosted.getByRole('button', { name: 'Seek', exact: true }).click();
   await replayAt(10);
-  assert.equal(await replayMarker.evaluate(node => getComputedStyle(node).transitionDuration.split(',')[0].trim()), '0s');
+  await assertReplayPosition(10);
   await hosted.getByRole('combobox', { name: /Speed/ }).selectOption('2');
   await hosted.getByRole('button', { name: 'Next', exact: true }).click(); await replayAt(11);
   await hosted.clock.runFor(99); await replayAt(11);
   await hosted.clock.runFor(1); await replayAt(12);
   await hosted.getByLabel('Skip animations').check(); await replayAt(13);
+  await assertReplayPosition(13);
   await hosted.clock.runFor(1000); await replayAt(13);
   await hosted.getByLabel('Skip animations').uncheck();
   await hosted.getByRole('button', { name: 'Last', exact: true }).click(); await replayAt(15);
@@ -338,6 +416,8 @@ try {
   await hosted.close();
   writeFileSync(resolve(evidence, 'frames.json'), JSON.stringify(await page.evaluate(() => window.playbackFrames), null, 2));
   await assertPlaybackPanHover();
+  await assertReplayMovementDoesNotRefreshHover();
+  await assertMovementTimerCompletesWithoutFrames();
   assert.deepEqual(errors, []);
-  console.log('PASS: playback pan hover, fixed coach/spectator cadence, prompt gating, grouped rolls, ball/catch order, reduced motion, replay rates/seek/skip, background recovery.');
+  console.log('PASS: playback pan and replay hover, fixed coach/spectator cadence, prompt gating, grouped rolls, ball/catch order, reduced motion, replay rates/seek/skip, dropped frames, background recovery.');
 } finally { await browser.close(); await server.close(); }

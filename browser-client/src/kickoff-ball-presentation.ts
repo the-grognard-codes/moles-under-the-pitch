@@ -1,5 +1,13 @@
 import { PITCH_LENGTH, PITCH_WIDTH, type Point } from './pitch-projection.ts';
-import type { SetupAction, SetupState } from './setup-protocol.ts';
+import type { BallState, SetupAction, SetupState } from './setup-protocol.ts';
+
+export const kickoffBallState: BallState = { version: 1, inPlay: true, moving: true, carrierPlayerId: null };
+
+/** Kickoff shows the ball before native possession considers it in play. */
+export function pitchBallState(view: SetupState): BallState | undefined {
+  return view.kickPreview || view.driveTracker?.phase === 'KICKOFF' || view.actions.some(action => action.kind === 'kickSkill')
+    ? kickoffBallState : view.ballState;
+}
 
 /** Legal actions can be visible to both coaches; only their owner places the kick. */
 export function kickoffPlacementTarget(view: SetupState, actions: SetupAction[], pinned: SetupAction | undefined,
