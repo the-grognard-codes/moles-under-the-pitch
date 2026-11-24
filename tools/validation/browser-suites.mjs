@@ -3,7 +3,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
-import { loadBrowserManifest, summarize } from './coverage.mjs';
+import { BROWSER_REPORT_SCHEMA_VERSION, loadBrowserManifest, summarize } from './coverage.mjs';
 
 const repository = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -59,7 +59,7 @@ export async function executeShard({ root, family, shard, suites, commit, report
     const metrics = hosted ? parseTestSummary(output) : { tests: 1, failures: 0, errors: 0, skipped: 0 };
     executed.push({ id, durationMs: performance.now() - started, ...metrics });
   }
-  const report = { schemaVersion: 1, family, shard, commit, passed: true, suites: executed };
+  const report = { schemaVersion: BROWSER_REPORT_SCHEMA_VERSION, family, shard, commit, passed: true, suites: executed };
   await writeFile(reportPath, `${JSON.stringify(report, null, 2)}\n`);
   await summarize(executed.map(suite => ({ ...suite, family, shard })));
   return report;

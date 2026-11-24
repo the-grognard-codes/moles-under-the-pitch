@@ -172,7 +172,7 @@ jobs:
         shell: pwsh
         run: ./tools/validation/test-native-shard.ps1
 
-      - name: Run target Maven verify with isolated state-test shard
+      - name: Run target Maven verify with isolated test shard
         shell: pwsh
         run: ./tools/validation/native-shard.ps1 -Shard ${{ matrix.shard }} -JavaHome $env:JAVA_HOME
 

@@ -41,6 +41,7 @@
     </dependencies>
     <profiles>
         <profile>
+            <!-- Keep this profile in sync with native-shard in ffb-server/pom.xml. -->
             <id>native-shard</id>
             <activation>
                 <property>
