@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Show the remaining resume time for quiet matches in the lobby and explain when a match has expired on its direct link.
 - Review animated sprites on a DOM pitch using the live player placement helpers. Retired the development renderer comparison and removed the PixiJS dependency.
 
 - Reduce pitch panning stalls while players and the ball are moving.

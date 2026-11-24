@@ -68,6 +68,7 @@
       "browser-client/test/misc-fix-rollup-ui.mjs",
       "browser-client/test/preparation-lifecycle-ui.mjs",
       "browser-client/test/lobby-read-bounds-ui.mjs",
+      "browser-client/test/current-match-expiry-ui.mjs",
       "browser-client/test/computer-selection-ui.mjs",
       "browser-client/test/movement-range-ui.mjs",
       "browser-client/test/threat-ui.mjs",

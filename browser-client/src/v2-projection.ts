@@ -30,7 +30,7 @@ const fields: Record<string, string[]> = {
   teamValidation: ['catalogVersion', 'ruleset', 'draftVersion', 'valid', 'budget', 'skillPoints', 'messages', 'total'],
 };
 
-export function assertV2Projection(message: Record<string, unknown>) {
+export function assertV2Projection(message: Record<string, unknown>, includeResumeDetails = false) {
   const specific = typeof message.type === 'string' && Object.hasOwn(fields, message.type) ? fields[message.type] : null;
   if (!specific) throw Error('Unknown recipient projection');
   const allowed = ['version', 'type', 'requestId', ...specific];
@@ -52,6 +52,13 @@ export function assertV2Projection(message: Record<string, unknown>) {
     if (message.detailVersion !== 1) throw Error('Unsupported diagnostic detail version');
     allowed.push('detailVersion');
   }
+  let serverNow: number | undefined;
+  if (message.type === 'currentMatches' && includeResumeDetails && Object.hasOwn(message, 'serverNow')) {
+    if (typeof message.serverNow !== 'number' || !Number.isSafeInteger(message.serverNow) || message.serverNow < 0)
+      throw Error('Invalid current match server time');
+    allowed.push('serverNow');
+    serverNow = message.serverNow;
+  }
   if (Object.keys(message).length !== allowed.length || allowed.some(key => !Object.hasOwn(message, key)))
     throw Error('Unexpected recipient fields');
   if (message.requestId !== null && (typeof message.requestId !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(message.requestId)))
@@ -66,7 +73,7 @@ export function assertV2Projection(message: Record<string, unknown>) {
   }
   if (message.type === 'currentMatches') {
     if (message.code !== 'ACCEPTED') throw Error('Invalid current match response');
-    decodeCurrentMatches(message.matches, message.next);
+    decodeCurrentMatches(message.matches, message.next, serverNow);
   }
   if (message.type === 'computerJobs' && (!Array.isArray(message.matches) || message.matches.length > 1024
     || message.matches.some(id => typeof id !== 'string' || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id))))
