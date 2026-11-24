@@ -253,6 +253,44 @@ class BrowserV2AdapterTest {
 		verify(setup, never()).handleWithOutcome(any(String.class), any(JsonObject.class));
 	}
 
+	@Test void onlyOptedInCurrentMatchesIncludeExpiryAndTheServerClock() throws Exception {
+		AuthenticatedPrincipal player = principal(FIRST, ApplicationScope.PLAYER);
+		V2MatchAccess access = mock(V2MatchAccess.class);
+		when(access.currentMatches(player, null)).thenReturn(List.of(new MatchMembership(MATCH, FIRST, "home"),
+			new MatchMembership(SECOND, FIRST, "away")));
+		SetupApplication setup = mock(SetupApplication.class);
+		FrozenTeam team = frozenTeam("The Reavers", "human", 1000000);
+		MatchDocument.Member home = new MatchDocument.Member("home", "home", team), away = new MatchDocument.Member("away", "away", team);
+		Map<String, MatchDocument> documents = Map.of(MATCH, new MatchDocument(MATCH, 3, "away", MatchDocument.Lifecycle.ACTIVATED, home, away),
+			SECOND, new MatchDocument(SECOND, 3, "away", MatchDocument.Lifecycle.ACTIVATED, home, away));
+		when(setup.browseDocuments(any(), any())).thenReturn(documents);
+		when(setup.browseStates(any(), any())).thenReturn(Map.of(MATCH, new JsonObject().add("phase", "PLAY")));
+		Clock clock = Clock.fixed(java.time.Instant.ofEpochMilli(100_000L), java.time.ZoneOffset.UTC);
+		when(setup.currentMatchStates(any(), eq(documents), eq(clock.millis()), any())).thenReturn(Map.of(
+			MATCH, new JsonObject().add("phase", "PLAY").add("expired", true),
+			SECOND, new JsonObject().add("phase", "SETUP").add("resumeUntil", 110_000L)));
+		BrowserV2Adapter adapter = new BrowserV2Adapter(bearer -> player, access, setup, null, null, null,
+			new ComputerOpponentService(null), clock);
+		Connection connection = new Connection();
+		adapter.receive(connection, authenticate("auth", "player").toString());
+		adapter.receive(connection, request("currentMatches", "old").add("after", JsonValue.NULL).toString());
+		JsonObject legacy = JsonObject.readFrom(connection.messages.get(1));
+		assertNull(legacy.get("serverNow"));
+		JsonObject legacyMatch = legacy.get("matches").asArray().get(0).asObject();
+		assertEquals("ACTIVATED", legacyMatch.getString("lifecycle", null));
+		assertNull(legacyMatch.get("resumeUntil"));
+		adapter.receive(connection, request("currentMatches", "new").add("after", JsonValue.NULL).add("includeResumeDetails", true).toString());
+		JsonObject optedIn = JsonObject.readFrom(connection.messages.get(2));
+		assertEquals(clock.millis(), optedIn.getLong("serverNow", -1));
+		JsonArray entries = optedIn.get("matches").asArray();
+		assertEquals("EXPIRED", entries.get(0).asObject().getString("lifecycle", null));
+		assertNull(entries.get(0).asObject().get("resumeUntil"));
+		assertEquals("ACTIVATED", entries.get(1).asObject().getString("lifecycle", null));
+		assertEquals(110_000L, entries.get(1).asObject().getLong("resumeUntil", -1));
+		adapter.receive(connection, request("currentMatches", "bad").add("after", JsonValue.NULL).add("includeResumeDetails", "true").toString());
+		assertEquals("MALFORMED_MESSAGE", code(connection, 3));
+	}
+
 	@Test void currentMatchesRequireAuthorizationAndReturnAPagingCursorWithoutRestoringEngines() throws Exception {
 		AuthenticatedPrincipal player = principal(FIRST, ApplicationScope.PLAYER);
 		V2MatchAccess access = mock(V2MatchAccess.class);

@@ -16,7 +16,7 @@ import { MovementRangeQueue, MovementRangeRead, matchesMovementRange } from './m
 import { HostedResult } from './HostedResult.tsx';
 import { Spectate } from './Spectate.tsx';
 import { MatchupTeam } from './MatchupTeam.tsx';
-import { currentMatchStatus } from './current-matches-protocol.ts';
+import { currentMatchStatus, resumeTimeLabel } from './current-matches-protocol.ts';
 import type { CurrentMatch } from './current-matches-protocol.ts';
 import { LobbyConcession } from './lobby-concession.ts';
 import { computerCoaches } from './computer-coaches.ts';
@@ -25,6 +25,9 @@ import { ComputerCoachPicker } from './ComputerCoachPicker.tsx';
 import type { ConcessionStatus } from './lobby-concession.ts';
 import './play-brand.css';
 import './play-lobby.css';
+
+type LobbyMatch = CurrentMatch & { resumeCutoff?: number };
+const checkingMatchStatus = (match: LobbyMatch, now: number) => match.resumeCutoff !== undefined && match.resumeCutoff <= now;
 
 export function mountPlay(element: HTMLElement, options: { url: string; getToken: () => Promise<string>; environment?: string }) {
   const root = createRoot(element);
@@ -63,13 +66,12 @@ function Play({ options }: { options: { url: string; getToken: () => Promise<str
   const [invite, setInvite] = useState(() => new URLSearchParams(location.search).get('invite') ?? sessionStorage.getItem('moles.play.invitation') ?? '');
   const [matchId, setMatchId] = useState(() => new URLSearchParams(location.search).get('matchId') ?? '');
   const [prepared, setPrepared] = useState<V2Message | null>(null);
-  const [currentMatches, setCurrentMatches] = useState<CurrentMatch[]>([]);
+  const [currentMatches, setCurrentMatches] = useState<LobbyMatch[]>([]);
+  const [lobbyNow, setLobbyNow] = useState(() => performance.now());
   const [currentMatchesLoading, setCurrentMatchesLoading] = useState(false);
   const [currentMatchesError, setCurrentMatchesError] = useState('');
   const [currentMatchesThrottled, setCurrentMatchesThrottled] = useState(false);
-  const currentMatchesRequestRef = useRef<string | null>(null);
-  const currentMatchesBufferRef = useRef<CurrentMatch[]>([]);
-  const currentMatchesRefreshRef = useRef(false);
+  const refreshCurrentMatches = useRef<(() => void) | null>(null);
   const [confirmConcession, setConfirmConcession] = useState<string | null>(null);
   const [concessionStatus, setConcessionStatus] = useState<ConcessionStatus>({ matchId: null, busy: false, text: '' });
   const concessionRef = useRef<LobbyConcession | null>(null);
@@ -114,17 +116,45 @@ function Play({ options }: { options: { url: string; getToken: () => Promise<str
     return () => document.removeEventListener('fullscreenchange', updateFullscreen);
   }, []);
   useEffect(() => {
+    let includeResumeDetails = true;
+    let currentMatchesRequest: string | null = null;
+    let matchesInProgress: LobbyMatch[] = [];
+    let refreshQueued = false;
+    let shownMatches: LobbyMatch[] = [];
+    let previousSample = -Infinity;
+    let countdownTimer: number | undefined;
     const requestCurrentMatches = (after: string | null = null) => {
       if (matchRoute || resultRoute || !connection.accountId) return;
-      if (currentMatchesRequestRef.current) { currentMatchesRefreshRef.current = true; return; }
+      if (currentMatchesRequest) { refreshQueued = true; return; }
       try {
-        if (after === null) currentMatchesBufferRef.current = [];
-        currentMatchesRequestRef.current = connection.request('currentMatches', { after });
+        if (after === null) matchesInProgress = [];
+        currentMatchesRequest = connection.request('currentMatches', {
+          after, ...(includeResumeDetails ? { includeResumeDetails: true } : {}),
+        });
         setCurrentMatchesLoading(true); setCurrentMatchesError('');
       } catch { setCurrentMatchesLoading(false); setCurrentMatchesThrottled(false); setCurrentMatchesError('Reconnect to refresh your current games.'); }
     };
+    const sampleCountdown = () => {
+      window.clearTimeout(countdownTimer);
+      if (document.visibilityState !== 'visible') return false;
+      const now = performance.now();
+      let nextCutoff = Infinity;
+      let reachedZero = false;
+      for (const { resumeCutoff } of shownMatches) {
+        if (resumeCutoff === undefined) continue;
+        if (resumeCutoff > now) nextCutoff = Math.min(nextCutoff, resumeCutoff);
+        else if (resumeCutoff > previousSample) reachedZero = true;
+      }
+      previousSample = now;
+      if (reachedZero || nextCutoff < Infinity) setLobbyNow(now);
+      if (nextCutoff < Infinity) countdownTimer = window.setTimeout(() => {
+        if (sampleCountdown()) requestCurrentMatches();
+      }, Math.max(1, Math.min(nextCutoff - now, 1000)));
+      return reachedZero;
+    };
     const requestChat = (from = chatLoadedRef.current) => {
-      if (!(matchRoute || resultRoute) || !matchIdPattern.test(matchId) || chatRequestRef.current || chatUnavailableRef.current) return;
+      if (!(matchRoute || resultRoute) || connection.expiredMatchId === matchId || !matchIdPattern.test(matchId)
+        || chatRequestRef.current || chatUnavailableRef.current) return;
       try { chatRequestRef.current = connection.request('matchChat', { operation: 'load', matchId, from, limit: 32 }); setChatLoading(true); }
       catch { setChatLoading(false); }
     };
@@ -135,7 +165,8 @@ function Play({ options }: { options: { url: string; getToken: () => Promise<str
       setChatMessages(chatMessagesRef.current);
     };
     const requestLog = (from: number) => {
-      if (!(matchRoute || resultRoute) || !matchIdPattern.test(matchId) || logRequestRef.current || logUnavailableRef.current) return;
+      if (!(matchRoute || resultRoute) || connection.expiredMatchId === matchId || !matchIdPattern.test(matchId)
+        || logRequestRef.current || logUnavailableRef.current) return;
       try {
         logRequestRef.current = connection.request('matchTranscript', { matchId, from, limit: 8 });
         setLogLoading(true);
@@ -156,7 +187,9 @@ function Play({ options }: { options: { url: string; getToken: () => Promise<str
         && ['action', 'route', 'movement'].includes(message.operation)
         && !connection.liveTranscript && connection.state?.matchId === matchId) requestLog(logHistory.current.records.length);
       if (message.type === 'status') {
-        currentMatchesRequestRef.current = null; currentMatchesRefreshRef.current = false;
+        currentMatchesRequest = null; refreshQueued = false;
+        includeResumeDetails = true;
+        shownMatches = []; window.clearTimeout(countdownTimer);
         setCurrentMatches([]); setCurrentMatchesLoading(false);
         logRequestRef.current = null; setLogLoading(false);
         chatRequestRef.current = null; chatSendRef.current = null; chatInitializedRef.current = false; setChatLoading(false);
@@ -169,22 +202,38 @@ function Play({ options }: { options: { url: string; getToken: () => Promise<str
         requestCurrentMatches();
         if (resultRoute && matchIdPattern.test(matchId)) { connection.request('matchResult', { operation: 'load', matchId }); setResultPending(true); }
         if (!matchRoute && !resultRoute) connection.request('computer', { operation: 'status' }); }
-      if (message.type === 'currentMatches' && message.requestId === currentMatchesRequestRef.current) {
-        currentMatchesRequestRef.current = null;
-        currentMatchesBufferRef.current.push(...message.matches);
+      if (message.type === 'currentMatches' && message.requestId === currentMatchesRequest) {
+        currentMatchesRequest = null;
+        if (message.serverNow === undefined) includeResumeDetails = false;
+        // Convert each page as it arrives so device clock changes and pagination cannot skew its countdowns.
+        const receivedAt = performance.now();
+        for (const match of message.matches as CurrentMatch[]) {
+          matchesInProgress.push(match.resumeUntil === undefined ? match : {
+            ...match, resumeCutoff: receivedAt + (match.resumeUntil - message.serverNow),
+          });
+        }
         if (message.next !== null) requestCurrentMatches(message.next);
         else {
-          setCurrentMatches(currentMatchesBufferRef.current); setCurrentMatchesLoading(false);
-          if (currentMatchesRefreshRef.current) { currentMatchesRefreshRef.current = false; requestCurrentMatches(); }
+          shownMatches = matchesInProgress;
+          previousSample = -Infinity;
+          if (sampleCountdown()) refreshQueued = true;
+          setCurrentMatches(shownMatches); setCurrentMatchesLoading(false);
+          if (refreshQueued) { refreshQueued = false; requestCurrentMatches(); }
         }
       }
-      const currentMatchesFailure = message.type === 'error' && currentMatchesRequestRef.current !== null
-        && message.requestId === currentMatchesRequestRef.current;
+      const currentMatchesFailure = message.type === 'error' && currentMatchesRequest !== null && message.requestId === currentMatchesRequest;
       if (currentMatchesFailure) {
-        currentMatchesRequestRef.current = null; setCurrentMatchesLoading(false);
+        currentMatchesRequest = null;
+        if (includeResumeDetails && ['MALFORMED_MESSAGE', 'UNSUPPORTED_MESSAGE'].includes(message.code)) {
+          includeResumeDetails = false;
+          refreshQueued = false;
+          requestCurrentMatches();
+          return;
+        }
+        setCurrentMatchesLoading(false);
         setCurrentMatchesThrottled(message.code === 'RATE_LIMITED');
         setCurrentMatchesError(message.code === 'RATE_LIMITED' ? 'Game refresh is busy. Your games are kept; the next refresh will wait briefly.' : 'Your current games could not be refreshed. Try again after reconnecting.');
-        if (currentMatchesRefreshRef.current) { currentMatchesRefreshRef.current = false; if (message.code !== 'RATE_LIMITED') requestCurrentMatches(); }
+        if (refreshQueued) { refreshQueued = false; if (message.code !== 'RATE_LIMITED') requestCurrentMatches(); }
       }
       if (message.type === 'computer' && ['READY', 'UNAVAILABLE'].includes(message.code)) {
         setComputerAvailable(message.code === 'READY');
@@ -349,12 +398,14 @@ function Play({ options }: { options: { url: string; getToken: () => Promise<str
     });
     const refresh = () => {
       if (document.visibilityState !== 'visible' || matchRoute || resultRoute || !connection.accountId) return;
+      sampleCountdown();
       connection.request('savedTeam', { operation: 'list' }); requestCurrentMatches();
     };
     const pollCurrentMatches = () => { if (document.visibilityState === 'visible') requestCurrentMatches(); };
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', refresh);
     const currentMatchesTimer = window.setInterval(pollCurrentMatches, 30_000);
+    refreshCurrentMatches.current = requestCurrentMatches;
     client.current = connection;
     concessionRef.current = new LobbyConcession(connection, setConcessionStatus);
     if (!matchRoute && !resultRoute && connection.pending?.request.type === 'setup' && connection.pending.request.operation !== 'concede')
@@ -363,10 +414,13 @@ function Play({ options }: { options: { url: string; getToken: () => Promise<str
     else if (matchRoute && connection.pending?.request.type === 'setup' && (connection.pending.request.matchId !== matchId || watchRoute))
       location.replace(matchUrl(connection.pending.request.matchId, false));
     else connection.connect();
-    return () => { rangeQueue.current?.reset(); window.clearInterval(currentMatchesTimer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); activationWindow.current?.popup?.close(); activationWindow.current = null; client.current = null; connection.disconnect(); concessionRef.current = null; };
+    return () => { rangeQueue.current?.reset(); window.clearInterval(currentMatchesTimer); window.clearTimeout(countdownTimer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); activationWindow.current?.popup?.close(); activationWindow.current = null; refreshCurrentMatches.current = null; client.current = null; connection.disconnect(); concessionRef.current = null; };
   }, [options]);
   const connection = client.current;
   const connected = status === 'Connected';
+  const matchExpired = matchRoute && !watchRoute && connection?.expiredMatchId === matchId;
+  const blocksResume = (id: string | undefined) => currentMatches.some(game => game.matchId === id
+    && (game.lifecycle === 'EXPIRED' || checkingMatchStatus(game, lobbyNow)));
   const busy = !connected || !!connection?.pending || concessionStatus.busy;
   const selected = teams.find(team => team.teamId === teamId && team.eligibility === 'CURRENT');
   const selectedComputer = teams.find(team => team.teamId === computerTeamId && team.eligibility === 'CURRENT');
@@ -434,9 +488,13 @@ function Play({ options }: { options: { url: string; getToken: () => Promise<str
       {resultRoute && connected && <button onClick={() => connection?.disconnect()}>Disconnect</button>}
       {resultRoute && <a href="/play">Match preparation and games</a>}
     </div></div>}
-    {matchRoute && !connection?.state && <section className="match-connect-panel" aria-label="Match connection"><h1>Match</h1><p role="status">{status}</p>{error && <p role="alert">{error}</p>}
+    {matchExpired && <section className="match-connect-panel" aria-labelledby="expired-match-heading">
+      <h1 id="expired-match-heading">Match expired</h1><p>The time to resume this match has ended.</p>
+      <a href="/play">Back to lobby</a>
+    </section>}
+    {matchRoute && !matchExpired && !connection?.state && <section className="match-connect-panel" aria-label="Match connection"><h1>Match</h1><p role="status">{status}</p>{error && <p role="alert">{error}</p>}
       <button type="button" onClick={() => connection?.connect()} disabled={!connection || status === 'Connecting'}>Reconnect</button><button type="button" onClick={exitMatch}>Exit match</button></section>}
-    {connection?.recoveryPending && <section><p>A submitted change needs confirmation. Reconnect with the same account and repeat the exact request.</p><button disabled={!connected || connection.pending?.accountId !== connection.accountId} onClick={() => run(() => connection.retry())}>Repeat retained request</button></section>}
+    {!matchExpired && connection?.recoveryPending && <section><p>A submitted change needs confirmation. Reconnect with the same account and repeat the exact request.</p><button disabled={!connected || connection.pending?.accountId !== connection.accountId} onClick={() => run(() => connection.retry())}>Repeat retained request</button></section>}
     {!matchRoute && !resultRoute && <>
 
     <div className="opponent-mode" role="group" aria-label="Opponent type">
@@ -470,56 +528,63 @@ function Play({ options }: { options: { url: string; getToken: () => Promise<str
     </section>}
     <section className="panel" aria-label="Current game"><h2>Current game</h2>
       <label>Match ID <input value={matchId} onChange={event => setMatchId(event.target.value)} /></label>
-      <button disabled={!connected || !matchId} onClick={() => prepare('load')}>Reload game setup</button>
-      <button disabled={busy || !matchId} onClick={() => run(() => location.assign(matchUrl(matchId, false)))}>Resume play</button>
+      {!blocksResume(matchId) && <>
+        <button disabled={!connected || !matchId} onClick={() => prepare('load')}>Reload game setup</button>
+        <button disabled={busy || !matchId} onClick={() => run(() => location.assign(matchUrl(matchId, false)))}>Resume play</button>
+      </>}
       {prepared?.document.lifecycle === 'AWAITING_SETUP' && <>
         <button disabled={busy} onClick={() => startGame()}>Start game</button>
         <button disabled={busy} onClick={() => startGame(true)}>Start game in a new window</button>
       </>}
-      {prepared?.document.lifecycle === 'ACTIVATED' && <p role="status">Game ready. <a href={matchUrl(prepared.document.matchId, false)}>Continue in this tab</a> · <a href={matchUrl(prepared.document.matchId, false)} target="_blank" rel="noopener">Open match in a new tab or window</a></p>}
+      {prepared?.document.lifecycle === 'ACTIVATED' && !blocksResume(prepared.document.matchId)
+        && <p role="status">Game ready. <a href={matchUrl(prepared.document.matchId, false)}>Continue in this tab</a> · <a href={matchUrl(prepared.document.matchId, false)} target="_blank" rel="noopener">Open match in a new tab or window</a></p>}
     </section>
     <section className="panel current-games spectate-section" aria-label="Your current games"><div className="spectate-section-heading"><h2>Your current games</h2>
-      <button disabled={!connected || currentMatchesLoading} onClick={() => run(() => {
-        currentMatchesBufferRef.current = [];
-        currentMatchesRequestRef.current = connection!.request('currentMatches', { after: null });
-        setCurrentMatchesLoading(true); setCurrentMatchesError('');
-      })}>Refresh games</button></div>
+      <button disabled={!connected || currentMatchesLoading} onClick={() => refreshCurrentMatches.current?.()}>Refresh games</button></div>
       {currentMatchesLoading && <p role="status">Loading your games…</p>}
       {currentMatchesError && <p role={currentMatchesThrottled ? 'status' : 'alert'}>{currentMatchesError}</p>}
       {concessionStatus.text && <p role="status">{concessionStatus.text}</p>}
       {connected && !currentMatchesLoading && !currentMatchesError && currentMatches.length === 0 && <p>You have no unfinished games.</p>}
-      <ul className="spectate-games">{currentMatches.map(game => <li key={game.matchId}>
-        <article className="spectate-game" aria-label={`${game.homeTeamName ?? 'Unavailable game'}${game.awayTeamName ? ` vs. ${game.awayTeamName}` : ''}`}>
-          <div className="spectate-game-top"><strong className="current-game-status">{currentMatchStatus(game)}</strong></div>
-          <div className="spectate-matchup">
-            <MatchupTeam name={game.homeTeamName ?? 'Unavailable game'} side="home">
-              {game.homeTeamName && <p>{game.callerRole === 'home' ? 'Your team' : 'Opponent'}</p>}
-            </MatchupTeam>
-            <div className="spectate-score"><span className="spectate-versus">vs.</span></div>
-            <MatchupTeam name={game.awayTeamName ?? (game.lifecycle === 'UNAVAILABLE' ? 'Unavailable team' : 'Waiting for opponent')} side="away">
-              {game.awayTeamName && <p>{game.callerRole === 'away' ? 'Your team' : 'Opponent'}</p>}
-            </MatchupTeam>
-          </div>
-          <div className="spectate-game-bottom"><div className="spectate-game-meta">
-            {game.homeTeamName && <span>Your team: {game.callerRole === 'home' ? game.homeTeamName : game.awayTeamName}<br/>
-              Opponent: {(game.callerRole === 'home' ? game.awayTeamName : game.homeTeamName) ?? 'Waiting for opponent'}</span>}
-            <details><summary>Game ID</summary><code>{game.matchId}</code></details>
-          </div><div className="current-game-actions">
-            {game.lifecycle === 'ACTIVATED' ? <a className="button" href={matchUrl(game.matchId, false)}>Resume</a>
-              : game.lifecycle === 'UNAVAILABLE' ? <span>Refresh to try again</span>
-              : <button disabled={busy} onClick={() => run(() => connection!.request('preparedMatch', { operation: 'load', matchId: game.matchId }))}>Continue setup</button>}
-            {game.lifecycle === 'ACTIVATED' && <button className="secondary" disabled={busy} onClick={() => setConfirmConcession(game.matchId)}>Concede</button>}
-          </div></div>
-          {game.lifecycle === 'ACTIVATED' && confirmConcession === game.matchId && <div className="current-game-concession" role="group" aria-label="Confirm concession">
-            <p>Concede this match? This cannot be undone.</p>
-            <button disabled={busy} onClick={() => run(() => { concessionRef.current!.begin(game.matchId, prepared?.document.matchId ?? null); setConfirmConcession(null); })}>Confirm concession</button>
-            <button className="secondary" onClick={() => setConfirmConcession(null)}>Keep playing</button>
-          </div>}
-        </article>
-      </li>)}</ul>
+      <ul className="spectate-games">{currentMatches.map(game => {
+        const checkingStatus = checkingMatchStatus(game, lobbyNow);
+        const canResume = game.lifecycle === 'ACTIVATED' && !checkingStatus;
+        const resumeLabel = game.resumeCutoff === undefined ? null : resumeTimeLabel(game.resumeCutoff - lobbyNow);
+        return <li key={game.matchId}>
+          <article className="spectate-game" aria-label={`${game.homeTeamName ?? 'Unavailable game'}${game.awayTeamName ? ` vs. ${game.awayTeamName}` : ''}`}>
+            <div className="spectate-game-top">
+              <strong className="current-game-status">{checkingStatus ? resumeLabel : currentMatchStatus(game)}</strong>
+              {!checkingStatus && resumeLabel && <span className="current-game-resume-time">{resumeLabel}</span>}
+            </div>
+            <div className="spectate-matchup">
+              <MatchupTeam name={game.homeTeamName ?? 'Unavailable game'} side="home">
+                {game.homeTeamName && <p>{game.callerRole === 'home' ? 'Your team' : 'Opponent'}</p>}
+              </MatchupTeam>
+              <div className="spectate-score"><span className="spectate-versus">vs.</span></div>
+              <MatchupTeam name={game.awayTeamName ?? (game.lifecycle === 'UNAVAILABLE' ? 'Unavailable team' : 'Waiting for opponent')} side="away">
+                {game.awayTeamName && <p>{game.callerRole === 'away' ? 'Your team' : 'Opponent'}</p>}
+              </MatchupTeam>
+            </div>
+            <div className="spectate-game-bottom"><div className="spectate-game-meta">
+              {game.homeTeamName && <span>Your team: {game.callerRole === 'home' ? game.homeTeamName : game.awayTeamName}<br/>
+                Opponent: {(game.callerRole === 'home' ? game.awayTeamName : game.homeTeamName) ?? 'Waiting for opponent'}</span>}
+              {game.lifecycle !== 'EXPIRED' && <details><summary>Game ID</summary><code>{game.matchId}</code></details>}
+            </div>{game.lifecycle !== 'EXPIRED' && !checkingStatus && <div className="current-game-actions">
+              {canResume ? <a className="button" href={matchUrl(game.matchId, false)}>Resume</a>
+                : game.lifecycle === 'UNAVAILABLE' ? <span>Refresh to try again</span>
+                : <button disabled={busy} onClick={() => run(() => connection!.request('preparedMatch', { operation: 'load', matchId: game.matchId }))}>Continue setup</button>}
+              {canResume && <button className="secondary" disabled={busy} onClick={() => setConfirmConcession(game.matchId)}>Concede</button>}
+            </div>}</div>
+            {canResume && confirmConcession === game.matchId && <div className="current-game-concession" role="group" aria-label="Confirm concession">
+              <p>Concede this match? This cannot be undone.</p>
+              <button disabled={busy} onClick={() => run(() => { concessionRef.current!.begin(game.matchId, prepared?.document.matchId ?? null); setConfirmConcession(null); })}>Confirm concession</button>
+              <button className="secondary" onClick={() => setConfirmConcession(null)}>Keep playing</button>
+            </div>}
+          </article>
+        </li>;
+      })}</ul>
     </section>
     </>}
-    {matchRoute && connection?.state && <GameView key={connection.state.matchId} hosted results={connection.state.callerRole !== 'spectator'} resultUrl={`/play/result?matchId=${encodeURIComponent(connection.state.matchId)}`} view={connection.state} connected={connected} pending={connection.pending?.request.requestId ?? null}
+    {matchRoute && !matchExpired && connection?.state && <GameView key={connection.state.matchId} hosted results={connection.state.callerRole !== 'spectator'} resultUrl={`/play/result?matchId=${encodeURIComponent(connection.state.matchId)}`} view={connection.state} connected={connected} pending={connection.pending?.request.requestId ?? null}
       matchControls={{ fullscreen, toggleFullscreen, exitMatch, reconnect: () => connection.connect(), error }}
       acceptedActionId={connection.lastAcceptedActionId}
       skillUseControls={connection.state.callerRole === 'spectator' ? undefined : {
