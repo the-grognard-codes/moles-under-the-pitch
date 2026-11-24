@@ -22,7 +22,9 @@ This sets the server-to-client model for the rest of the project. The target is 
   - request history, up to 8,192 entries (`SetupSession.java:339-358`).
 
   Each revision therefore stores the board twice and its outcomes twice. That is about 56 KB per revision, or 39.12 MiB at about 713 revisions in the 2026-11-20 soak (#596). One full-state snapshot was about 16–20 KB in the 2026-11-15 soak (#548).
-- **Live play uses only the new tail of the native game log, but walks all of it.** `NativeOutcomeCapture.since` and `DriveTrackerPresentation` use commands after `transcript.nativeCursor`, and scan the log from command 1 to find them (`NativeOutcomeCapture.java:21-29`). Capture therefore also grows with match length. Restore compares the whole native state, log included (`SetupSession.java:387-388`), and the journal counts log entries (`RecoveryJournal.java:132`). That nothing else needs the full log is an inference to confirm.
+- **Capture uses only the new tail of the native game log, but walks all of it.** `NativeOutcomeCapture.since` and `DriveTrackerPresentation` use commands after `transcript.nativeCursor`, and scan the log from command 1 to find them (`NativeOutcomeCapture.java:21-29`). Capture therefore also grows with match length. Restore compares the whole native state, log included (`SetupSession.java:387-388`), and the journal counts log entries (`RecoveryJournal.java:132`).
+- **Previews copy the whole engine, game log included.** `BlockPreviewPresentation.copy` (`:117-122`) and `PlannedBallTransfer` (`:43`) call `toJsonValue(true, 0)` and rebuild every logged command. The acting coach's view makes one copy for each player that can declare a block and has an adjacent target (`SetupSession.java:1275`). The cost has not been measured, and earlier harnesses had no opponents on the pitch, so they never reached this code.
+- **Nothing else needs the full log.** Every user of `GameLog` on `main` at `eb5057d02` was read on 2026-11-24. Only capture, the two preview copies and recovery use it, and the previews don't read what they copy.
 - **`events` duplicates the transcript's `state`, and shipped features read it.** Each of these needs a replacement before `events` is removed:
   - the replay viewer loads each step by index (`play-entry.tsx:564`, `MatchResultJson.java:27-37`), and the result shows `eventCount`;
   - the view after full time is the last event's state (`SetupApplication.java:1120-1123`);
@@ -83,7 +85,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–13 are from 2026-11-24.
 ## Scope and deliverables
 
 1. **Request spec.** This file, `docs/specs/match-state-sync-adr.md`, linked to this issue.
-2. **Measurement outcome**, `docs/specs/match-state-sync-measurement.md`, reproducible from a committed script:
+2. **Measurement**, specified in [#650](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/650) (`docs/specs/match-state-sync-measurement.md`). Its outcome is `docs/specs/match-state-sync-measurement-outcome.md`, reproducible from a committed script:
    - a breakdown by field of a soak-sized match's restore object (native snapshot, game log, events, transcript `state` and `native`, request history, chat, views);
    - the size of a compact restore snapshot at about revision 50 and about revision 700;
    - the time to write that snapshot plus append one record in MariaDB, early and late in a match;
@@ -94,7 +96,9 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–13 are from 2026-11-24.
    - the cost of a first compaction in a fresh JVM (from #548);
    - the journal entry size and the real compaction interval;
    - the cost of native capture, early and late in a match;
-   - the cost of a parked computer worker's fallback load (from #548).
+   - the cost of a parked computer worker's fallback load (from #548);
+   - the engine copies made for previews: how many per move, and the cost of each;
+   - the size of a public patch and of a keyframe, and the bytes sent per recipient per move today.
 
    Measure against decoded size (about 23–28 MB at 320–500 revisions), not the 0.7 MiB compressed size (#548). Prefer JFR or harness timing. If phases can't be separated without production instrumentation, that instrumentation goes in its own reviewed PR.
 
@@ -122,7 +126,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–13 are from 2026-11-24.
      - `analyze-history-scaling.mjs` and `analyze-checkpoint-first-warm.mjs` both compare journal writes with compaction, so each is adapted or deleted;
    - live protocol: deltas, a per-role envelope, a catch-up tail, a snapshot on join or resync, and any drift detection that is adopted.
 
-**Sequencing:** #610 has merged (PR #612), so the measurement and the ADR draft are both unblocked. The measurement comes first.
+**Sequencing:** #610 has merged (PR #612), so the measurement and the ADR draft are both unblocked. The measurement (#650) comes first.
 
 **Excluded:**
 - Production code changes. Measurement scripts are allowed.
