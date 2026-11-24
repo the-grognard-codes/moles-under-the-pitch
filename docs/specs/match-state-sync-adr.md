@@ -123,10 +123,10 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–20 are from 2026-11-24. Decis
    - which it **amends**:
      - ADR 0001: publication sends records plus a per-role envelope.
      - ADR 0007: its format 3, which isn't built, becomes format 4, with the markers in the record.
+     - ADR 0008: a confirm makes one record, one current-state write and a receipt, instead of a state snapshot, a checkpoint and a request-history entry. Its alternatives leave per-event snapshots for other actions to #548, which this ADR takes over. An earlier version of this request listed only a history entry.
      - ADR 0012: full-snapshot recovery and full resync for slow clients become a snapshot plus revisioned deltas. Its governing choice, versioned JSON over WebSockets, still holds, so under #610's template rule this is an amendment, not a supersession.
    - which it **extends with a dated history entry**:
      - ADR 0013: the new storage sits behind that record's repository boundary, and the format-4 record is the "future canonical event log" it anticipated.
-     - ADR 0008: its alternatives leave per-event snapshots for other actions to #548, which this ADR now takes over.
    - that ADR 0006 is unchanged.
 4. **Implementation plan**, in [#651](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651) (`docs/specs/match-state-sync-tickets.md`): twenty-six tickets, revised after Codex's review of 2026-11-24. Tickets 1–3 don't depend on the ADR and are filed as #652, #653 and #654. The rest are filed when the ADR is accepted. They carry every item from #548.
 
@@ -177,7 +177,8 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–20 are from 2026-11-24. Decis
     - Computer-coach availability (0004's schema marker 10, `computer_work_until_epoch_ms`) is committed in the same transaction as the move. It moves to the current-state row.
     - Restore validates the native state through the existing native restore path.
     - Every accepted revision is indexed.
-    - A terminal digest covers the completed transcript. It becomes the running digest of decision 17, because hashing every record at full time would grow with the match.
+    - A terminal digest covers the completed transcript. ADR 0002 requires it, but none was built: the completed result has no digest today (`SetupSession.java:1601-1612`). Decision 17 adds it as a running digest, because hashing every record at full time would grow with the match.
+    - The restore snapshot carries a checksum that is verified on restore, as today's checkpoint does (`RecoveryCheckpoint.java:24`).
     - Expiry and abandonment aren't full time. The match stays activated, the lobby derives its status from deadlines, and dismissal stays per account (#639, #643, #644).
     - The computer coach's cold load path keeps working. `RecoveryCheckpoint.computerReply` reads stored per-role views from the checkpoint, so the snapshot either keeps those views or the ADR says how they are rebuilt. Decision 18 covers the unchanged case.
   - **Replace:**
@@ -229,6 +230,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–20 are from 2026-11-24. Decis
   - Caching across reloads in browser storage is optional and deferred.
 - Keyframe cadence and tail size, after the measurement.
 - The numeric targets under decision 6, after the measurement.
+- How long finished matches keep their records. Today activation stops when `ffb_match_recovery` holds 1,024 matches, and the server never deletes those rows.
 
 ## Related tickets
 
@@ -264,8 +266,8 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–20 are from 2026-11-24. Decis
 - The maintainer's approval is recorded with a date.
 - In the same PR, under #610's template:
   - ADRs 0002 and 0004 are marked `superseded`, with links both ways;
-  - ADRs 0001, 0007 and 0012 carry dated amendments;
-  - ADRs 0008 and 0013 carry dated history entries;
+  - ADRs 0001, 0007, 0008 and 0012 carry dated amendments;
+  - ADR 0013 carries a dated history entry;
   - the architecture map's invariants on durable boundaries, recovery and stored formats are updated.
 - No accepted ADR gains a forward pointer to this decision before acceptance.
 - The follow-up tickets are filed.
