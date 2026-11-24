@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fix the Windows app picker that could open when running GitHub CLI through the GitHub App wrapper from a worktree.
 - Run each server and state-test class in one Java Checks shard. Register new classes from either module in the native shard manifest.
 - Retry rate-limited Maven downloads during bootstrap and use the Apache archive as a fallback. Java checks cache the verified ZIP and reuse dependencies after POM changes.
 
