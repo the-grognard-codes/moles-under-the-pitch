@@ -1,26 +1,23 @@
-# Documentation-only Java checks outcome
+# Java Checks classification outcome
 
-[Issue #622](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/622) · [Validation design](parallel-validation.md)
+[Issue #622](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/622) · [Spec mirror](checks-skip-java-docs-only.md) · [Validation design](parallel-validation.md)
 
-Checks classifies the full pull request diff from the merge base to the event's head commit. A confirmed documentation-only diff skips Validate, all four Java shards, and Firebase game session service. The required Java 21 target verification check verifies the matrix was intentionally skipped and records that decision. Any other diff, an inconclusive classification, a push, or a manual dispatch requires full Java verification. The full gate still requires successful shards and all four execution reports.
+Checks classifies the full pull request diff from the merge base to the event's head commit. The allowlist covers documentation, notes and the exact Development history paths `site/updates.json` and `site/src/development/index.html`. The shard workflow scans archived Java sources for disabled tests, and bootstrap can read its audit ZIP from `.notes/overhaul-analysis/verification/`. Those Java paths and the audit directory require full verification. Static checks still compare the generated Development page to its history.
 
-The maintainer selected job-level matrix skipping in the issue discussion. The active ruleset requires the aggregate check and has no required shard contexts. The implementation keeps the existing required check names and the existing Firebase deployment precondition.
+A successful allowlisted classification logs **Java not required** and skips Validate, all four Java shards, and Firebase game session service. The required Java 21 target verification check confirms the intentional skip. Other changes, inconclusive classifications, pushes, and manual dispatches run the full Java path. The gate verifies the native execution dependencies and all four reports. A classifier failure alone cannot invalidate successful native execution.
 
-## Verification
+The active ruleset requires the aggregate check. The review update incorporates merged [PR #625](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/625) at `4b22def0`, so the combined workflow verifies the updated shard inventory.
 
-- Self-reviewed the workflow's job dependencies and compare logic, including both paths of a rename, an older Java commit followed by a Markdown-only commit, divergent base history, and failed or shallow diffs. Checked Java test sources and POMs for documentation dependencies.
-- Passed 59 tests in the affected Node tooling group. The native-gate regression tests verify rejection of a cancelled matrix result and a missing shard report.
-- Passed actionlint 1.7.12 and `git diff --check`.
-- Checked compatibility with the prerequisite [PR #625](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/625). The branches combined cleanly and use the same aggregate dependency contract. Land #625 first.
+## Acceptance evidence
 
-## Hosted acceptance
+The hosted probes use a temporary base with a branch trigger added to Checks. They exercise the same Java job conditions as PRs and pushes against main. The original probes predate the merge of #625.
 
-The probes used a temporary base with the same Checks jobs and a branch trigger for that base. The temporary push exercised the same Java job conditions as a push to main. Source review confirmed that the DEV deployment workflow still looks for a successful Checks run on the exact main commit.
-
-| Probe | Result | Checks run |
-| --- | --- | --- |
-| Documentation only | Passed. The Java jobs reported skipped, the required aggregate passed and logged the intentional skip, and the complementary Checks jobs passed. | [45286459816](https://github.com/the-grognard-codes/moles-under-the-pitch/actions/runs/45286459816) |
-| Java commit followed by a Markdown commit | All Java jobs ran. The aggregate rejected shard 3 after a movement test assertion failed. The same test passed in all four shards of the push probe. | [45286466024](https://github.com/the-grognard-codes/moles-under-the-pitch/actions/runs/45286466024) |
-| Browser fixture only | All Java jobs ran. `PassWorkflowTest` rejected the probe's extra newline in the fixture, and the aggregate rejected the failed shard. | [45286474490](https://github.com/the-grognard-codes/moles-under-the-pitch/actions/runs/45286474490) |
-| Workflow only | Validate, Firebase game session service, and all four Java shards passed. | [45286481358](https://github.com/the-grognard-codes/moles-under-the-pitch/actions/runs/45286481358) |
-| Push | Passed. Validate, Firebase game session service, and all four shards ran successfully. The aggregate verified all four reports. | [45286281694](https://github.com/the-grognard-codes/moles-under-the-pitch/actions/runs/45286281694) |
+| Criterion | Evidence |
+| --- | --- |
+| Docs-only PR runs no Maven and can merge | Validate, the matrix and Firebase game session service reported skipped. The required aggregate passed and logged the intentional skip. All other Checks jobs passed. The first docs-only PR against protected main will verify the full ruleset. [Probe](https://github.com/the-grognard-codes/moles-under-the-pitch/actions/runs/45286459816) |
+| Mixed Markdown and Java runs full verification | All Java jobs ran. The gate rejected shard 3 after a movement test assertion failed. The same test passed in all four shards of the push probe. [Probe](https://github.com/the-grognard-codes/moles-under-the-pitch/actions/runs/45286466024) |
+| Browser fixture change runs full verification | All Java jobs ran. `PassWorkflowTest` rejected the extra newline in the fixture, and the aggregate rejected the failed shard. [Probe](https://github.com/the-grognard-codes/moles-under-the-pitch/actions/runs/45286474490) |
+| Development history can skip Java, and another site path requires it | The classifier tests cover the exact pair, the pair with another site file, and similar path names. |
+| Main push runs full verification and the DEV precondition works | Validate, Firebase game session service, and all four shards passed on the temporary push. The aggregate verified the four reports. Source review confirmed the DEV precondition still checks Checks success on the exact main commit. The first main push after merge will provide the run the DEV precondition expects. [Probe](https://github.com/the-grognard-codes/moles-under-the-pitch/actions/runs/45286281694) |
+| Cancelling a shard fails the gate | The local gate test rejects a cancelled matrix result and a missing shard report. The mixed and fixture probes exercised failed shards on GitHub. Individual shard cancellation was covered locally through the matrix result. |
+| Classifier coverage | Node tests exercise the allowlist, mixed changes, a workflow path, archived Java, the bootstrap audit ZIP, a failed diff, shallow history, and renames. The workflow-only hosted probe passed all Java jobs and the aggregate. [Probe](https://github.com/the-grognard-codes/moles-under-the-pitch/actions/runs/45286481358) |

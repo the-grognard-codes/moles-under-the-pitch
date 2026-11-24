@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Skip Java Checks for pull requests confined to allowlisted documentation, notes, and Development history. Pushes, manual runs, and other changes still run full Java verification.
+
 - Run each server and state-test class in one Java Checks shard. Register new classes from either module in the native shard manifest.
 - Retry rate-limited Maven downloads during bootstrap and use the Apache archive as a fallback. Java checks cache the verified ZIP and reuse dependencies after POM changes.
 

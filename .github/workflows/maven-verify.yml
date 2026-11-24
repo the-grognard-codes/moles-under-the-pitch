@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      java: ${{ steps.classify.outputs.java || 'true' }}
+      java_required: ${{ job.status == 'success' && steps.classify.outcome == 'success' && steps.classify.outputs.java_required == 'false' && 'false' || 'true' }}
     steps:
       - uses: actions/checkout@v4
         if: github.event_name == 'pull_request'
@@ -72,7 +72,7 @@ jobs:
     # Preserve the required-check context while validating the supported runtime.
     name: Validate
     needs: [changes]
-    if: ${{ !cancelled() && !(github.event_name == 'pull_request' && needs.changes.result == 'success' && needs.changes.outputs.java == 'false') }}
+    if: ${{ !cancelled() && needs.changes.outputs.java_required != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -112,7 +112,7 @@ jobs:
   target-shards:
     name: Java 21 state tests (${{ matrix.shard }}/4)
     needs: [changes]
-    if: ${{ !cancelled() && !(github.event_name == 'pull_request' && needs.changes.result == 'success' && needs.changes.outputs.java == 'false') }}
+    if: ${{ !cancelled() && needs.changes.outputs.java_required != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
@@ -187,17 +187,17 @@ jobs:
           retention-days: 14
 
   target:
-    # The required check handles an intentional docs-only skip or validates all four shards.
+    # The required check confirms when Java is not required or validates all four shards.
     name: Java 21 target verification
     needs: [changes, target-shards]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
-      DOCS_ONLY: ${{ github.event_name == 'pull_request' && needs.changes.result == 'success' && needs.changes.outputs.java == 'false' }}
+      JAVA_REQUIRED: ${{ needs.changes.outputs.java_required }}
     steps:
-      - name: Confirm the intentional documentation-only skip
-        if: env.DOCS_ONLY == 'true'
+      - name: Confirm Java not required
+        if: env.JAVA_REQUIRED == 'false'
         env:
           SHARD_RESULT: ${{ needs.target-shards.result }}
         run: |
@@ -205,23 +205,23 @@ jobs:
             echo "::error::Expected the Java shards to be skipped, got $SHARD_RESULT."
             exit 1
           fi
-          echo "Java verification intentionally skipped for a documentation-only pull request."
+          echo "Java not required for this pull request. The Java shards were intentionally skipped."
       - uses: actions/checkout@v4
-        if: env.DOCS_ONLY != 'true'
+        if: env.JAVA_REQUIRED != 'false'
       - uses: actions/setup-node@v4
-        if: env.DOCS_ONLY != 'true'
+        if: env.JAVA_REQUIRED != 'false'
         with:
           node-version: '26'
       - uses: actions/download-artifact@v4
-        if: env.DOCS_ONLY != 'true'
+        if: env.JAVA_REQUIRED != 'false'
         with:
           pattern: java-native-*
           path: .tools/validation-reports
           merge-multiple: true
       - name: Require successful jobs and complete native execution
-        if: env.DOCS_ONLY != 'true'
+        if: env.JAVA_REQUIRED != 'false'
         env:
-          VALIDATION_NEEDS: ${{ format('{{"target-shards":{0}}}', toJSON(needs.target-shards)) }}
+          VALIDATION_NEEDS: ${{ toJSON(needs) }}
         run: node tools/validation/coverage-gate.mjs native .tools/validation-reports
 
   static-checks:
@@ -268,7 +268,7 @@ jobs:
   game-session:
     name: Firebase game session service
     needs: [changes]
-    if: ${{ !cancelled() && !(github.event_name == 'pull_request' && needs.changes.result == 'success' && needs.changes.outputs.java == 'false') }}
+    if: ${{ !cancelled() && needs.changes.outputs.java_required != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:

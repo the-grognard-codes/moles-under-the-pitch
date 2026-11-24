@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
-import { requiresJava } from '../validation/java-pr-changes.mjs';
+import { javaRequiredFor, requiresJava } from '../validation/java-pr-changes.mjs';
 
 function repository(t) {
   const cwd = mkdtempSync(join(tmpdir(), 'java-pr-changes-'));
@@ -29,7 +29,7 @@ function repository(t) {
   return { cwd, git, commit, base: commit() };
 }
 
-test('accepts the documentation directories and Markdown at any depth', t => {
+test('accepts the documentation directories and Markdown outside excluded paths', t => {
   const { base, cwd, commit } = repository(t);
   const head = commit('docs/specs/decision.txt', '.notes/example.json', 'README.md', 'other/nested guide.md');
   assert.equal(requiresJava(base, head, cwd), false);
@@ -50,12 +50,29 @@ test('allows documentation when unrelated changes landed on the base branch', t 
   assert.equal(requiresJava(updatedBase, head, cwd), false);
 });
 
-for (const path of ['.github/workflows/README.md', 'tools/nested/README.md', 'browser-client/test/fixtures/example.json']) {
-  test(`requires Java for ${path}`, t => {
-    const { base, cwd, commit } = repository(t);
-    assert.equal(requiresJava(base, commit(path), cwd), true);
-  });
-}
+test('requires Java for workflow, tooling, Java snapshot, and browser fixture paths', () => {
+  for (const path of [
+    '.github/workflows/README.md',
+    'tools/nested/README.md',
+    'browser-client/test/fixtures/example.json',
+    '.notes/example/Example.java',
+    'docs/example/Example.JAVA',
+    '.notes/overhaul-analysis/verification/apache-maven-3.9.9-bin.zip',
+  ]) {
+    assert.equal(javaRequiredFor(path), true, path);
+  }
+});
+
+test('accepts the exact Development history paths and requires Java for other site paths', t => {
+  const { base, cwd, commit } = repository(t);
+  const changes = commit('site/updates.json', 'site/src/development/index.html');
+  assert.equal(requiresJava(base, changes, cwd), false);
+  const mixed = commit('site/src/index.html');
+  assert.equal(requiresJava(base, mixed, cwd), true);
+  assert.equal(javaRequiredFor('site/updates.json.bak'), true);
+  assert.equal(javaRequiredFor('site/src/development/index.html.bak'), true);
+  assert.equal(javaRequiredFor('site/README.md'), true);
+});
 
 test('checks both sides when a path is moved into documentation', t => {
   const { cwd, commit, git } = repository(t);
