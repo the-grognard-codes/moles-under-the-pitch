@@ -2,7 +2,7 @@
 
 Issue: [#650](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/650)
 
-Part of #611.
+Part of #611. Extended on 2026-11-24 after [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290) of the implementation plan, with the maintainer's approval.
 
 ## Abstract
 
@@ -30,20 +30,21 @@ Line numbers are at `main` `eb5057d02`.
 
 ## In Scope
 
-Measure each item early (about revision 50) and late (the last revision before full time, about 700 in the November soak). Today's code is the baseline. Items 2–4 and 9 also measure a test-only prototype.
+Measure each item early (about revision 50) and late (the last revision before full time, about 700 in the November soak). Today's code is the baseline, at a named commit before #652's change. Items 2–5 and 9–11 also measure a test-only prototype.
 
 | # | Measure | What it decides |
 | --- | --- | --- |
 | 1 | Decoded and compressed size of the restore object by field: native state without the log, game log, events, transcript `state`, transcript `native`, request history, chat, both views, the rest | Whether the four growing arrays account for all the growth |
 | 2 | Size of a compact snapshot: the fields listed under "Restore snapshot" in #611, with no history | Whether the snapshot is flat |
-| 3 | Time to update that snapshot and append one record in one MariaDB transaction, next to today's journal append and compaction | Decision 3 (same transaction); the write target |
+| 3 | Time to update that snapshot, append one record, write one indexed receipt and advance the running digest in one MariaDB transaction, next to today's journal append and compaction. Include finding a receipt among the 700 of a late match | Decision 3 (same transaction); decisions 15 and 17; the write target |
 | 4 | Time to restore: today's path by phase, and decoding plus native restore from the compact snapshot | The restore target |
-| 5 | Full time by phase on the serial worker: materializing events and transcript, building and validating, serializing, storing, releasing. Include decoded size, and the queue length at the start. Also a `setup/load` restore by phase | Whether #611's design removes the full-time stalls; the full-time target |
+| 5 | Full time by phase on the serial worker: materializing events and transcript, building and validating, serializing, storing, releasing. Include decoded size, and the queue length at the start. Also the prototype of the new full-time write (final state, sealed digest, result), and a `setup/load` restore by phase | Whether #611's design removes the full-time stalls; the full-time target |
 | 6 | Checkpoint, `complete()` and JDBC store timing; the first compaction in a fresh JVM; journal entry size and the real compaction interval | The baseline |
 | 7 | Native capture time per move | Whether per-move work outside storage grows |
 | 8 | Engine copies made for previews: how many per move, and the time and allocation of each | Same as 7 |
 | 9 | Size of a public patch per move, by whole-entity replacement between successive transcript states; size of a keyframe; bytes sent per recipient per move today | Keyframe cadence, tail size, and whether binary encoding is worth revisiting |
-| 10 | The parked computer worker's fallback load: today, and reading the compact snapshot instead | Whether the turn summary is needed |
+| 10 | The parked computer worker's fallback load: today, reading the compact snapshot, and the "nothing changed since revision N" reply from a row summary | The cost of decision 18's reply |
+| 11 | Building and sending one move: the public projection, the patch, the keyframe, the commit, each role's envelope, and delivery to several recipients. Time, allocation and serialized bytes of each, and the whole worker task | Whether the design fits ADR 0006's p99 of 100 ms |
 
 Also in scope, from #548: the scripts share the statistics and file helpers that `tools/diagnostics/analyze-history-scaling.mjs` and `analyze-checkpoint-first-warm.mjs` duplicate. They have a `*.test.mjs`, and normalize line endings before hashing.
 
@@ -52,7 +53,7 @@ Also in scope, from #548: the scripts share the statistics and file helpers that
 - Production code changes, schema migrations and stored-format changes. Prototype tables live in test code and an isolated schema.
 - Fixing anything the measurement finds, including the preview copies.
 - Choosing the targets. The outcome note proposes numbers, and the maintainer sets them.
-- The real-play memory run (#524 AC3 and AC4). It runs on the new storage.
+- The memory run with a full resident cache. Ticket 19a of #651 runs it on the new storage.
 - Hosted Development, and any external service.
 
 ## Functional Requirements
@@ -60,19 +61,22 @@ Also in scope, from #548: the scripts share the statistics and file helpers that
 - Inputs come from complete 22-player matches played by the real rules engine, not from the two-player fixture.
 - Database figures use the real JDBC repositories and MariaDB, not mocks or in-memory repositories.
 - Size and time are reported against decoded size, next to compressed size.
-- Each timed figure reports sample count, p50, p90 and maximum. It reports p99 only with at least 100 samples. Use at least three fresh JVMs at `-Xmx768m`.
+- Each timed figure reports sample count, p50, p90 and maximum. It reports p99 only with at least 100 samples in that group. Where a threshold is tested without enough samples, the result is marked inconclusive. Use at least three fresh JVMs at `-Xmx768m`.
+- Ordinary and keyframe moves are reported separately, early and late. Queue wait is measured apart from the task itself.
+- The runs include quiet and active computer probes, several recipients, and a rare decision with a large output.
 - JFR and GC logs are recorded, and the note explains any request or phase over 500 ms.
 - The outcome note names the measured revision, the JDK, the hardware and the database image, and states each prototype's omissions.
 - Committed files contain no credentials, account identifiers or private match data.
 
 ## Acceptance Criteria
 
-- `docs/specs/match-state-sync-measurement-outcome.md` reports all ten items, early and late, with the command that reproduces each one.
+- `docs/specs/match-state-sync-measurement-outcome.md` reports all eleven items, early and late, with the command that reproduces each one.
 - Each item ends with what it means for #611, using these rules:
   - **Snapshot:** if the compact snapshot is more than 25% larger late than early, name the fields that grew.
   - **Write:** if updating and appending has a p99 above 100 ms on a healthy database, say that decision 3 needs the maintainer.
   - **Full time:** state the share of the blocked time that the named phases explain. If most of it lies elsewhere, name where, so that it can have its own ticket.
-  - **Per-move work:** for items 7 and 8, state the late cost as a multiple of the early cost.
+  - **Per-move work:** for items 7, 8 and 11, state the late cost as a multiple of the early cost.
+  - **Worker task:** for item 11, give the whole-task p99 for ordinary and keyframe moves against 100 ms, or mark it inconclusive. The 2,000 ms request ceiling is a different test.
 - The note proposes targets for durable write, restore, publication and full time, each with the figures behind it.
 - The harness checks that its input match has a non-empty game log and non-empty native outcomes, and fails otherwise.
 - `analyzerSha256` matches on LF and CRLF checkouts, and the shared helpers have tests.
@@ -97,7 +101,8 @@ Also in scope, from #548: the scripts share the statistics and file helpers that
 - **Location.** Test classes in `com.fumbbl.ffb.server.match` can reach the package-private session and repository code, as the existing workload tests do. Keep them opt-in by environment variable.
 - **Restore prototype.** No production code restores from a compact snapshot. Measure decoding, native `initFrom` without the log, and building both views, and list what that leaves out.
 - **Full-time stalls.** One match finishing alone can't show queue effects. If the phase times don't account for waits of 5–14 s, propose a bounded concurrent run with timing (`-Dffb.browser.timing=true`), JFR and GC logging, and ask before starting it.
-- **Previews.** Report the item against the measured revision, and say whether a fix for the preview copies had landed by then.
+- **Previews.** #652 removes the log from the preview copies. Measure item 8 on a commit before it, and report #652's own before-and-after figures beside it.
+- **Public view.** The prototype projects the public fields named in decision 14 of #611, and lists what it leaves out. It computes no actions, forecasts or previews.
 
 ## Validation
 

@@ -4,71 +4,52 @@ Issue: [#651](https://github.com/the-grognard-codes/moles-under-the-pitch/issues
 
 Parent: [#611](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611) ([ADR request](match-state-sync-adr.md)). Measurement: [#650](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/650) ([spec](match-state-sync-measurement.md)).
 
-Status: handed to Codex for review by the maintainer on 2026-11-24. The nineteen tickets below are candidates and none is filed. The eight proposals are not decided until the maintainer settles the review. Line numbers are at `main` `eb5057d02`.
+Status: revised on 2026-11-24 after [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290). The maintainer accepted the recommended answers to its questions, recorded as decisions 14–20 in #611. Tickets 1–3 are filed (#652, #653 and #654). The other 23 are candidates, filed when the ADR is accepted. Line numbers are at `main` `eb5057d02`.
 
 ## Goal
 
 Every match costs the same to play late as early: durable write, restore, live update and full time. Today restore, compaction and full time carry the whole match, and each live update carries the whole state. #611 holds the decisions and the evidence. This plan turns them into work.
 
-## What to do now (Codex)
+## What the review changed
 
-1. **Read** #611, #650, ADRs 0001, 0002, 0004, 0006, 0007, 0008, 0012 and 0013, and the invariants in the [architecture map](../agents/architecture-map.md). Your earlier notes are on [#550](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/550#issuecomment-7086931992), and your retained-move case is on [#611](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611#issuecomment-7122189387).
-2. **Check every ticket against the code.** Done when each of the nineteen has a verdict: keep, change, split, merge or drop, with a reason.
-3. **Check every proposal.** Done when each of the eight has a verdict and, where you disagree, an alternative.
-4. **Answer the questions below.** Done when each has an answer backed by `file:line`, or a statement of the prototype or measurement that would answer it.
-5. **Look for missing work and wrong edges.** Done when you have walked every reader and writer of the recovery tables, the completed artifact, the transcript and the live state message, and each has a ticket or a reason it needs none.
-6. **Post one comment on this issue** with the verdicts, the answers, and findings ranked by severity. Separate hard defects from judgement calls.
+| Finding | Where it is now |
+| --- | --- |
+| 1. A later small update can replace the one a browser still needs (`PublicationDelivery.java:50-57`) | Gap detection and snapshot repair are in ticket 13 |
+| 2. Saves, chat and timers change stored data without a new gameplay revision | The storage generation below; tickets 5, 7a and 8 |
+| 3. Expiry isn't a finished match, and a digest over all records grows with the match | Ticket 10 leaves expiry alone; the running digest is in tickets 7a and 10 |
+| 4. Screens depend on the list of legal actions (`GameView.tsx:1136`) | New ticket 20 defines the public view first |
+| 5. The cutover could come before the markers and the proof | Ticket 11 is split; 11b needs 12, 19a and 11a |
+| 6. Comparing the newest record can't find one missing from the middle | Tickets 7a and 9a; a separate audit in 10 |
 
-This review produces that comment and nothing else. Filing tickets, changing labels, writing code and accepting the ADR come later, and the maintainer decides each.
+Tickets 7, 9, 11 and 19 are split. The old numbers keep their letters, so the review still reads against this plan.
 
-## Questions the review must answer
+## What the tickets assume
 
-1. **What is public?** Each view carries `actions`, `prompt`, `movementForecast`, `passing`, `kickPreview` and `playerActionMenu` for every role, spectators included (`SetupSession.java:1176-1299`). The publisher strips only `computer`, `threats`, `savedFormations` and `blockPreview` (`ActiveMatchPublisher.java:200-203`). Which fields belong in the public patch, which in a per-role envelope, and what do the waiting coach's and the spectator's screens need?
-2. **Do whole-entity patches cover everything?** Name any public field that isn't part of a player or a top-level section, or that depends on the caller's role.
-3. **Can the snapshot leave the native log out?** Cover `lastCommandNr`, `nativeCursor`, command numbering and the log epoch, and what a restored engine needs from commands that were already captured.
-4. **Two storages side by side (proposal 4), or an integration branch?** 43 server test files use `SetupSession`, 21 test files read events or transcript JSON, and about 32 browser test files build states or records. Which route is safer, and how should the test changes be batched?
-5. **Is one receipt per role enough?** Consider two devices, the computer player, save/resume, chat, and a setup refused with errors.
-6. **Does ticket 13 need only ticket 5?** Consider the acting coach's reply, staged placements, playback, slow connections and the 256 KiB live frame limit (`BrowserMatchTransport.java:30`).
-7. **What does building a record cost the engine worker?** Say where on the worker the patch and keyframe are built, and whether that fits ADR 0006's p99 of 100 ms.
-8. **What can go wrong at full time (ticket 10)?** Cover deferred and uncertain completion, retained concessions, abandonment, expiry, `MATCH_SIZE_LIMIT` and the quarantine journal.
-9. **Is each ticket small enough for one session?** Tickets 7 and 9 look largest. Propose splits where they help.
-10. **Can tickets 1–3 really start now?** Say whether any of them would have to be redone.
+Decisions 14–20 in #611 govern. These working assumptions were kept by the review, and become decisions when the ADR is accepted:
 
-## Known weak points
+- **Patches** replace whole players and whole top-level public sections. Keyed players support insertion, removal and a stable order. A section that ends is removed explicitly, which is different from unchanged and from `null`.
+- **One writer per match.** Each match's storage version is chosen at activation and stored with the unpublished activation seed and the revision-zero record, so a crash or a changed setting reopens the same seed. The new storage is test-only until chat, replay, expiry and full time work. Nothing is written in both formats.
+- **Row summary.** The current-state row always carries a small summary, bound to the storage generation, with absolute expiry times and maintenance inputs.
+- **Tests move in batches:** unchanged characterization of the old storage; the same repository cases against both storages, with MariaDB (#578); shared Java and TypeScript protocol fixtures; browser role, recovery and playback; then a mixed-version rehearsal.
 
-- Sizes are estimates until #650 reports. Nothing here has been prototyped.
-- Ticket 7 changes storage, recovery, the lobby, computer probes and the operations tools at once.
-- Ticket 11 collects several closing jobs: the `CONTEXT.md` terms for match checkpoint, transcript and replay, the diagnostics fields (`events`, `journalEntries` and others in `BrowserRequestTiming`) and the capture tools. It may need splitting.
-- Hosted migration is named only through the operations tools in tickets 7 and 11.
+## What each operation writes
 
-## After the review
+Proposed for the ADR. Three counters stay separate: the **storage generation** (compare-and-swap), the **gameplay revision** (one record each), and the **chat index**. A staged placement's sequence is transient.
 
-1. The maintainer settles the proposed changes, and this plan is updated.
-2. Tickets 1–3 are filed after the review is settled (maintainer, 2026-11-24).
-3. The ADR is drafted with #650's numbers and accepted. Tickets 4–19 are then filed from the [feature template](../agents/feature-template.md).
+| Operation | Record | Generation | Chat row |
+| --- | --- | --- | --- |
+| Activation seed | Revision 0, with a keyframe | Yes | No |
+| Accepted decision, confirmed stage, declined or timed-out reaction, concession, full time | Yes | Yes | No |
+| Refused setup without staging | No; a receipt with the errors | Yes | No |
+| Save and resume steps, proposal expiry, abandonment, decision-clock maintenance | No | Yes | No |
+| Chat message | No | To be decided with ticket 8 | Yes |
+| Staged placement, staged refusal, load, exact retry | No | No | No |
 
-## Suggested skills
-
-- `to-tickets`, for the slicing rules: vertical slices, blocking edges, and expand–contract for wide changes.
-- `codebase-design`, for the history reader and the storage seam.
-- `domain-modeling`, for the glossary terms that change.
-
-## Proposals the tickets assume
-
-Each needs the maintainer's approval.
-
-1. **Markers.** Format 4 defines ADR 0007's `presentation` field from the start, and ticket 12 fills it in. Existing matches are then cleared once.
-2. **Patch shape.** A record lists each player, and each top-level public section, that changed, with its full new value. It holds no field-level differences.
-3. **Receipt window.** The current-state row keeps each role's last mutating request and its result. An older retry is rejected as stale. The browser holds one unresolved mutation at a time (`v2-client.ts:180` at `main` `eb5057d02`), so it never needs more. Save/resume keeps its own bounded window (256 requests).
-4. **One storage version per match, chosen at activation.** New storage is opt-in until the cutover, and no match is written in both formats.
-5. **Order inside decision 7.** Records and the compact snapshot come first, then storage, then replay, then full time, then the cutover.
-6. **Row summary.** The current-state row always carries a small summary, because the lobby needs one as well as the computer coach. This settles the turn-summary question without waiting for #650.
-7. **Computer player.** It keeps receiving full snapshots on its private channel.
-8. **Drift checks.** Ticket 17 exists only if the drift proposal in #611 is accepted.
+Live messages need their own order for changes at one gameplay revision, so that a browser doesn't discard a valid save update.
 
 ## Waiting for #650
 
-Keyframe cadence, the size of the in-memory tail, and the numeric targets. The tickets name them, and the values are filled in when the tickets are filed.
+Keyframe cadence, the size of the in-memory tail, and the numeric targets.
 
 ## Dependencies
 
@@ -78,90 +59,104 @@ flowchart LR
   T1[1 Preview copies]
   T2[2 COMPLETION_PENDING]
   T3[3 Drive tracker]
+  ADR --> T20[20 Public view]
   ADR --> T4[4 History reader]
   ADR --> T5[5 Format-4 records]
+  T20 --> T5
   ADR --> T6[6 Compact snapshot]
   T3 --> T6
-  T5 --> T7[7 New-storage match]
-  T6 --> T7
-  T7 --> T8[8 Chat rows]
-  T4 --> T9[9 Replay and log]
-  T7 --> T9
+  T5 --> T7a[7a New storage, test-only]
+  T6 --> T7a
+  T7a --> T7b[7b Lobby and computer]
+  T7a --> T7c[7c Schema and tools]
+  T7a --> T8[8 Chat rows]
+  T4 --> T9a[9a Range reader]
+  T7a --> T9a
+  T9a --> T9b[9b Browser replay]
   T8 --> T10[10 Full time]
-  T9 --> T10
-  T10 --> T11[11 Cutover]
+  T9a --> T10
   T5 --> T12[12 Markers]
+  T7b --> T19a[19a Acceptance gate]
+  T9b --> T19a
+  T10 --> T19a
+  T12 --> T19a
+  T7c --> T11a[11a Rehearsal]
+  T9b --> T11a
+  T10 --> T11a
+  T7b --> T11a
+  T11a --> T11b[11b Switch and clear]
+  T12 --> T11b
+  T19a --> T11b
+  T11b --> T11c[11c Retire old storage]
   T5 --> T13[13 Coach deltas]
   T13 --> T14[14 Spectator deltas]
-  T7 --> T15[15 Catch-up]
+  T7a --> T15[15 Catch-up]
   T13 --> T15
   T8 --> T16[16 Log and chat cache]
-  T9 --> T16
+  T9b --> T16
   T13 --> T16
-  T13 --> T17[17 Drift checks]
+  T13 --> T17[17 Live drift reports]
   T14 --> T18[18 Retire full states]
   T15 --> T18
   T16 --> T18
-  T11 --> T19[19 Cost and memory proof]
-  T18 --> T19
+  T11c --> T19b[19b Rollout proof]
+  T18 --> T19b
 ```
 
-The longest chain is 5 or 6, then 7, 9, 10, 11 and 19. Ticket 13 needs only ticket 5 and works for matches in either storage, so coaches can see smaller live updates before the cutover.
+The longest chain is 20, 5, 7a, 9a, 10, 19a, 11b, 11c and 19b. Ticket 13 needs ticket 5 and works for matches in either storage, so coaches can see smaller updates before the cutover.
 
-## Can start now
+## Filed now
 
 ### 1. Preview copies leave the game log out
 
-**What it delivers:** Block and ball-transfer previews stop copying the native game log with the engine. The previews themselves don't change.
-
-**Blocked by:** nothing.
-
-- Every preview result is unchanged in tests that cover block, blitz, jump-up block, multiple block, pass and hand-off previews.
-- A test shows that a preview copy has an empty game log.
-- The PR reports the time and allocation of one copy before and after, early and late in a full match.
+Filed as #652. Block and ball-transfer previews stop copying the native game log with the engine.
 
 ### 2. Remove `COMPLETION_PENDING` handling
 
-**What it delivers:** The browser and the computer player stop handling a code that the server no longer sends (from #548).
-
-**Blocked by:** nothing.
-
-- No source, test, soak driver or document treats `COMPLETION_PENDING` as a live code. Historical reports stay as they are.
-- A completed match still shows full time in the browser, and the computer player still ends its work.
-- `PERSISTENCE_FAILED` and `MATCH_OUTCOME_UNKNOWN` behave as before.
+Filed as #653. The browser and the computer player stop handling a code that the server no longer sends.
 
 ### 3. The drive tracker keeps its own summary
 
-**What it delivers:** The transcript no longer depends on presentation classes. The drive tracker receives appended records and owns its current-drive summary (from #548).
+Filed as #654. The transcript stops owning presentation state, and the tracker takes current facts rather than stored records.
 
-**Blocked by:** nothing.
+## Public view
 
-- `MatchTranscript` has no dependency on a presentation class.
-- The summary can be exported and restored without reading records. Today's restore still rebuilds it, so stored formats don't change.
-- The drive tracker shows the same result live, after recovery and in replay.
+### 20. Screens use a defined public view
+
+**What it delivers:** The server builds one public view from an explicit allowlist, and the screens of the waiting coach, spectators and replay work from it.
+
+**Blocked by:** ADR accepted.
+
+- The public view keeps player, team and ball facts, score, phase, weather, revealed outcomes, who must decide and what kind of decision it is, phase gates, the pass range and Kick options shown on the pitch, movement, dice and save status (decision 14).
+- The other coach's actions, prompt IDs and options, movement forecast, player action menu, block preview, threats and saved formations are outside it. `computer` stays on the computer channel.
+- Who must decide comes from an authoritative source, not from the first available action (`SetupSession.java:1458`).
+- A waiting coach and a spectator with no actions see the normal waiting text, not "Reconnect if the match appears stuck". The waiting coach's read-only range inspection still works.
+- Accepted decisions and native outcomes have an allowlist too. Today the recorder copies the request and removes only `computerDecision`.
+- Parity fixtures from today's screens cover both coaches, a spectator and replay, including privacy-negative cases. Related: #487.
 
 ## Storage and replay
 
 ### 4. One reader for match history
 
-**What it delivers:** A prefactor. Replay, the result page, match-log pages, the view after full time, retained concessions, the decision limit and completed-result validation read history through one interface, backed by today's artifact.
+**What it delivers:** A prefactor. Result metadata, the final state, the turn index, keyframes and record ranges are read through one bounded interface, backed by today's artifact.
 
 **Blocked by:** ADR accepted.
 
-- No reader outside that interface parses `events` or the transcript JSON.
+- The interface has no method that returns the whole artifact. Access checks, the old-format fallback and full old-format validation stay.
 - Where `events` and the transcript hold the same board, readers use the transcript.
 - Stored formats and behaviour don't change.
 
 ### 5. Format-4 records rebuild a match exactly
 
-**What it delivers:** For each committed revision, the server can build a record (decision, ordered outcomes, `presentation` field, public patch) and periodic keyframes. Any keyframe plus the patches after it reproduces the public state.
+**What it delivers:** For each committed revision, the server can build a record (decision, ordered outcomes, `presentation` field, public patch) and periodic keyframes, starting with one at revision zero.
 
-**Blocked by:** ADR accepted.
+**Blocked by:** ticket 20; ADR accepted.
 
-- Over complete headless matches with both rosters and several seeds, the rebuilt state equals the server's public state at every revision.
-- Building a record computes no actions, forecasts or previews, and no private data enters a record or keyframe.
-- The record and patch types carry no BB2025-specific types.
-- Staged placements create no record. A confirmed stage appears as final positions.
+- Over complete headless matches with both rosters and several seeds, the browser's own reducer reproduces the server's independent public state at every revision.
+- The cases include the ball disappearing, a player leaving the pitch, and `passing`, `kickoff`, `activePlayerAction` and `blockContext` ending.
+- Decoding is strict and versioned, and marker identities are stable. BB2025 mapping stays behind the shared record types.
+- The projection is built once on the engine worker, after native resolution and before the transaction, and computes no actions, forecasts or previews. Nothing private enters a record or keyframe.
+- Save status, reaction deadlines and clocks travel as ordered status updates with time anchors, not as record data. Staged and provisional moves stay overlays on the committed state.
 - A test fails if a public field changes without appearing in a patch.
 
 ### 6. A match restores from a compact snapshot alone
@@ -170,131 +165,177 @@ The longest chain is 5 or 6, then 7, 9, 10, 11 and 19. Ticket 13 needs only tick
 
 **Blocked by:** ticket 3; ADR accepted.
 
-- The snapshot carries everything listed under "Restore snapshot" in #611, including the decision-limit counters, the drive tracker's summary, announcement and block presentation state, dice state, clocks, save/resume state and computer memory.
-- Both coaches' views, and the next accepted move, match a session that was never restored, at many points across complete headless matches.
-- Restore reads no event, record, request history or game log. Only native commands not yet captured stay in memory.
-- A size test fails if the snapshot at the end of a match is more than 25% larger than at revision 50.
+- The snapshot carries everything under "Restore snapshot" in #611, with the absolute command number, the last captured command, the decision-limit and drive counters, the unfinished movement narrative, the phase, announcement and block cursors, clocks, save/resume state and computer memory.
+- With the native log omitted, the next command numbers, dice, outcomes, choices and both coaches' views match a session that was never restored, including at pending routes, reactions, cleanup and suspension. A crash during a stage is compared with the committed state.
+- Captured commands are discarded only once the write is known to be durable. A failed or unknown write releases the session.
+- Restore reads no event, record, request history or game log.
+- A size test reports absolute bytes, and fails if the snapshot at the end of a match is more than 25% larger than at revision 50 in a matched phase.
 
-### 7. A new-storage match commits state, receipt and record together
+### 7a. A test-only match commits state, receipt and record together
 
-**What it delivers:** A match activated with the new storage plays, survives a restart and can be retried safely. One transaction updates the current-state row (snapshot, receipt, summary, computer availability) and appends the record.
+**What it delivers:** A match activated with the new storage, in tests only, plays, survives a restart and can be retried. One transaction updates the current-state row and appends the receipt, the record and any keyframe.
 
 **Blocked by:** tickets 5 and 6.
 
-- Tests against MariaDB cover commit, rollback, an unknown commit outcome, an exact retry, a stale retry, and process death before and after commit. Nothing is published before commit.
-- The [retained-move acceptance case](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611#issuecomment-7122189387) passes.
-- Restore checks that the snapshot's revision matches the newest record, and treats a gap as `RECOVERY_CORRUPT`.
-- The lobby listing and the computer coach's fallback probe read the summary, without decoding or hashing the snapshot. A committed human move still wakes the computer.
+- Compare-and-swap uses the storage generation. Appends are contiguous and unique. Same-revision writes are covered.
+- Receipts are private rows found by match, actor and request ID, with the fingerprint, accepted revision, code and any error details (decision 15). Tests cover two devices on one seat, a cold restart, the computer player's retry, a timed reaction for the same role, and a reused ID with different content. The limit of 256 save requests stays as it is.
+- The running digest is updated in the same transaction (decision 17).
+- Restore checks the generation, the newest record and the recent records in one consistent read. Tests cover all records missing, the last one missing, and a gap. Old history isn't read.
+- MariaDB tests cover commit, rollback, an unknown outcome, an exact retry, a stale retry, and process death before and after commit. Nothing is published before commit.
+- The [retained-move acceptance case](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611#issuecomment-7122189387) passes, and the write and restore targets are met.
 - Storage admission still rejects before native execution.
-- Backup, restore, parity, provisioning, clearing and schema-verification tools cover the new tables.
-- Writing and restoring meet the targets, early and late.
+
+### 7b. The lobby and the computer coach work with both storages
+
+**What it delivers:** Lobby listings, the computer dispatcher and resident-match admission handle matches in either storage.
+
+**Blocked by:** ticket 7a.
+
+- The lobby reads the summary without decoding the snapshot, and expiry, resume deadlines and account dismissal are unchanged (#639, #643, #644).
+- A parked computer coach gets "nothing changed since revision N" without a snapshot (decision 18). It still needs a full view when something changed.
+- A committed human move, a save or a resume still wakes the computer, and saved matches still leave the inventory.
+
+### 7c. The schema and the operations tools cover the new tables
+
+**What it delivers:** Additive tables, and tested backup, restore, parity, provisioning, clearing and schema verification, before any real match uses them.
+
+**Blocked by:** ticket 7a.
+
+- Schema marker 12 is additive, with a stated rollback. The server still refuses an unexpected schema.
+- Each tool is identified as current or archived. `tools/r5-backup-lib.mjs` is pinned to marker 6. A supported backup and restore path for the new tables is rehearsed.
+- Clearing handles foreign keys and interrupted MariaDB DDL, and keeps accounts, teams, memberships, expired acknowledgements and settings.
 
 ### 8. Chat is stored as rows
 
-**What it delivers:** Each chat message is an appended row in the match's order. Sending a message doesn't rewrite the match.
+**What it delivers:** Each chat message is a row. Sending one doesn't rewrite the match.
 
-**Blocked by:** ticket 7.
+**Blocked by:** ticket 7a.
 
-- A duplicate send with the same request ID returns the same message. The same ID with other text is refused.
-- Spectator numbering, the content rules and access checks don't change, and chat never invokes a game command.
-- Chat pages read rows, and the restore object holds only counters and the deduplication window.
+- The relation between chat index, gameplay revision and order within the match is defined.
+- Author and request ID stay unique, including after the match ends. Rate, length and the 512-message limit stay (decision 20). Spectator numbers stay stable after a reconnect.
+- Pages are read by index, without scanning earlier messages or decoding the match. Chat never invokes a game command.
 
-### 9. Replay, results and the match log read records
+### 9a. Records and keyframes are read by range
 
-**What it delivers:** A coach opens, seeks, steps and pages a match in play or a finished one. The server reads only the records for that page.
+**What it delivers:** The server returns a starting keyframe and the records after it, and one shared reducer in the browser rebuilds each state.
 
-**Blocked by:** tickets 4 and 7.
+**Blocked by:** tickets 4 and 7a.
 
-- A page carries a starting keyframe and the records after it. The browser rebuilds each record's state, so playback, the match log and dice presentation don't change.
-- The result page and its list of turns don't need the whole match.
-- Reading the first, middle and last step costs the same at any match length.
-- An old-format match still opens through the reader from ticket 4 until the cutover.
+- A read fails closed on a gap. Reading the first, middle and last part of a match costs the same at any length.
+- A terminal fixture is used until ticket 10 produces a real finished match. An old-format match still opens through ticket 4's reader.
+- Only participants can read a finished match, as today.
+
+### 9b. Replay, results and the match log use ranges
+
+**What it delivers:** A coach opens, seeks, steps and pages a match without the browser loading all of it.
+
+**Blocked by:** ticket 9a.
+
+- The log handles sparse pages. Today's history only accepts a prefix from zero (`transcript-history.ts:20`), and the result screen builds its turn list from every record.
+- Playback, the match log, dice and the turn list show the same as today.
 
 ### 10. Full time finishes a match without building it
 
-**What it delivers:** Full time, concession, abandonment and expiry mark the match finished. The result is the final state, the records and a terminal digest.
+**What it delivers:** Full time and concession store the result as the final state, the records and the sealed running digest.
 
-**Blocked by:** tickets 8 and 9.
+**Blocked by:** tickets 8 and 9a.
 
-- Both coaches and spectators get the final state, including after a deferred or uncertain write.
-- The digest covers every record in order, and verification detects a missing or changed record.
-- The view after full time and a retained concession read the final state and the records.
-- Finishing a match meets the full-time target, with the same cost early and late.
+- Expiry and abandonment don't change: the match stays activated, the lobby derives its status, and dismissal stays per account.
+- The result, the prepared match's lifecycle and the terminal state change together, or each intermediate state is recoverable to the same result after a restart.
+- Tests cover regular full time, a concession, a retained concession from an incompatible session, refusal before commit, an unknown commit either way, conflict, process death after commit, deferred completion, timer-driven completion, and the old size-limit stop. No second record or concession appears.
+- The digest covers the records in order, with defined bytes and a defined treatment of keyframes and chat. A separate audit detects a deleted, changed or reordered record.
+- The quarantine journal, its cooldown and the admission guard stay.
+- Finishing meets the full-time target, with the same cost early and late.
 
-### 11. Cutover: new storage for every match
+### 11a. Rehearse the cutover
 
-**What it delivers:** Every match uses the new storage, and the old one is gone.
+**What it delivers:** A rehearsal, on a copy, of the schema change, mixed reads, backup and restore, a game-only clear, and a paired build and database rollback.
 
-**Blocked by:** ticket 10.
+**Blocked by:** tickets 7b, 7c, 9b and 10.
 
-- The maintainer clears all existing matches: active, saved and completed. The operations guide has the steps.
+- Memberships, expired acknowledgements, accounts, teams and settings survive. The recovery point for writes after the backup is stated.
+
+### 11b. Switch to the new storage and clear old matches
+
+**What it delivers:** New matches use the new storage, and the maintainer clears all existing matches: active, saved and completed.
+
+**Blocked by:** tickets 11a, 12 and 19a.
+
+- The switch happens with the gate's evidence, on the maintainer's word.
 - Old stored data is refused with `RECOVERY_UNSUPPORTED`.
-- The journal, compaction, `events`, the request history, the game-log freezing and the completed-result size limits are deleted. `MATCH_SIZE_LIMIT` and the memory budget are removed or restated for the new sizes.
-- `analyze-history-scaling.mjs` and `analyze-checkpoint-first-warm.mjs` are adapted or deleted (from #548).
-- The architecture map, the `CONTEXT.md` terms, the diagnostics fields and capture tools, and the operations guides match.
+
+### 11c. Retire the old storage
+
+**What it delivers:** The journal, compaction, `events`, the request history, the game-log freezing and the completed-result size limits are gone.
+
+**Blocked by:** ticket 11b.
+
+- `MATCH_SIZE_LIMIT` and the memory budget are removed or restated. Every 8,192 and 8,193 bound, on the server and in the browser, changes together.
+- The diagnostics fields, capture tools and analysis scripts are adapted or deleted.
+- The architecture map, the `CONTEXT.md` terms and the operations guides match.
 
 ### 12. The server fills in ADR 0007's markers
 
-**What it delivers:** Each record carries its ordered phase markers in the field that format 4 defines.
+**What it delivers:** Each record carries its ordered phase markers.
 
 **Blocked by:** ticket 5. #603 settles the touchdown order first.
 
 - Every emission site in the phase inventory is covered or has its own ticket.
-- Markers are the same live, after recovery and in replay, and an exact retry adds none.
-- Browser scheduling by markers stays with ADR 0007.
+- Markers and the phase cursor are the same live, after recovery and in replay. An exact retry adds none.
+- Browser scheduling by markers and the remaining inventory gaps have a named owner. Coordinate with #547, #588, #647, #648 and #649.
 
 ## Live updates
 
 ### 13. A coach plays on deltas
 
-**What it delivers:** A browser that negotiates it receives, for each accepted move, the record and its own role's envelope instead of the full state twice. It rebuilds the same state it has today, so the interface doesn't change.
+**What it delivers:** A browser that negotiates it receives, for each accepted move, the record and its own role's envelope instead of the full state twice. It can always repair itself.
 
 **Blocked by:** ticket 5.
 
-- Joining, reloading, a revision gap and a slow connection all get a snapshot.
-- The envelope carries prompts, actions, forecasts and previews for that role only. Nothing private is in the record.
-- Publication still follows the commit, rechecks each recipient's access and is best effort (ADR 0001). Staged placements still arrive as they do today (ADR 0008).
-- The acting coach's reply and the opponent's update use the same record.
-- Bytes per move are reported against #650's baseline, early and late.
+- Every request still gets its own reply, even if the record is over 256 KiB or can't be queued.
+- The browser checks the match and the base revision, and detects duplicates and gaps. A replaced or dropped update always leads to a bounded, authorized snapshot, including when no further move follows and when the repair read itself fails (#519).
+- A snapshot and a page state the revision they start from, so nothing is applied twice. Joining and reloading get a snapshot and the latest page.
+- Envelopes carry only that role's offers. Access is rechecked when an update is queued and after it was deferred. Publication still follows the commit, and staged placements keep their order.
+- Tests cover two rapid moves from different coaches, two devices on one seat, a slow connection, revocation during deferral, a reconnect with an unresolved move, and a terminal update with no later frame.
+- It works for matches in either storage. Bytes per move are reported against #650's baseline.
+- A test and the soak check the browser's applied state against the server's (decision 19).
 
 ### 14. Spectators watch on deltas
 
-**What it delivers:** Spectators receive the same public records. The public view is built once per revision for everyone.
+**What it delivers:** Spectators share one serialized public update per revision.
 
 **Blocked by:** ticket 13.
 
-- A spectator never receives a coach's envelope.
-- Adding spectators doesn't rebuild or parse the state again for each of them.
+- A spectator gets the public decision and splash cues and never a coach's envelope.
+- Access is rechecked when queued and after deferral. Tests cover watching, revocation, rejoining, viewers with and without the capability, and saved formations during setup (#487).
 
 ### 15. A browser catches up from records
 
-**What it delivers:** After a short disconnect or a dropped frame, the browser gets the records it missed. A longer gap gets a snapshot and the latest page.
+**What it delivers:** After a short gap, the browser gets the records it missed instead of a snapshot.
 
-**Blocked by:** tickets 7 and 13.
+**Blocked by:** tickets 7a and 13.
 
-- Records come from the in-memory tail or the stored rows, without restoring the match.
-- Playback presents caught-up moves in order, or skips to the latest state as it does today.
-- The tail has a fixed size, whatever the match length.
+- The tail is bounded in records and in bytes. Records come from the tail or from stored rows, without restoring the match.
+- Tests cover duplicates, overlaps, a stale base, cold and finished matches, and the role's current status at the end.
 
 ### 16. The match log and chat are client caches
 
 **What it delivers:** The browser keeps the log and chat it has received, and fetches older pages when they are needed.
 
-**Blocked by:** tickets 8, 9 and 13.
+**Blocked by:** tickets 8, 9b and 13.
 
-- Reload, another device, joining as a spectator and replay fetch what is missing.
-- Neither the log nor chat is in the restore object or in a live state message.
-- Caching in browser storage across reloads stays deferred.
+- Caches are sparse and bounded, keep their place while scrolling, and handle overlapping pages.
+- A cold join, reload, device switch and replay seek never fetch everything before them. Coordinate with #545.
+- Neither the log nor chat is in the restore object or in a live state message. Caching across reloads in browser storage stays deferred.
 
-### 17. Drift checks (only if the drift proposal is accepted)
+### 17. Live drift reports
 
-**What it delivers:** Keyframes are also sent live. The browser compares its rebuilt state with each one, reports a difference and adopts the keyframe.
+**What it delivers:** Keyframes are also sent live. The browser compares its committed state with each one, reports a difference, and adopts the keyframe.
 
 **Blocked by:** ticket 13.
 
-- Staged placements and provisional moves are left out of the comparison.
-- A report names the match, revision, client build and differing fields. It is bounded, rate-limited and logged as one structured line.
-- A soak fails on any report, and the soak reads the browser's applied state instead of the wire.
+- Staged and provisional moves are left out of the comparison.
+- A report names the match, revision, client build and bounded field paths, with no private values. It is rate-limited and logged as one line.
 
 ### 18. Retire full-state publication to browsers
 
@@ -302,18 +343,25 @@ The longest chain is 5 or 6, then 7, 9, 10, 11 and 19. Ticket 13 needs only tick
 
 **Blocked by:** tickets 14, 15 and 16.
 
-- A browser without the new capability is refused with a clear message to reload.
-- The computer player keeps its snapshots.
-- The protocol guides match.
+- Every reader has moved, including the soak. A slow client and a stale tab recover. A browser without the capability is asked to reload.
+- Full snapshots stay for joining and repair, and for the computer player.
 
 ## Proof
 
-### 19. Cost and memory stay flat in real play
+### 19a. Acceptance gate before the cutover
 
-**What it delivers:** The evidence for decision 6, and the real-play memory evidence for #524 AC3 and AC4 (from #548).
+**What it delivers:** Correctness, latency and memory evidence on the complete new path, before any default changes.
 
-**Blocked by:** tickets 11 and 18.
+**Blocked by:** tickets 7b, 9b, 10 and 12.
 
-- Durable write, restore, publication and full time meet the targets early and late, in one match and in a concurrent soak.
-- Sequential computer-coach matches, completed and abandoned, then a long soak at `-Xmx768m`, report retained heap per session against the 32-session cap. The evidence is linked from #524.
-- The outcome is compared with #650's baseline, and any miss has a ticket.
+- The targets are agreed first. The cutover waits on any correctness or budget miss.
+- With the resident cache full, a large match finishes, both coaches read it, and another match is served meanwhile. The evidence reports rows and bytes, worker p99, queue wait, peak and retained heap at 768 MiB, and releases. This carries #593's queue stall, #594's full cache and #596's long human match.
+- Limits for one record, page, tail and resident cache are stated and tested.
+
+### 19b. Proof after the rollout
+
+**What it delivers:** A sustained soak on the final code, compared with #650's baseline.
+
+**Blocked by:** tickets 11c and 18.
+
+- It uses #597's corrected soak method or equivalent evidence. Any miss has a ticket.

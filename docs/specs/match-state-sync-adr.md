@@ -66,7 +66,7 @@ This sets the server-to-client model for the rest of the project. The target is 
 
 ## Maintainer decisions
 
-Decisions 1–6 are from 2026-11-22. Decisions 7–13 are from 2026-11-24.
+Decisions 1–6 are from 2026-11-22. Decisions 7–20 are from 2026-11-24. Decisions 14–20 accept the recommended answers to [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290) of the implementation plan.
 
 1. **Scope.** This issue owns the storage and sync decision and its ADR. #550 keeps engine structure and the ruleset-boundary review, and treats this ADR as an input: it settles the persistence and presentation seams that #550's review maps.
 2. **One record serves live play, catch-up and replay.** The transcript record evolves to format 4:
@@ -85,6 +85,13 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–13 are from 2026-11-24.
 11. **Order of work.** #550 starts after this issue is settled. #548 was to be the first item completed after this review, until decision 13 folded it in here.
 12. **No state digest for now.** Revisit if the server and client are found to disagree about the pitch state.
 13. **#548 is folded into this issue and marked superseded.** With it gone, decision 10 makes this issue the next work.
+14. **What the other coach and spectators receive.** Who must decide and what kind of decision it is, with movement, dice, pass ranges and Kick options. They don't receive the other coach's legal actions, prompts, forecasts or menus.
+15. **Retries use private indexed receipts.** Each accepted gameplay request has one small entry, found by match, actor and request ID.
+16. **Markers exist before matches are cleared.** ADR 0007's markers are emitted before the one-time clear and the switch to the new storage.
+17. **Where history is checked.** Restore checks the newest and recent records. A page read fails on a gap. A separate audit verifies everything, against a running digest that is updated as each record is stored and sealed at full time. It covers stored history, not live state, so decision 12 stands.
+18. **A parked computer coach is told when nothing changed**, with a reply that names the revision. Otherwise the computer player keeps receiving full snapshots.
+19. **Drift is always checked in tests and soaks.** Live keyframe comparison and reports are included as ticket 17 of #651.
+20. **Chat keeps its 512-message limit.**
 
 ## Scope and deliverables
 
@@ -121,7 +128,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–13 are from 2026-11-24.
      - ADR 0013: the new storage sits behind that record's repository boundary, and the format-4 record is the "future canonical event log" it anticipated.
      - ADR 0008: its alternatives leave per-event snapshots for other actions to #548, which this ADR now takes over.
    - that ADR 0006 is unchanged.
-4. **Implementation plan**, in [#651](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651) (`docs/specs/match-state-sync-tickets.md`): nineteen candidate tickets and the eight proposals they assume. Codex reviews it first. Three tickets don't depend on the ADR, and the rest are filed when it is accepted. They carry every item from #548.
+4. **Implementation plan**, in [#651](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651) (`docs/specs/match-state-sync-tickets.md`): twenty-six tickets, revised after Codex's review of 2026-11-24. Tickets 1–3 don't depend on the ADR and are filed as #652, #653 and #654. The rest are filed when the ADR is accepted. They carry every item from #548.
 
 **Sequencing:** #610 has merged (PR #612), so the measurement and the ADR draft are both unblocked. The measurement (#650) comes first.
 
@@ -134,21 +141,22 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–13 are from 2026-11-24.
 ## Required decision content
 
 - **Restore snapshot:**
-  - What it contains: the native snapshot and continuation; dice and random-number state; clocks; pending decisions; save/resume state; computer memory; counters (revision, record and chat sequences, decision limit); the receipt; presentation cursors.
+  - What it contains: the native snapshot and continuation; dice and random-number state; clocks; pending decisions; save/resume state; computer memory; counters (storage generation, gameplay revision, record and chat sequences, decision limit); the absolute command number and the last captured command; the unfinished movement narrative; the phase, announcement, block and drive-tracker cursors.
   - Proof that its size does not grow with match length.
   - Restore reads no history.
-- **Exact-request receipt:** its window (for example, the last accepted request per role), and how a retry from outside the window is rejected.
-- **Row summary, for the lobby and for computer probes (proposed; the probe part is from #548).** Each committed move stores a small summary in the current-state row, bound to the same durable revision: gameplay revision, actor, prompt actor, phase, half, turn, score and save/resume status. The lobby listing reads it instead of the snapshot.
-  - An unchanged computer probe is answered from it, without reading or hashing the snapshot.
+- **Identity and order.** The storage generation (compare-and-swap), the gameplay revision (one record each) and the chat index are separate counters, and a staged placement's sequence is transient. The ADR defines which operations append a record, advance the generation, only acknowledge, or update a stage. Saves, resumes, proposal expiry, refused setups, clock maintenance and abandonment change stored data without a new revision. Live changes at one revision need their own order.
+- **Exact-request receipts (decision 15):** the canonical fingerprint, accepted revision, code and any error details; a reused ID with different content; two devices on one seat; save/resume's limit of 256 requests, which is a hard limit; chat's own author-scoped uniqueness, including after the match ends.
+- **Row summary, for the lobby and for computer probes (the probe part is from #548).** Each committed write stores a small summary in the current-state row, bound to the storage generation, with absolute expiry times and maintenance inputs: gameplay revision, actor, prompt actor, phase, half, turn, score and save/resume status. The lobby listing reads it instead of the snapshot.
+  - An unchanged computer probe is answered from it with decision 18's reply, without reading or hashing the snapshot. The summary can't return the full view that the worker requires today (`computer-player/src/main.mjs:168`).
   - It accounts for everything `RecoveryCheckpoint.computerReply` checks today: failed and terminal state, save/resume state, a pending reactive decision, and the human-inactivity deadline. It also accounts for pending maintenance.
   - When it can't answer safely, the full restore path answers.
 - **Format-4 record:**
   - fields, recording domain facts only: the accepted decision, dice, resolved effects, presentation markers, and patches to public entities. Never browser commands or diffs of the rendered view. The application-seams record says "Do not equate recorded UI commands with a stable domain-event schema";
-  - the shape of the public patch (for example, whole-entity replacement keyed by player, ball and team ID);
-  - no digest (decision 12);
+  - the shape of the public patch: whole players and whole top-level public sections, with insertion, removal and a stable order for players, and explicit removal of a section, distinct from unchanged and from `null`;
+  - no state digest (decision 12), and the running history digest of decision 17, with its canonical bytes and its treatment of keyframes and chat;
   - keyframe cadence.
-- **Public and private:** records and patches carry public facts only. The per-role envelope carries prompt, actions, forecasts and other private data, and never enters the record. The public projection is built once per revision.
-- **Live delivery and catch-up:** join and resync send a snapshot plus the latest page; the size of the bounded in-memory tail; gap detection; drift detection and reporting (see the open decisions); spectators. This stays consistent with ADR 0001's best-effort delivery and ADR 0008's staged-placement messages.
+- **Public and private (decision 14):** one public view, built once per revision from an explicit allowlist, with parity fixtures for both coaches, a spectator and replay. The allowlist also covers accepted decisions and native outcomes, because today the recorder copies the request and removes only `computerDecision`. Screens depend on the list of actions today: without it, a healthy spectator is told to reconnect (`GameView.tsx:1136`). Who must decide needs a source other than the first available action (`SetupSession.java:1458` on `main` at `eb5057d02`).
+- **Live delivery and catch-up:** join and resync send a snapshot plus the latest page, with a stated base revision; the size of the bounded in-memory tail, in records and bytes; duplicate and gap detection; drift checks (decision 19); spectators. A replaced or dropped update always leads to a bounded, authorized snapshot, because a later delta can otherwise erase the only path to its base (`PublicationDelivery.java:50-57`). Every request keeps its own reply. This stays consistent with ADR 0001's best-effort delivery and ADR 0008's staged-placement messages.
 - **Transaction:** what the move's transaction writes; behaviour on uncertain commit; exact retry; crash between commit and publish.
 - **Match log and chat:** as decided (decision 8), settling the detail listed below.
 - **Server memory:** no history stays resident beyond the tail. State the consequences for `MatchMemoryBudget`, for #543's frozen history, and for the drive tracker's current-drive summary, which restore now rebuilds from every record.
@@ -157,7 +165,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–13 are from 2026-11-24.
 - **Carried-forward guarantees.** Because 0002 and 0004 are superseded wholly, the ADR classifies each of their rules, so that none is lost by accident.
   - **Keep, restated in the new ADR:**
     - One durable boundary per action. An action is accepted and published only after commit.
-    - An exact retry appends nothing. The bounded receipt now provides this.
+    - An exact retry appends nothing. The indexed receipt now provides this.
     - Storage admission rejects an action before native execution, never after.
     - Recovery never reruns commands, dice, clocks or optional decisions.
     - Log lines and replay derive from recorded native outcomes, in canonical home orientation, without running the engine again.
@@ -165,12 +173,13 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–13 are from 2026-11-24.
     - Reads are paged. Live delivery may drop a frame, because authorized readers can catch up.
     - Spectator chat uses the same persisted sequence and access check, and never invokes a game command.
     - Staged placements create no record (ADR 0008's amendments to 0002 and 0004).
-    - Missing durable records never silently roll a match back. This was the reason for 0004's separate head and base generations. Now, restore checks that the snapshot's revision matches the newest stored record, and treats a gap as `RECOVERY_CORRUPT`.
+    - Missing durable records never silently roll a match back. This was the reason for 0004's separate head and base generations. Now, restore checks the storage generation, the newest record and the recent records in one consistent read, and treats a mismatch or gap as `RECOVERY_CORRUPT`. Older damage is found by page reads and the audit (decision 17).
     - Computer-coach availability (0004's schema marker 10, `computer_work_until_epoch_ms`) is committed in the same transaction as the move. It moves to the current-state row.
     - Restore validates the native state through the existing native restore path.
     - Every accepted revision is indexed.
-    - A terminal digest covers the completed transcript.
-    - The computer coach's cold load path keeps working. `RecoveryCheckpoint.computerReply` reads stored per-role views from the checkpoint, so the snapshot either keeps those views or the ADR says how they are rebuilt.
+    - A terminal digest covers the completed transcript. It becomes the running digest of decision 17, because hashing every record at full time would grow with the match.
+    - Expiry and abandonment aren't full time. The match stays activated, the lobby derives its status from deadlines, and dismissal stays per account (#639, #643, #644).
+    - The computer coach's cold load path keeps working. `RecoveryCheckpoint.computerReply` reads stored per-role views from the checkpoint, so the snapshot either keeps those views or the ADR says how they are rebuilt. Decision 18 covers the unchanged case.
   - **Replace:**
     - the single-blob artifact;
     - the base-plus-journal layout, with its separate generations and compaction;
@@ -189,14 +198,16 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–13 are from 2026-11-24.
 
 | Risk / trigger | Consequence | Required mitigation or decision | Owner / tracking | Remaining risk |
 | --- | --- | --- | --- | --- |
-| A client misses a record | Pitch shown differs from the server | Revision-gap detection; catch-up or resync | This ADR; live protocol ticket | — |
-| A client or server defect makes a patch wrong at the right revision | Pitch shown differs from the server; replay shows it too | Live keyframes, drift reports and rebuild checks, as proposed under the open decisions | This ADR | A wrong pitch can last until the next keyframe |
-| A reader of `events` is missed | Replay, the full-time view or a concession breaks | Decision 7; the list of readers above | Candidate tickets 4 and 9 | — |
+| A client misses a record, or a later update replaces it | Pitch shown differs from the server | Gap detection, and a mandatory snapshot repair even when no further move follows | Ticket 13 | — |
+| A client or server defect makes a patch wrong at the right revision | Pitch shown differs from the server; replay shows it too | Rebuild checks in tests and soaks; live keyframes and reports (decision 19) | Tickets 5, 13 and 17 | A wrong pitch can last until the next keyframe |
+| A reader of `events` is missed | Replay, the full-time view or a concession breaks | Decision 7; the list of readers above | Tickets 4, 9a and 9b | — |
 | A long match reaches the size limit before the new storage ships (#596) | The match stops early with `MATCH_SIZE_LIMIT` | Accepted for now (decision 10) | Maintainer | Until the new storage ships |
 | The native snapshot hides data that grows | Cost grows with match length again | Measure at revisions 50 and 700; size regression test | This ADR; storage ticket | Rare paths not covered by the measured matches |
-| Response lost after commit | Coach retries a move | Bounded receipt written in the same transaction | Storage ticket | Retries older than the window are rejected as stale |
+| Response lost after commit | Coach retries a move | Indexed receipt written in the same transaction (decision 15) | Ticket 7a | — |
 | Crash between commit and publish | Viewers miss a record | Catch-up from the tail or the record table; snapshot on reconnect | ADR 0001 behaviour, this ADR | None beyond today's best effort |
 | BB2025 shapes leak into the shared record | Breaks #550's ruleset separation | Neutral record schema; review checklist | This ADR; #550 | — |
+| Old records are damaged or removed | A replay fails, or a digest doesn't match | Contiguous appends; page reads fail on a gap; the audit (decision 17) | Tickets 7a, 9a and 10 | Found when read or audited, not at restore |
+| The cutover comes before the proof | A fault is found after matches are cleared | Markers, the acceptance gate and a rehearsal come first (decision 16) | Tickets 11a, 12 and 19a | — |
 | Completed replays are lost | Earlier matches cannot be replayed | Accepted by decision 5 (build phase) | Maintainer | — |
 
 ## Alternatives and open decisions
@@ -208,16 +219,12 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–13 are from 2026-11-24.
 - **Rebuild state by re-executing inputs deterministically.** Rejected: ADR 0004's rule that recovery never reruns commands stands.
 
 **Open, for the maintainer:**
-- **Drift detection and reporting (proposed 2026-11-24).** The digest is ruled out for now (decision 12). Proposed in its place:
-  - **Live keyframes.** The periodic keyframes are also sent live. The client compares its rebuilt public state with each one, at the same revision and before adopting it. Staged placements and provisional moves are left out of the comparison.
-  - **Drift report.** The maintainer asked whether a client can report a mismatch. It can: a bounded, rate-limited V2 request names the match, revision, client build and the differing fields, and the server logs one structured line under ADR 0006's local-logging allowance. A client can't send its whole state, because inbound messages are capped at 16 KiB (`BrowserMatchSocket.java:15`) and one state is about 16–20 KB.
-  - **Rebuild check in tests.** Tests and soaks rebuild state from patches and require it to equal each keyframe. A soak fails on any drift report.
-  - **Soak change.** Today's soak reads state straight from the wire (`overnight-soak.mjs:125-135`), so it bypasses the client's own state. It has to use the client's applied state or the drift reports to detect drift.
-- **The eight proposals that the candidate tickets assume** (2026-11-24): markers, patch shape, receipt window, storage version per match, order of work, row summary, the computer player, and drift checks. They are listed in #651, and the maintainer settles them after Codex's review of that plan.
+- **The plan's working assumptions**, listed in #651 and kept by the review: patch shape, one writer per match, the row summary and the order of test changes. They become decisions when the ADR is accepted. So does the table of what each operation writes.
+- **Detail for decision 19.** A client can't send its whole state in a drift report, because inbound messages are capped at 16 KiB (`BrowserMatchSocket.java:15`) and one state is about 16–20 KB. Today's soak reads state straight from the wire (`overnight-soak.mjs:125-135`), so it has to use the client's applied state.
 - **Detail for the ADR to settle under decision 8:**
   - The native engine log leaves the restore object and is never persisted. Only the tail not yet captured stays in memory.
   - The match log coaches read is derived from the records, so the record table is the replay storage.
-  - Each chat message is an appended row in the same ordered sequence, and the restore object keeps only counters and the deduplication window.
+  - Each chat message is an appended row with its own index. The ADR defines its order relative to records, and the restore object keeps only counters.
   - The client owns display, retention and pagination of what it has received, as a cache. The server serves older pages on reload, device change, spectator join, dropped frames and replay.
   - Caching across reloads in browser storage is optional and deferred.
 - Keyframe cadence and tail size, after the measurement.
@@ -232,11 +239,12 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–13 are from 2026-11-24.
   | --- | --- |
   | Completion timing; first compaction in a fresh JVM | Measurement |
   | Serialization budget, and the action when a match reaches it | Decision 6's flat-cost targets |
-  | Real-play memory (#524 AC3 and AC4) | Ticket 19, run on the new storage, because today's figures describe history this design removes |
-  | Per-commit turn summary (after #575) | Measurement; required decision content; ticket 7, as part of the row summary |
-  | Transcript decoupled from presentation | Ticket 3, which can start now |
-  | Client `COMPLETION_PENDING` handling | Ticket 2, which can start now and now includes the computer player |
-  | Analysis scripts | Measurement; ticket 11 |
+  | Real-play memory (#524 AC3 and AC4) | Already met: #524 closed on 2026-11-21 with a three-hour run. The full-cache case left to #594 is in ticket 19a |
+  | Per-commit turn summary (after #575) | Measurement; required decision content; ticket 7b, as part of the row summary |
+  | Transcript decoupled from presentation | Ticket 3 (#654) |
+  | Client `COMPLETION_PENDING` handling | Ticket 2 (#653), which now includes the computer player |
+  | Analysis scripts | Measurement; ticket 11c |
+- **#593, #594 and #596** keep their objectives in ticket 19a: the queue stall, the full cache and the long human match.
 - **#550** consumes this ADR as an input, and starts after this issue is settled. #595 and #597 don't depend on this design.
 - **#610** (PR #612, merged) promoted the founding records as ADRs 0010–0013 and numbers an ADR on acceptance, before merge.
 
@@ -269,7 +277,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–13 are from 2026-11-24.
 - **Branch and PR:** create a new branch. The PR says `Part of #<this issue>`. Do not merge, and do not mark the ADR accepted without the maintainer's approval.
 - **Later:** the implementation tickets prove decision 6 with early- and late-match comparisons at the default heap, zero history reads on restore, and process-death tests around the commit. They also run the [retained-move acceptance case](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611#issuecomment-7122189387): a legal move whose checkpoint write fails before commit, retried once through cold recovery, advances the durable revision exactly once within the request budget. The `codex/retained-move-retry` patch is on hold until that check runs.
 - **Later, from #548:**
-  - **Real-play memory (#524 AC3 and AC4).** Sequential computer-coach matches, completed and abandoned, then a long soak at `-Xmx768m`. Report retained heap per session against the 32-session cap (`MatchMemoryBudget.java:10`), and link the evidence from #524.
+  - **Memory.** With the resident cache full, a large match finishes, both coaches read it, and another match is served meanwhile, at `-Xmx768m` with 32 sessions (`MatchMemoryBudget.java:10`). This replaces #548's real-play item, which #524 already met, and carries #594's full-cache case.
   - **Row summary.** Unchanged probes and the lobby listing neither read nor hash the snapshot, and a committed human move still wakes the computer.
   - **Full time.** With `COMPLETION_PENDING` handling removed, a completed match still shows full time in the browser, and the computer player still ends its work.
   - **Decoupling.** The transcript has no dependency on presentation classes, and the moved drive-tracker history has unit tests.
