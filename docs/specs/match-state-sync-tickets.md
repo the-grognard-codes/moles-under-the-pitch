@@ -4,7 +4,7 @@ Issue: [#651](https://github.com/the-grognard-codes/moles-under-the-pitch/issues
 
 Parent: [#611](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611) ([ADR request](match-state-sync-adr.md)). Measurement: [#650](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/650) ([spec](match-state-sync-measurement.md)).
 
-Status: revised on 2026-11-24 after [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290). The maintainer accepted the recommended answers to its questions, recorded as decisions 14–20 in #611. Tickets 1–3 are filed (#652, #653 and #654). The other 23 are candidates, filed when the ADR is accepted. Line numbers are at `main` `eb5057d02`.
+Status: revised on 2026-11-24 after [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290). The maintainer accepted the recommended answers to its questions, recorded as decisions 14–20 in #611. Decision 21 was added later that day. Tickets 1–3 are filed (#652, #653 and #654). The other 23 are candidates, filed when the ADR is accepted. Line numbers are at `main` `eb5057d02`.
 
 ## Goal
 
@@ -25,7 +25,7 @@ Tickets 7, 9, 11 and 19 are split. The old numbers keep their letters, so the re
 
 ## What the tickets assume
 
-Decisions 14–20 in #611 govern. These working assumptions were kept by the review, and become decisions when the ADR is accepted:
+Decisions 14–21 in #611 govern. These working assumptions were kept by the review, and become decisions when the ADR is accepted:
 
 - **Patches** replace whole players and whole top-level public sections. Keyed players support insertion, removal and a stable order. A section that ends is removed explicitly, which is different from unchanged and from `null`.
 - **One writer per match.** Each match's storage version is chosen at activation and stored with the unpublished activation seed and the revision-zero record, so a crash or a changed setting reopens the same seed. The new storage is test-only until chat, replay, expiry and full time work. Nothing is written in both formats.
@@ -245,6 +245,7 @@ Filed as #654. The transcript stops owning presentation state, and the tracker t
 - The result, the prepared match's lifecycle and the terminal state change together, or each intermediate state is recoverable to the same result after a restart.
 - Tests cover regular full time, a concession, a retained concession from an incompatible session, refusal before commit, an unknown commit either way, conflict, process death after commit, deferred completion, timer-driven completion, and the old size-limit stop. No second record or concession appears.
 - The digest covers the records in order, with defined bytes and a defined treatment of keyframes and chat. A separate audit detects a deleted, changed or reordered record.
+- A finished match keeps all its records (decision 21) and stops counting toward the limit of 1,024 matches held for recovery (`JdbcRecoveryRepository.java:31`). A test finishes a match at that limit and then activates another.
 - The quarantine journal, its cooldown and the admission guard stay.
 - Finishing meets the full-time target, with the same cost early and late.
 

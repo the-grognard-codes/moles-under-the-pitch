@@ -66,7 +66,7 @@ This sets the server-to-client model for the rest of the project. The target is 
 
 ## Maintainer decisions
 
-Decisions 1–6 are from 2026-11-22. Decisions 7–20 are from 2026-11-24. Decisions 14–20 accept the recommended answers to [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290) of the implementation plan.
+Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decisions 14–20 accept the recommended answers to [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290) of the implementation plan.
 
 1. **Scope.** This issue owns the storage and sync decision and its ADR. #550 keeps engine structure and the ruleset-boundary review, and treats this ADR as an input: it settles the persistence and presentation seams that #550's review maps.
 2. **One record serves live play, catch-up and replay.** The transcript record evolves to format 4:
@@ -92,6 +92,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–20 are from 2026-11-24. Decis
 18. **A parked computer coach is told when nothing changed**, with a reply that names the revision. Otherwise the computer player keeps receiving full snapshots.
 19. **Drift is always checked in tests and soaks.** Live keyframe comparison and reports are included as ticket 17 of #651.
 20. **Chat keeps its 512-message limit.**
+21. **Finished matches keep all their replay records.**
 
 ## Scope and deliverables
 
@@ -230,7 +231,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–20 are from 2026-11-24. Decis
   - Caching across reloads in browser storage is optional and deferred.
 - Keyframe cadence and tail size, after the measurement.
 - The numeric targets under decision 6, after the measurement.
-- How long finished matches keep their records. Today activation stops when `ffb_match_recovery` holds 1,024 matches, and the server never deletes those rows.
+- **The 1,024-match limit.** Today activation stops when `ffb_match_recovery` holds 1,024 matches, and the server never deletes those rows. With decision 21, finished matches have to stop counting toward it. Whether abandoned and expired matches count, and how long they are kept, is open.
 
 ## Related tickets
 
