@@ -14,7 +14,7 @@ existing recovery generation as its base-checkpoint generation and creates the
 journal table; it does not delete or rewrite existing match artifacts, teams or
 accounts. Verify marker 9 before continuing.
 
-Current servers require **marker 10**. Roll out the migration and server
+The computer job availability release requires **marker 10**. Roll out the migration and server
 together.
 
 1. Stop the game service. Verify that `ffb_local_schema` contains a single marker
@@ -60,7 +60,7 @@ downgrade the marker. Restoring a backup is a separate operator action.
 For isolated review/acceptance databases, the explicit `schema-bootstrap` service
 creates or upgrades verified supported targets. It preserves the existing guard
 against populated marker-5/6 migration. The one-time review provisioner accepts
-marker 7 through 10 sources and upgrades only its verified empty review destination.
+marker 7 through 11 sources and upgrades only its verified empty review destination.
 The ordinary server process never migrates a database. The local cleanup tool
 recognizes journal rows as game data and preserves account preferences; this
 feature does not authorize running cleanup against user games.
@@ -70,3 +70,9 @@ Successful responses follow durable acceptance. Recovery checks the complete
 contiguous chain between base and head, including the missing-all-records case,
 and refuses corrupted or incomplete history rather than silently returning an
 older state. See [ADR 0004](../adr/0004-durable-recovery-journal.md).
+
+## Marker 11 and expired match acknowledgement
+
+Stop the game service, verify that the single schema marker is 10, and take a restorable database backup. Apply [011-expired-match-acknowledgement.sql](../../ffb-server/src/main/resources/local-schema/011-expired-match-acknowledgement.sql) with the operator connection. Existing memberships start with a null acknowledgement. The new index orders visible matches by account and match ID. Allow time and disk space to build it before restarting.
+
+Verify that the single marker is 11 and that the membership count matches the backup. Start the marker-11 server and check engine health and a signed-in lobby. For rollback, stop the service and retain the marker-11 database for reconciliation. Restore the marker-10 backup with its matching build. Obtain maintainer approval before discarding writes made since the backup.

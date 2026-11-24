@@ -32,6 +32,10 @@
 .play-lobby .current-games .spectate-section-heading button { margin-left: auto; }
 .current-games .spectate-game-top { flex-wrap: wrap; }
 .current-games .current-game-resume-time { font-variant-numeric: tabular-nums; }
+.expired-match-actions { display: flex; align-items: baseline; flex-wrap: wrap; gap: .75rem; }
+.expired-match-acknowledgement { min-width: 0; }
+.expired-match-acknowledgement button { max-width: 100%; white-space: normal; }
+.expired-match-acknowledgement p { margin: .5rem 0 0; }
 @media (max-width: 1050px) {
   .play-lobby .ai-coaches { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }

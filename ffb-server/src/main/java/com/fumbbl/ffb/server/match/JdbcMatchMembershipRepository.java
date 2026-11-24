@@ -13,6 +13,9 @@ import java.util.List;
 
 /** Short JDBC operations over the v2 copied-storage membership table. */
 public final class JdbcMatchMembershipRepository implements MatchMembershipRepository {
+	static final String CURRENT_MATCHES_SQL = "SELECT m.matchid,m.role FROM ffb_v2_match_members m FORCE INDEX (ffb_v2_match_members_visible) "
+		+ "JOIN ffb_prepared_matches p ON p.match_id=m.matchid "
+		+ "WHERE m.account_id=? AND m.acknowledged_at_epoch_ms IS NULL AND m.matchid>? AND p.document_version BETWEEN 1 AND 3 ORDER BY m.matchid LIMIT 101";
 	private final JdbcConnections connections;
 
 	public JdbcMatchMembershipRepository(JdbcConnections connections) { this.connections = connections; }
@@ -25,6 +28,35 @@ public final class JdbcMatchMembershipRepository implements MatchMembershipRepos
 				return rows.next() ? new MatchMembership(rows.getString(1), rows.getString(2), rows.getString(3)) : null;
 			}
 		}
+	}
+
+	@Override public Boolean acknowledged(String matchId, String accountId) throws SQLException {
+		try (Connection connection = connections.open(); PreparedStatement query = connection.prepareStatement(
+			"SELECT acknowledged_at_epoch_ms IS NOT NULL FROM ffb_v2_match_members WHERE matchid=? AND account_id=?")) {
+			query.setString(1, matchId);
+			query.setString(2, accountId);
+			try (ResultSet rows = query.executeQuery()) { return rows.next() ? rows.getBoolean(1) : null; }
+		}
+	}
+
+	@Override public void acknowledge(String matchId, String accountId, long now) throws SQLException {
+		boolean mayHaveCommitted = false;
+		try (Connection connection = connections.open(); PreparedStatement update = connection.prepareStatement(
+			"UPDATE ffb_v2_match_members SET acknowledged_at_epoch_ms=? WHERE matchid=? AND account_id=? AND acknowledged_at_epoch_ms IS NULL")) {
+			update.setLong(1, now);
+			update.setString(2, matchId);
+			update.setString(3, accountId);
+			if (connection.getAutoCommit()) connection.setAutoCommit(false);
+			int count = update.executeUpdate();
+			mayHaveCommitted = true;
+			connection.commit();
+			if (count == 1) return;
+		} catch (SQLException failure) {
+			if (!mayHaveCommitted || failure instanceof NotStarted && !(failure instanceof CleanupNotStarted)
+				|| failure.getErrorCode() == 1205 || "40001".equals(failure.getSQLState())) throw failure;
+			throw new OutcomeUnknown(failure);
+		}
+		if (!Boolean.TRUE.equals(acknowledged(matchId, accountId))) throw new MatchService.Failure("NOT_FOUND");
 	}
 
 	@Override public String accountForRole(String matchId, String role) throws SQLException {
@@ -63,8 +95,7 @@ public final class JdbcMatchMembershipRepository implements MatchMembershipRepos
 
 	@Override public List<MatchMembership> unfinishedMatches(String accountId, String afterMatchId) throws SQLException {
 		try (Connection connection = connections.open(); PreparedStatement query = connection.prepareStatement(
-			"SELECT m.matchid,m.role FROM ffb_v2_match_members m FORCE INDEX (ffb_v2_match_members_account) JOIN ffb_prepared_matches p ON p.match_id=m.matchid "
-				+ "WHERE m.account_id=? AND m.matchid>? AND p.document_version BETWEEN 1 AND 3 ORDER BY m.matchid LIMIT 101")) {
+			CURRENT_MATCHES_SQL)) {
 			query.setString(1, accountId);
 			query.setString(2, afterMatchId == null ? "" : afterMatchId);
 			List<MatchMembership> result = new ArrayList<>();

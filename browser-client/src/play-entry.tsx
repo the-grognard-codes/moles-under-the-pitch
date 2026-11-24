@@ -29,6 +29,29 @@ import './play-lobby.css';
 type LobbyMatch = CurrentMatch & { resumeCutoff?: number };
 const checkingMatchStatus = (match: LobbyMatch, now: number) => match.resumeCutoff !== undefined && match.resumeCutoff <= now;
 
+function ExpiredMatchAcknowledgement({ connection, matchId, connected }: { connection: V2Client | null; matchId: string; connected: boolean }) {
+  const attempt = connection?.expiryAcknowledgement(matchId);
+  if (attempt?.error === 'UNSUPPORTED_MESSAGE')
+    return <p role="status">Match removal is unavailable on this server.</p>;
+  const error = attempt?.status === 'failed' ? acknowledgementError(attempt.error, connected) : '';
+  const pending = attempt?.status === 'pending';
+  return <div className="expired-match-acknowledgement">
+    <button type="button" disabled={!connected || pending} aria-busy={pending} onClick={() => connection?.acknowledgeExpired(matchId)}>
+      {pending ? 'Removing match…' : 'Acknowledge and remove'}
+    </button>
+    {error && <p role="alert">{error}</p>}
+  </div>;
+}
+
+function acknowledgementError(code: string | undefined, connected: boolean): string {
+  if (!connected) return 'Removal could not be confirmed. Reconnect to try again.';
+  if (code === 'MATCH_NOT_EXPIRED') return 'This match is still resumable. Refresh your games.';
+  if (code === 'NOT_FOUND') return 'This match is unavailable for this account.';
+  if (code === 'ACKNOWLEDGEMENT_OUTCOME_UNKNOWN') return 'Removal could not be confirmed. Try again.';
+  if (code === 'RATE_LIMITED') return 'Match removal is busy. Wait a moment, then try again.';
+  return 'The expired match could not be removed. Try again.';
+}
+
 export function mountPlay(element: HTMLElement, options: { url: string; getToken: () => Promise<string>; environment?: string }) {
   const root = createRoot(element);
   root.render(<DiagnosticsBoundary environment={options.environment}><Play options={options} /></DiagnosticsBoundary>);
@@ -202,6 +225,14 @@ function Play({ options }: { options: { url: string; getToken: () => Promise<str
         requestCurrentMatches();
         if (resultRoute && matchIdPattern.test(matchId)) { connection.request('matchResult', { operation: 'load', matchId }); setResultPending(true); }
         if (!matchRoute && !resultRoute) connection.request('computer', { operation: 'status' }); }
+      if (message.type === 'expiredAcknowledgement') {
+        if (message.accepted) {
+          if (matchRoute && message.matchId === matchId) location.assign('/play');
+          else requestCurrentMatches();
+        } else if (connection.expiryAcknowledgement(message.matchId)?.error === 'MATCH_NOT_EXPIRED') requestCurrentMatches();
+        redraw(value => value + 1);
+        return;
+      }
       if (message.type === 'currentMatches' && message.requestId === currentMatchesRequest) {
         currentMatchesRequest = null;
         if (message.serverNow === undefined) includeResumeDetails = false;
@@ -419,7 +450,9 @@ function Play({ options }: { options: { url: string; getToken: () => Promise<str
   const connection = client.current;
   const connected = status === 'Connected';
   const matchExpired = matchRoute && !watchRoute && connection?.expiredMatchId === matchId;
-  const blocksResume = (id: string | undefined) => currentMatches.some(game => game.matchId === id
+  const acknowledged = (id: string) => connection?.expiryAcknowledgement(id)?.status === 'accepted';
+  const visibleMatches = currentMatches.filter(game => !acknowledged(game.matchId));
+  const blocksResume = (id: string) => currentMatches.some(game => game.matchId === id
     && (game.lifecycle === 'EXPIRED' || checkingMatchStatus(game, lobbyNow)));
   const busy = !connected || !!connection?.pending || concessionStatus.busy;
   const selected = teams.find(team => team.teamId === teamId && team.eligibility === 'CURRENT');
@@ -490,7 +523,11 @@ function Play({ options }: { options: { url: string; getToken: () => Promise<str
     </div></div>}
     {matchExpired && <section className="match-connect-panel" aria-labelledby="expired-match-heading">
       <h1 id="expired-match-heading">Match expired</h1><p>The time to resume this match has ended.</p>
-      <a href="/play">Back to lobby</a>
+      <div className="expired-match-actions">
+        <ExpiredMatchAcknowledgement connection={connection} matchId={matchId} connected={connected} />
+        {!connected && <button type="button" disabled={status === 'Connecting'} onClick={() => connection?.connect()}>Reconnect</button>}
+        <a href="/play">Back to lobby</a>
+      </div>
     </section>}
     {matchRoute && !matchExpired && !connection?.state && <section className="match-connect-panel" aria-label="Match connection"><h1>Match</h1><p role="status">{status}</p>{error && <p role="alert">{error}</p>}
       <button type="button" onClick={() => connection?.connect()} disabled={!connection || status === 'Connecting'}>Reconnect</button><button type="button" onClick={exitMatch}>Exit match</button></section>}
@@ -544,8 +581,8 @@ function Play({ options }: { options: { url: string; getToken: () => Promise<str
       {currentMatchesLoading && <p role="status">Loading your games…</p>}
       {currentMatchesError && <p role={currentMatchesThrottled ? 'status' : 'alert'}>{currentMatchesError}</p>}
       {concessionStatus.text && <p role="status">{concessionStatus.text}</p>}
-      {connected && !currentMatchesLoading && !currentMatchesError && currentMatches.length === 0 && <p>You have no unfinished games.</p>}
-      <ul className="spectate-games">{currentMatches.map(game => {
+      {connected && !currentMatchesLoading && !currentMatchesError && visibleMatches.length === 0 && <p>You have no unfinished games.</p>}
+      <ul className="spectate-games">{visibleMatches.map(game => {
         const checkingStatus = checkingMatchStatus(game, lobbyNow);
         const canResume = game.lifecycle === 'ACTIVATED' && !checkingStatus;
         const resumeLabel = game.resumeCutoff === undefined ? null : resumeTimeLabel(game.resumeCutoff - lobbyNow);
@@ -568,7 +605,8 @@ function Play({ options }: { options: { url: string; getToken: () => Promise<str
               {game.homeTeamName && <span>Your team: {game.callerRole === 'home' ? game.homeTeamName : game.awayTeamName}<br/>
                 Opponent: {(game.callerRole === 'home' ? game.awayTeamName : game.homeTeamName) ?? 'Waiting for opponent'}</span>}
               {game.lifecycle !== 'EXPIRED' && <details><summary>Game ID</summary><code>{game.matchId}</code></details>}
-            </div>{game.lifecycle !== 'EXPIRED' && !checkingStatus && <div className="current-game-actions">
+            </div>{game.lifecycle === 'EXPIRED' ? <ExpiredMatchAcknowledgement connection={connection} matchId={game.matchId} connected={connected} />
+              : !checkingStatus && <div className="current-game-actions">
               {canResume ? <a className="button" href={matchUrl(game.matchId, false)}>Resume</a>
                 : game.lifecycle === 'UNAVAILABLE' ? <span>Refresh to try again</span>
                 : <button disabled={busy} onClick={() => run(() => connection!.request('preparedMatch', { operation: 'load', matchId: game.matchId }))}>Continue setup</button>}

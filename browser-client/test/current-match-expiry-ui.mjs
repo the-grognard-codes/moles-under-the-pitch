@@ -10,6 +10,7 @@ const evidence = new URL('../../.tools/current-match-expiry/', import.meta.url);
 const matchId = '12345678-1234-1234-1234-123456789abc';
 const accountId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const pendingKey = 'ffb.intent.v2';
+const removeButtonLabel = 'Acknowledge and remove';
 const server = await createServer({ root, publicDir, configFile: false, server: { host: '127.0.0.1', port: 0 } });
 await server.listen();
 const base = `http://127.0.0.1:${server.httpServer.address().port}`;
@@ -43,6 +44,7 @@ async function openLobby(width, clockSkew, refreshOutcome) {
     }));
     window.requests = [];
     window.currentMatchesReads = [];
+    let acknowledged = false;
     window.WebSocket = class {
       readyState = 0;
       constructor() { queueMicrotask(() => { this.readyState = 1; this.onopen?.(); }); }
@@ -54,13 +56,28 @@ async function openLobby(width, clockSkew, refreshOutcome) {
         if (request.type === 'authenticate') reply({ type: 'authentication', code: 'ACCEPTED', accountId });
         if (request.type === 'setup' && request.operation === 'load')
           reply({ type: 'setupState', code: 'MATCH_ABANDONED', duplicate: false, state: null });
+        if (request.type === 'acknowledgeExpired') {
+          const attempt = window.requests.filter(message => message.type === request.type).length;
+          const failures = location.pathname === '/play/match'
+            ? ['ACKNOWLEDGEMENT_OUTCOME_UNKNOWN', 'MALFORMED_MESSAGE'] : ['PERSISTENCE_FAILED', 'RATE_LIMITED'];
+          window.releaseAcknowledgement = () => {
+            if (refreshOutcome === 'legacy') reply({ type: 'error', code: 'UNSUPPORTED_MESSAGE' });
+            else if (attempt <= failures.length) reply({ type: 'error', code: failures[attempt - 1] });
+            else {
+              acknowledged = true;
+              reply({ type: 'acknowledgeExpired', code: 'ACCEPTED', matchId: request.matchId });
+            }
+          };
+          return;
+        }
         if (request.type !== 'currentMatches') return;
         const page = (matches, details) => reply({ type: 'currentMatches', code: 'ACCEPTED', matches, next: null, ...(details ? { serverNow } : {}) });
         window.currentMatchesReads.push({ includeDetails: request.includeResumeDetails === true, at: performance.now() });
         if (refreshOutcome === 'legacy') {
           if (request.includeResumeDetails) reply({ type: 'error', code: 'MALFORMED_MESSAGE' });
           else page([match], false);
-        } else if (window.currentMatchesReads.length === 1) {
+        } else if (acknowledged) page([], true);
+        else if (window.currentMatchesReads.length === 1) {
           page([{ ...match, resumeUntil: serverNow + deadline },
             game('bd', 'Patient Reavers', 29 * day + 23.5 * hour), game('be', 'Evening Reavers', 22 * hour + 16.5 * minute),
             game('bf', 'Quick Reavers', 9.5 * minute), game('c0', 'Active Reavers')], true);
@@ -72,6 +89,27 @@ async function openLobby(width, clockSkew, refreshOutcome) {
   }, { clockSkew, refreshOutcome, matchId, accountId, pendingKey });
   await page.goto(`${base}/play`, { waitUntil: 'domcontentloaded' });
   return { page, errors };
+}
+
+async function retryAcknowledgement(page, surface, failureMessages) {
+  const action = surface.getByRole('button', { name: removeButtonLabel, exact: true });
+  const pending = surface.getByRole('button', { name: 'Removing match…', exact: true });
+  for (const message of failureMessages) {
+    await action.click();
+    await pending.waitFor();
+    assert.equal(await pending.isDisabled(), true);
+    await page.evaluate(() => window.releaseAcknowledgement());
+    await surface.getByRole('alert').filter({ hasText: message }).waitFor();
+    assert.equal(await action.isEnabled(), true);
+    assert.ok(await surface.evaluate(element => element.scrollWidth <= element.clientWidth));
+  }
+  await action.click();
+  await pending.waitFor();
+  const attempts = await page.evaluate(() => window.requests.filter(request => request.type === 'acknowledgeExpired'));
+  assert.equal(attempts.length, failureMessages.length + 1);
+  for (const attempt of attempts.slice(1)) assert.deepEqual(attempt, attempts[0]);
+  assert.deepEqual(attempts[0], { type: 'acknowledgeExpired', matchId, requestId: attempts[0].requestId, version: 2 });
+  await page.evaluate(() => window.releaseAcknowledgement());
 }
 
 try {
@@ -100,8 +138,13 @@ try {
     else {
       await late.getByText('Match expired', { exact: true }).waitFor();
       assert.equal(await late.getByRole('link').count(), 0);
-      assert.equal(await late.getByRole('button').count(), 0);
+      assert.equal(await late.getByRole('button').count(), 1);
+      assert.equal(await late.getByRole('button', { name: removeButtonLabel, exact: true }).isVisible(), true);
       await page.screenshot({ path: fileURLToPath(new URL(`expired-${width}.png`, evidence)), fullPage: true });
+      await retryAcknowledgement(page, late, ['The expired match could not be removed. Try again.', 'Match removal is busy. Wait a moment, then try again.']);
+      await late.waitFor({ state: 'detached' });
+      await page.waitForFunction(() => window.currentMatchesReads.length === 3);
+      await page.getByText('You have no unfinished games.', { exact: true }).waitFor();
       await page.goto(`${base}/play/match?matchId=${matchId}`);
       await page.getByRole('heading', { name: 'Match expired', exact: true }).waitFor();
       assert.equal(await page.getByText('The time to resume this match has ended.').isVisible(), true);
@@ -110,8 +153,11 @@ try {
       assert.deepEqual(await page.evaluate(() => window.requests.filter(request => ['setup', 'matchChat', 'matchTranscript'].includes(request.type))
         .map(request => request.operation)), ['load']);
       await page.screenshot({ path: fileURLToPath(new URL(`direct-${width}.png`, evidence)) });
-      await page.getByRole('link', { name: 'Back to lobby' }).click();
-      assert.equal(new URL(page.url()).pathname, '/play');
+      assert.equal(await page.getByRole('link', { name: 'Back to lobby' }).getAttribute('href'), '/play');
+      await retryAcknowledgement(page, page.getByRole('region', { name: 'Match expired' }), [
+        'Removal could not be confirmed. Try again.', 'The expired match could not be removed. Try again.',
+      ]);
+      await page.waitForURL(`${base}/play`);
     }
     assert.deepEqual(errors, []);
     await page.close();
@@ -124,8 +170,13 @@ try {
   await page.getByRole('button', { name: 'Refresh games', exact: true }).click();
   await page.waitForFunction(() => window.currentMatchesReads.length === 3);
   assert.deepEqual(await page.evaluate(() => window.currentMatchesReads.map(read => read.includeDetails)), [true, false, false]);
+  await page.goto(`${base}/play/match?matchId=${matchId}`);
+  await page.getByRole('button', { name: removeButtonLabel }).click();
+  await page.evaluate(() => window.releaseAcknowledgement());
+  await page.getByText('Match removal is unavailable on this server.', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('link', { name: 'Back to lobby' }).isVisible(), true);
   assert.deepEqual(errors, []);
-  console.log('Match expiry UI: skew-safe countdown, recheck at zero, both verdicts, expired direct link, and legacy fallback at 1440px and 390px.');
+  console.log('Match expiry UI: skew-safe countdown, both verdicts at zero, exact acknowledgement retries in the lobby and direct view, and legacy fallback at 1440px and 390px.');
 } finally {
   await browser.close();
   await server.close();

@@ -206,6 +206,13 @@ class RecoveryJournalMariaDbTest {
 				() -> repository.find(corruptId));
 			assertEquals(corruptId, failure.matchId);
 
+			try (Connection connection = connections.open(); Statement sql = connection.createStatement()) {
+				resource(sql, "/local-schema/011-expired-match-acknowledgement.sql");
+			}
+			assertEquals("11", scalar(connections, "SELECT version FROM ffb_local_schema"));
+			assertEquals(baseBytes, scalar(connections, baseBytesQuery));
+			assertEquals(tailBytes, scalar(connections, "SELECT record_json FROM ffb_match_recovery_journal"));
+			verifyAccountAcknowledgements(connections, id);
 			RecoveryJournal.Cursor paused = journal.cursor(repository.find(id));
 			JsonObject resume = consent(engine.session, "home", "resumeRequest", "resume", null, now + 21);
 			RecoveryJournal.Change proposed = journal.change(engine.session, paused, 2);
@@ -234,6 +241,52 @@ class RecoveryJournalMariaDbTest {
 					sql.executeUpdate("DROP TABLE IF EXISTS " + table);
 			}
 		}
+	}
+
+	private void verifyAccountAcknowledgements(JdbcRecoveryRepository.Connections connections, String matchId) throws Exception {
+		JdbcMatchMembershipRepository members = new JdbcMatchMembershipRepository(connections::open);
+		String home = members.accountForRole(matchId, "home"), away = members.accountForRole(matchId, "away");
+		assertEquals(Boolean.FALSE, members.acknowledged(matchId, home));
+		try (var pool = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+			var gate = new java.util.concurrent.CountDownLatch(1);
+			var first = pool.submit(() -> { gate.await(); members.acknowledge(matchId, home, 500); return null; });
+			var second = pool.submit(() -> { gate.await(); members.acknowledge(matchId, home, 501); return null; });
+			gate.countDown();
+			first.get(); second.get();
+		}
+		String timestampQuery = "SELECT acknowledged_at_epoch_ms FROM ffb_v2_match_members WHERE matchid='" + matchId + "' AND role='home'";
+		String first = scalar(connections, timestampQuery);
+		assertTrue(List.of("500", "501").contains(first));
+		members.acknowledge(matchId, home, 1000);
+		assertEquals(first, scalar(connections, timestampQuery));
+		assertEquals(Boolean.FALSE, members.acknowledged(matchId, away));
+		assertTrue(members.isActive(matchId));
+		assertEquals("home", members.find(matchId, home).role);
+
+		String account = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+		try (Connection connection = connections.open(); Statement sql = connection.createStatement()) {
+			for (int n = 1; n <= 205; n++) {
+				String id = new java.util.UUID(1, n).toString();
+				sql.addBatch("INSERT INTO ffb_prepared_matches VALUES ('" + id + "',3,'{}')");
+				sql.addBatch("INSERT INTO ffb_v2_match_members VALUES ('" + id + "','" + account + "','home'," + (n <= 103 ? "900" : "NULL") + ")");
+			}
+			sql.executeBatch();
+			try (PreparedStatement plan = connection.prepareStatement("EXPLAIN " + JdbcMatchMembershipRepository.CURRENT_MATCHES_SQL)) {
+				plan.setString(1, account); plan.setString(2, "");
+				try (ResultSet rows = plan.executeQuery()) {
+					assertTrue(rows.next());
+					assertEquals("m", rows.getString("table"));
+					assertEquals("ffb_v2_match_members_visible", rows.getString("key"));
+					assertFalse(rows.getString("Extra").contains("filesort"));
+				}
+			}
+		}
+		List<MatchMembership> page = members.unfinishedMatches(account, null);
+		assertEquals(101, page.size());
+		assertEquals(new java.util.UUID(1, 104).toString(), page.getFirst().matchId);
+		List<MatchMembership> last = members.unfinishedMatches(account, page.get(99).matchId);
+		assertEquals(2, last.size());
+		assertEquals(page.get(100).matchId, last.getFirst().matchId);
 	}
 
 	private void insertComputerMatch(Connection connection, MatchDocument match, String computerAccount) throws SQLException {

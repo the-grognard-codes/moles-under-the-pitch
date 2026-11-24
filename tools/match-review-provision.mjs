@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFileSync } from 'node:fs';
+import { reviewMigrations, reviewSchemaMarker } from './match-review-schema.mjs';
 
 const run = promisify(execFile);
 const source = 'ffb-current-dev-database-1';
@@ -26,7 +27,7 @@ const dataMount = container => {
 assert.notEqual(dataMount(oldContainer), dataMount(newContainer), 'Source and target volumes must differ');
 assert.match(dataMount(newContainer), /^ffb-match-review_database$/, 'Target is not the isolated review volume');
 const sourceMarker = await query(source, 'SELECT version FROM ffb_local_schema');
-assert.ok(['7', '8', '9', '10'].includes(sourceMarker), 'Source must be marker 7 through 10');
+const migrations = reviewMigrations(sourceMarker);
 assert.equal(await query(target, 'SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE()'), '0',
   'Review target must be empty; never overwrite a provisioned database');
 const dump = spawn('docker', ['exec', source, 'sh', '-c',
@@ -67,13 +68,7 @@ const counts = await query(target, `SELECT
   (SELECT COUNT(*) FROM ffb_prepared_matches)`);
 assert.equal(counts, '0\t0\t0\t0\t0', 'Review match tables were not cleared');
 if (hasConsent) assert.equal(await query(target, 'SELECT COUNT(*) FROM ffb_match_spectator_consent'), '0');
-const migrations = [
-  [8, '008-skill-use-preferences.sql'],
-  [9, '009-recovery-journal.sql'],
-  [10, '010-computer-job-availability.sql']
-];
-for (const [version, file] of migrations) {
-  if (Number(sourceMarker) >= version) continue;
+for (const file of migrations) {
   const migration = spawn('docker', ['exec', '-i', target, 'sh', '-c', sql], { windowsHide: true, stdio: ['pipe', 'ignore', 'pipe'] });
   let migrationError = '';
   migration.stderr.on('data', chunk => { migrationError += chunk.toString().slice(0, 2000); });
@@ -81,6 +76,6 @@ for (const [version, file] of migrations) {
   migration.stdin.end(readFileSync(new URL(`../ffb-server/src/main/resources/local-schema/${file}`, import.meta.url), 'utf8'));
   assert.equal(await finished, 0, `Review schema migration ${file} failed: ${migrationError}`);
 }
-assert.equal(await query(target, 'SELECT version FROM ffb_local_schema'), '10', 'Review schema marker mismatch');
+assert.equal(await query(target, 'SELECT version FROM ffb_local_schema'), reviewSchemaMarker, 'Review schema marker mismatch');
 assert.equal(await query(target, 'SELECT COUNT(*) FROM ffb_match_recovery_journal'), '0');
-console.log('Isolated review schema verified at marker 10; match tables empty; accounts, teams and skill use preferences retained.');
+console.log('Isolated review schema verified at marker 11; match tables empty; accounts, teams and skill use preferences retained.');

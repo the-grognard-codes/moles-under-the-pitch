@@ -116,6 +116,47 @@ test('concession revision reads do not reconstruct the retained engine', async (
   assert.equal(socket.sent.at(-1).matchId, match);
 });
 
+test('expired match acknowledgement retries exactly after failure and reconnect, scoped to the account', async () => {
+  const { client, connect, storageData } = fixture();
+  const socket = await connect();
+  const gameplay = client.request('preparedMatch', { operation: 'create' }, true);
+  client.acknowledgeExpired(match);
+  const request = socket.sent.at(-1);
+  assert.deepEqual(request, { version: 2, type: 'acknowledgeExpired', matchId: match, requestId: request.requestId });
+  assert.equal(client.expiryAcknowledgement(match)?.status, 'pending');
+  client.acknowledgeExpired(match);
+  assert.equal(socket.sent.filter(message => message.type === 'acknowledgeExpired').length, 1);
+
+  socket.reply({ type: 'error', code: 'PERSISTENCE_FAILED', requestId: request.requestId });
+  assert.equal(client.expiryAcknowledgement(match)?.error, 'PERSISTENCE_FAILED');
+  client.acknowledgeExpired(match);
+  assert.deepEqual(socket.sent.at(-1), request);
+  const reconnected = await connect();
+  assert.equal(client.expiryAcknowledgement(match)?.error, 'ACKNOWLEDGEMENT_OUTCOME_UNKNOWN');
+  assert.ok(reconnected.sent.every(message => message.type !== 'acknowledgeExpired'));
+  client.acknowledgeExpired(match);
+  assert.deepEqual(reconnected.sent.at(-1), request);
+  reconnected.reply({ type: 'acknowledgeExpired', code: 'ACCEPTED', matchId: match, requestId: request.requestId });
+  assert.equal(client.expiryAcknowledgement(match)?.status, 'accepted');
+  assert.equal(client.pending?.request.requestId, gameplay);
+  assert.equal(storageData.size, 1);
+
+  const opponent = await connect(false, 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb');
+  assert.equal(client.expiryAcknowledgement(match), undefined);
+  client.acknowledgeExpired(match);
+  assert.notEqual(opponent.sent.at(-1).requestId, request.requestId);
+});
+
+test('expired match acknowledgement rejects a reply for a different match', async () => {
+  const { client, connect, events } = fixture();
+  const socket = await connect();
+  client.acknowledgeExpired(match);
+  socket.reply({ type: 'acknowledgeExpired', code: 'ACCEPTED', matchId: account, requestId: socket.sent.at(-1).requestId });
+  assert.equal(socket.closed, true);
+  assert.equal(events.at(-1).code, 'INVALID_RESPONSE');
+  assert.equal(client.expiryAcknowledgement(match)?.status, 'failed');
+});
+
 test('preparation notification reloads only the selected match and preserves an uncertain mutation', async () => {
   const { client, connect, events } = fixture(); const socket = await connect();
   const created = client.request('preparedMatch', { operation: 'create' }, true);
@@ -424,9 +465,9 @@ function fixture(storageData = new Map<string, string>(), initialMatch?: { match
   const storage = { getItem: (key: string) => storageData.get(key) ?? null, setItem: (key: string, value: string) => { storageData.set(key, value); }, removeItem: (key: string) => storageData.delete(key) } as Storage;
   const client = new V2Client({ url: 'ws://127.0.0.1/browser/v2', getToken: async () => 'secret-bearer',
     makeSocket: () => { const socket = new Socket(); sockets.push(socket); return socket as unknown as WebSocket; }, onChange: message => events.push(message), storage, initialMatch, browseOnly, purpose });
-  async function connect(liveTranscript = false) {
+  async function connect(liveTranscript = false, accountId = account) {
     client.connect(); const socket = sockets.at(-1)!; await socket.onopen!();
-    socket.reply({ type: 'authentication', code: 'ACCEPTED', requestId: socket.sent[0].requestId, accountId: account,
+    socket.reply({ type: 'authentication', code: 'ACCEPTED', requestId: socket.sent[0].requestId, accountId,
       ...(liveTranscript ? { liveTranscript: true } : {}) }); return socket;
   }
   return { client, connect, sockets, events, storageData };

@@ -15,7 +15,13 @@ export function ensureReviewCurrentMatchesIndex(run = (file, args, options) => e
     || database.Config.Labels['com.docker.compose.service'] !== 'database') throw Error('REVIEW_DATABASE_MISMATCH');
   const query = input => run('docker', ['exec', '-i', databaseName, 'sh', '-c',
     'export MYSQL_PWD; IFS= read -r MYSQL_PWD < /run/secrets/db_root_password; exec mariadb --user=root --database=ffb_local --batch --skip-column-names'], { input });
-  if (!['7', '8', '9', '10'].includes(query('SELECT version FROM ffb_local_schema;').trim())) throw Error('REVIEW_SCHEMA_MISMATCH');
+  const marker = query('SELECT version FROM ffb_local_schema;').trim();
+  if (!['7', '8', '9', '10', '11'].includes(marker)) throw Error('REVIEW_SCHEMA_MISMATCH');
+  if (marker === '11') {
+    const visible = query(indexQuery.replace('ffb_v2_match_members_account', 'ffb_v2_match_members_visible')).trim().replaceAll('\r\n', '\n');
+    if (visible !== '1\t1\taccount_id\n2\t1\tacknowledged_at_epoch_ms\n3\t1\tmatchid') throw Error('REVIEW_CURRENT_MATCH_INDEX_MISMATCH');
+    return false;
+  }
   const indexes = query(indexQuery).trim().replaceAll('\r\n', '\n');
   if (indexes === expected) return false;
   if (indexes) throw Error('REVIEW_CURRENT_MATCH_INDEX_MISMATCH');
