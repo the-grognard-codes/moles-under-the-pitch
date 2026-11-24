@@ -35,6 +35,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.eclipse.jetty.ee8.websocket.api.RemoteEndpoint;
@@ -1250,10 +1251,10 @@ class BrowserV2AdapterTest {
 			.getString("lifecycle", null));
 		JsonObject legacyLobby = fixture.lobby(homeOtherDevice, "legacy-lobby", false);
 		assertEquals("ACCEPTED", legacyLobby.getString("code", null));
-		assertNull(legacyLobby.get("serverNow"));
+		assertEquals(Set.of("version", "type", "requestId", "code", "matches", "next"), Set.copyOf(legacyLobby.names()));
 		JsonObject legacyListing = legacyLobby.get("matches").asArray().get(0).asObject();
 		assertEquals("ACTIVATED", legacyListing.getString("lifecycle", null));
-		assertNull(legacyListing.get("resumeUntil"));
+		assertEquals(Set.of("matchId", "callerRole", "lifecycle", "homeTeamName", "awayTeamName", "phase"), Set.copyOf(legacyListing.names()));
 
 		JsonObject acknowledge = request("acknowledgeExpired", "ack").add("matchId", MATCH);
 		assertEquals("AUTHENTICATION_REQUIRED", fixture.reply(new Connection(), acknowledge).getString("code", null));
