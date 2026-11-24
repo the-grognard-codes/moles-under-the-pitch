@@ -1,5 +1,13 @@
 [
   {
+    "number": 625,
+    "title": "Run server tests in parallel Java CI shards",
+    "summary": "Java CI divides server and state-test classes across four jobs. The coverage gate checks that each suite appears exactly once in its assigned job.",
+    "category": "Developer tools",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/625",
+    "mergedAt": "2026-11-24T00:42:40Z"
+  },
+  {
     "number": 541,
     "title": "Catch up smoothly when computer turns arrive in bursts",
     "summary": "The board speeds up when eight revisions are queued, while still showing every move and dice roll. Animated splashes keep their reading time, and required choices wait for earlier splashes to clear.",

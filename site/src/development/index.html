@@ -28,16 +28,20 @@
     <section class="development-history" id="history" aria-labelledby="history-title">
     <h2 id="history-title">Merged changes</h2>
     <p>One entry per merged pull request. Follow its GitHub link for the implementation and review details.</p>
-    <p class="updates-coverage">224 merged pull requests · Latest merge November 21, 2026 · Newest first</p>
+    <p class="updates-coverage">225 merged pull requests · Latest merge November 23, 2026 · Newest first</p>
     <form id="updates-search" class="updates-tools" action="/development" method="get" hidden>
       <label>Search updates<input type="search" name="q" maxlength="200" placeholder="Topic, feature or PR number" autocomplete="off"></label>
       <label>Category<select name="category"><option value="">All updates</option><option>Gameplay</option><option>Design</option><option>Platform</option><option>Developer tools</option><option>Project notes</option></select></label>
       <div class="updates-tool-actions"><button type="submit">Find updates</button><button type="button" class="updates-clear" data-clear-updates>Clear filters</button></div>
     </form>
-    <p class="updates-status" id="updates-status" role="status">224 merged pull request updates, newest first.</p>
+    <p class="updates-status" id="updates-status" role="status">225 merged pull request updates, newest first.</p>
     <nav class="updates-pagination" aria-label="Updates pages, top" hidden></nav>
     <noscript><p>All updates are shown below. Use your browser's Find command to search the history.</p></noscript>
     <section class="updates-list" id="updates-list" aria-label="Merged pull request updates" tabindex="-1">
+    <article class="panel update-entry" id="pr-625" data-pr="625" data-category="Developer tools">
+      <div class="update-meta"><span class="update-category">Developer tools</span><time datetime="2026-11-24T00:42:40Z">November 23, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/625" target="_blank" rel="noreferrer">PR #625<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Run server tests in parallel Java CI shards</h3><p>Java CI divides server and state-test classes across four jobs. The coverage gate checks that each suite appears exactly once in its assigned job.</p>
+    </article>
     <article class="panel update-entry" id="pr-541" data-pr="541" data-category="Gameplay">
       <div class="update-meta"><span class="update-category">Gameplay</span><time datetime="2026-11-21T17:53:12Z">November 21, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/541" target="_blank" rel="noreferrer">PR #541<span class="update-external" aria-hidden="true"> ↗</span></a></div>
       <h3>Catch up smoothly when computer turns arrive in bursts</h3><p>The board speeds up when eight revisions are queued, while still showing every move and dice roll. Animated splashes keep their reading time, and required choices wait for earlier splashes to clear.</p>
