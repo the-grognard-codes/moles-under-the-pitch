@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - codex/622-history-probe-base
   push:
     branches:
       - main
