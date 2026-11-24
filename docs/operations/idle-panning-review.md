@@ -37,3 +37,19 @@ Baseline mode builds the affected renderer/HUD modules from the named Git refere
 Repeat after measurements with `PAN_MODE=counters` and `PAN_MODE=graph` when the diagnostics feature is available in the checkout. Its optional test adapter reports `unavailable` explicitly on a checkout without diagnostics. Repeat with `PAN_CPU_RATE=4` for the stress cohort; keep its statistics separate from the unthrottled cohort. `PAN_USE_BUNDLE` can reuse a previously built fixture bundle when a repeat must use identical code. Use a fresh output directory for each condition; builds do not recursively empty existing directories.
 
 The outcome record is [the idle-panning implementation report](../specs/idle-panning-responsiveness-outcome.md). Retain original Chrome traces/video privately when following a real report. This harness complements those captures and does not replace manual validation on the affected device.
+
+## Pan during movement
+
+Run `node browser-client/test/idle-panning-ui.mjs --movement` from the checkout root. This runs the production LivePitch in a full-size match viewport with 22 real sprites. It requires the same Node, Chrome and browser dependencies as the idle test. It uses an ephemeral loopback server and headless Chrome without CPU throttling. The game server is unnecessary.
+
+Each trial requests the same 160 right-drag updates at 10 ms intervals with two reversals in each direction. The player and loose-ball cases update eight successive squares across midfield at 200 ms per step. The stationary case pans over the same starting lineup. All three run at 50° and 90° for Old World Classic, plus 90° for Badlands Brawl. Playback inputs are simulated at the pitch boundary, so the test measures renderer cost shared by coach and computer actions. Server response handling, the surrounding HUD and the shadow alignment bug have separate coverage or investigations.
+
+At 50° the runner also repeats the moving-player case with three independent controls in the fixture stylesheet:
+
+- Hide the 21 stationary player markers, retaining the moving player and ground shadows.
+- Hide the scenery and ordinary grid, retaining the players.
+- Keep every player visible and disable CSS transitions only on stationary markers and their images.
+
+The default discards one warm-up per condition and reports three repetitions, alternating condition order between rounds. Set `PAN_REPEATS` to change the measured repetition count or `PAN_OUTPUT` to choose the output directory. Keep other benchmarks stopped. Each trial checks the camera moved, the sprite artwork decoded, and the moving piece reached its final square.
+
+The report at `.tools/idle-panning/movement.json` includes browser and CPU, bundle hash, input-to-camera-commit latency, requestAnimationFrame intervals, Chrome DrawFrame and DroppedFrame counts, and marker Paint durations. Chrome event counts and rAF timing describe different pipeline stages. Compare the same metric across conditions. With heavy input coalescing, check received and committed sample counts alongside percentiles.

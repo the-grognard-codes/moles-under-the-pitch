@@ -1,5 +1,7 @@
 import { createRoot } from 'react-dom/client';
-import { useEffect, type ComponentType, type ReactNode } from 'react';
+import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
+import { LivePitch } from '../src/LivePitch.tsx';
+import { decodeSetupStateValue } from '../src/setup-protocol.ts';
 import { GameView } from '../src/GameView.tsx';
 import { PitchProjection } from '../src/pitch-projection.ts';
 import { PlayerHoverCard } from '../src/PlayerHoverCard.tsx';
@@ -21,6 +23,38 @@ const view = { ...seed, players: Array.from({ length: 22 }, (_, index) => ({ ...
   id: index < 2 ? seed.players[index].id : `pan-player-${index}`, name: `Player ${index + 1}`, number: index % 11 + 1,
   x: index < 11 ? 11 - Math.floor(index / 5) : 14 + Math.floor((index - 11) / 5), y: 3 + (index % 5) * 2,
   role: index < 11 ? 'home' as const : 'away' as const })), actions: [] };
+// Drive the same pitch inputs that live playback supplies, without a server or HUD updates.
+function MovementBoard() {
+  const params = new URLSearchParams(location.search);
+  const motion = params.get('movement');
+  const [step, setStep] = useState(0);
+  const [running, setRunning] = useState(false);
+  const tickMs = 200;
+  useEffect(() => {
+    const start = () => {
+      if (motion !== 'stationary') { setStep(1); setRunning(true); }
+    };
+    window.addEventListener('start-motion', start);
+    return () => window.removeEventListener('start-motion', start);
+  }, [motion]);
+  useEffect(() => {
+    if (!running || motion === 'stationary') return;
+    const timer = window.setInterval(() => setStep(previous => Math.min(previous + 1, 8)), tickMs);
+    return () => window.clearInterval(timer);
+  }, [running, motion]);
+  const laneY = 3 + step;
+  const state = decodeSetupStateValue({
+    ...view, homeTeamArt: { rosterId: 'human', league: params.get('league') }, awayTeamArt: { rosterId: 'orc', league: 'Badlands Brawl' },
+    players: view.players.map((player, i) => ({ ...player, x: i === 0 ? 13 : player.x, y: i === 0 ? (motion === 'player' ? laneY : 3) : player.y,
+      art: i < 11 ? { rosterId: 'human', positionId: 'lineman' } : { rosterId: 'orc', positionId: 'orc-lineman' } })),
+    ball: { x: 12, y: motion === 'ball' ? laneY : 3 },
+    ballState: { version: 1, carrierPlayerId: null, inPlay: true, moving: motion === 'ball' && running },
+  });
+  return <main className="play-runtime live-match-page"><div className="coach-match hosted-match"><div className="match-board">
+    <LivePitch view={state} actions={[]} selectedId="" onSquare={() => {}} onSelectPlayer={() => {}}
+      playback={running && motion !== 'stationary'} movementDuration={running && motion !== 'stationary' ? tickMs : 0}/>
+  </div></div></main>;
+}
 function Board() {
   const context = diagnostics?.useDiagnostics();
   useEffect(() => {
@@ -30,6 +64,7 @@ function Board() {
     return () => context.service.setMode('off');
   }, [context?.service]);
   Object.assign(window, { idlePanDiagnosticsAvailable: !!context, idlePanDiagnosticsMode: context ? mode : 'unavailable' });
+  if (new URLSearchParams(location.search).has('movement')) return <MovementBoard/>;
   const cardRole = new URLSearchParams(location.search).get('card');
   if (cardRole === 'home' || cardRole === 'away') return <main className="play-runtime">
     <PlayerHoverCard player={view.players.find(player => player.role === cardRole)!} teamName={cardRole}/>
@@ -57,7 +92,7 @@ document.addEventListener('pointerdown', event => {
     height: viewport.clientHeight, focus: Number(el.dataset.focus), transverseFocus: Number(el.dataset.transverseFocus),
     zoom: Number(el.dataset.zoom), end: el.dataset.end === 'away' ? 'away' : 'home',
     mode: el.dataset.projection === 'top-down' ? 'top-down' : 'perspective',
-    perspectiveElevation: Number(el.dataset.elevation) as 30 | 40 | 50 }) };
+    perspectiveElevation: el.dataset.projection === 'top-down' ? 50 : Number(el.dataset.elevation) as 30 | 40 | 50 }) };
 }, true);
 document.addEventListener('pointermove', event => {
   if (!active || !drag || !(event.buttons & 2)) return;

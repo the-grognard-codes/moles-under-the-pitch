@@ -43,7 +43,18 @@ if (process.env.PAN_BLOCK_TRANSITIONRUN === '1') {
 }
 const errors = []; page.on('pageerror', error => errors.push(error.message));
 const results = [];
-try {
+async function dispatchPan(cdp, x, y) {
+  const started = performance.now(), epoch = Date.now(), pending = [];
+  const moves = 160, interval = 10;
+  for (let i = 1; i <= moves; i++) {
+    const wait = i * interval - (performance.now() - started); if (wait > 0) await new Promise(done => setTimeout(done, wait));
+    const dx = Math.round(Math.sin(i / moves * Math.PI * 4) * 160), dy = Math.round(Math.sin(i / moves * Math.PI * 4) * 110);
+    pending.push(cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x + dx, y: y + dy, button: 'right', buttons: 2, timestamp: (epoch + i * interval) / 1000 }));
+  }
+  await Promise.all(pending);
+}
+
+async function runIdle() {
   await page.goto(`http://127.0.0.1:${server.address().port}/?mode=${process.env.PAN_MODE || 'off'}`);
   await page.locator('.live-pitch-scene').waitFor(); await page.evaluate(async () => { await document.fonts.ready; await Promise.all([...document.images].map(image => image.decode().catch(() => {}))); });
   await page.locator('.live-marker.home').first().evaluate(element => element.click());
@@ -79,14 +90,7 @@ try {
     const x = Math.round(box.x + box.width * .55), y = Math.round(box.y + box.height * .48);
     await page.mouse.move(x, y); await page.waitForTimeout(300); await page.evaluate(() => window.idlePan.start());
     await page.mouse.down({ button: 'right' });
-    const started = performance.now(), epoch = Date.now(), pending = [];
-    const moves = 160, interval = 10;
-    for (let i = 1; i <= moves; i++) {
-      const wait = i * interval - (performance.now() - started); if (wait > 0) await new Promise(done => setTimeout(done, wait));
-      const dx = Math.round(Math.sin(i / moves * Math.PI * 4) * 160), dy = Math.round(Math.sin(i / moves * Math.PI * 4) * 110);
-      pending.push(cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x + dx, y: y + dy, button: 'right', buttons: 2, timestamp: (epoch + i * interval) / 1000 }));
-    }
-    await Promise.all(pending); await page.mouse.up({ button: 'right' });
+    await dispatchPan(cdp, x, y); await page.mouse.up({ button: 'right' });
     const release = await page.evaluate(async () => {
       const frames = [];
       for (let i = 0; i < 8; i++) await new Promise(done => requestAnimationFrame(() => {
@@ -164,4 +168,12 @@ try {
     limitations: ['Synthetic native-shaped fixture; no network or server action', 'Headless browser, CPU throttling is a reproducibility aid, not physical device evidence', 'rAF opportunities are not physical presentation'], results, errors }, null, 2));
   assert.deepEqual(errors, []); assert.ok(results.every(x => x.finalAligned), 'Final camera must match latest pointer target');
   if (process.argv.includes('--assert-latency')) assert.ok(results.length > 0 && results.every(x => Number.isFinite(x.inputToCommit.p95) && x.inputToCommit.p95 <= 50), 'Input-to-camera commit p95 must stay within 50 ms in the declared foreground workload');
+}
+
+try {
+  if (process.argv.includes('--movement')) {
+    const { measureMovement } = await import('./movement-panning.mjs');
+    await measureMovement({ page, browser, url: `http://127.0.0.1:${server.address().port}`, output, bundle, dispatchPan });
+    assert.deepEqual(errors, []);
+  } else await runIdle();
 } finally { await browser.close(); await new Promise(done => server.close(done)); }
