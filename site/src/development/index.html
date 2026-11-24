@@ -28,19 +28,43 @@
     <section class="development-history" id="history" aria-labelledby="history-title">
     <h2 id="history-title">Merged changes</h2>
     <p>One entry per merged pull request. Follow its GitHub link for the implementation and review details.</p>
-    <p class="updates-coverage">225 merged pull requests · Latest merge November 23, 2026 · Newest first</p>
+    <p class="updates-coverage">231 merged pull requests · Latest merge November 23, 2026 · Newest first</p>
     <form id="updates-search" class="updates-tools" action="/development" method="get" hidden>
       <label>Search updates<input type="search" name="q" maxlength="200" placeholder="Topic, feature or PR number" autocomplete="off"></label>
       <label>Category<select name="category"><option value="">All updates</option><option>Gameplay</option><option>Design</option><option>Platform</option><option>Developer tools</option><option>Project notes</option></select></label>
       <div class="updates-tool-actions"><button type="submit">Find updates</button><button type="button" class="updates-clear" data-clear-updates>Clear filters</button></div>
     </form>
-    <p class="updates-status" id="updates-status" role="status">225 merged pull request updates, newest first.</p>
+    <p class="updates-status" id="updates-status" role="status">231 merged pull request updates, newest first.</p>
     <nav class="updates-pagination" aria-label="Updates pages, top" hidden></nav>
     <noscript><p>All updates are shown below. Use your browser's Find command to search the history.</p></noscript>
     <section class="updates-list" id="updates-list" aria-label="Merged pull request updates" tabindex="-1">
     <article class="panel update-entry" id="pr-625" data-pr="625" data-category="Developer tools">
       <div class="update-meta"><span class="update-category">Developer tools</span><time datetime="2026-11-24T00:42:40Z">November 23, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/625" target="_blank" rel="noreferrer">PR #625<span class="update-external" aria-hidden="true"> ↗</span></a></div>
       <h3>Run server tests in parallel Java CI shards</h3><p>Java CI divides server and state-test classes across four jobs. The coverage gate checks that each suite appears exactly once in its assigned job.</p>
+    </article>
+    <article class="panel update-entry" id="pr-624" data-pr="624" data-category="Developer tools">
+      <div class="update-meta"><span class="update-category">Developer tools</span><time datetime="2026-11-23T22:47:33Z">November 23, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/624" target="_blank" rel="noreferrer">PR #624<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Cache Maven downloads for Java checks</h3><p>Java CI jobs reuse the verified Maven archive and cached dependencies. Bootstrap retries rate-limited downloads and can fall back to the Apache archive.</p>
+    </article>
+    <article class="panel update-entry" id="pr-623" data-pr="623" data-category="Project notes">
+      <div class="update-meta"><span class="update-category">Project notes</span><time datetime="2026-11-23T18:23:28Z">November 23, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/623" target="_blank" rel="noreferrer">PR #623<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Document the default agent delivery workflow</h3><p>The workflow records how the maintainer and Claude settle the design, how Codex delivers the implementation, and how Claude reviews it before the maintainer approves and merges.</p>
+    </article>
+    <article class="panel update-entry" id="pr-604" data-pr="604" data-category="Project notes">
+      <div class="update-meta"><span class="update-category">Project notes</span><time datetime="2026-11-23T17:06:21Z">November 23, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/604" target="_blank" rel="noreferrer">PR #604<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Update the archive and cold-storage paths</h3><p>The archive index and cold-storage review point to the renamed Moles Under the Pitch folders.</p>
+    </article>
+    <article class="panel update-entry" id="pr-617" data-pr="617" data-category="Developer tools">
+      <div class="update-meta"><span class="update-category">Developer tools</span><time datetime="2026-11-23T16:56:45Z">November 23, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/617" target="_blank" rel="noreferrer">PR #617<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Keep GitHub CLI commands working with piped input</h3><p>On POSIX systems, the GitHub App token refresh leaves piped input available to the GitHub CLI. Commands can run with an open input pipe and still read piped request bodies.</p>
+    </article>
+    <article class="panel update-entry" id="pr-609" data-pr="609" data-category="Design">
+      <div class="update-meta"><span class="update-category">Design</span><time datetime="2026-11-23T15:35:46Z">November 23, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/609" target="_blank" rel="noreferrer">PR #609<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Play in the Gatehouse stadium in the 90° view</h3><p>Old World Classic matches show the Gatehouse stadium in the overhead camera. The stands and painted end zones use the teams&#39; colours and names and are visible from either coach end.</p>
+    </article>
+    <article class="panel update-entry" id="pr-614" data-pr="614" data-category="Developer tools">
+      <div class="update-meta"><span class="update-category">Developer tools</span><time datetime="2026-11-23T05:56:17Z">November 23, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/614" target="_blank" rel="noreferrer">PR #614<span class="update-external" aria-hidden="true"> ↗</span></a></div>
+      <h3>Support schema 10 in local match cleanup</h3><p>The dev-local cleanup command can preview and clear schema 10 match data. It clears journal records before the rest of the match data and requires an explicit apply flag to delete anything.</p>
     </article>
     <article class="panel update-entry" id="pr-541" data-pr="541" data-category="Gameplay">
       <div class="update-meta"><span class="update-category">Gameplay</span><time datetime="2026-11-21T17:53:12Z">November 21, 2026</time><a href="https://github.com/the-grognard-codes/moles-under-the-pitch/pull/541" target="_blank" rel="noreferrer">PR #541<span class="update-external" aria-hidden="true"> ↗</span></a></div>
