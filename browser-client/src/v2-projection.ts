@@ -10,6 +10,7 @@ const fields: Record<string, string[]> = {
   diagnostics: ['code', 'enabled'], diagnosticsTiming: ['code', 'timing'],
   diagnosticsTrace: ['code', 'trace'],
   currentMatches: ['code', 'matches', 'next'],
+  acknowledgeExpired: ['code', 'matchId'],
   skillUsePreferences: ['code', 'preferences'],
   computer: ['code'], computerAuthentication: ['code'], computerJobs: ['code', 'matches'],
   computerJobChanged: ['matchId', 'revision', 'saveResumeChanged'],
@@ -75,6 +76,9 @@ export function assertV2Projection(message: Record<string, unknown>, includeResu
     if (message.code !== 'ACCEPTED') throw Error('Invalid current match response');
     decodeCurrentMatches(message.matches, message.next, serverNow);
   }
+  if (message.type === 'acknowledgeExpired' && (message.requestId === null || message.code !== 'ACCEPTED' || typeof message.matchId !== 'string'
+    || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(message.matchId)))
+    throw Error('Invalid expired match acknowledgement');
   if (message.type === 'computerJobs' && (!Array.isArray(message.matches) || message.matches.length > 1024
     || message.matches.some(id => typeof id !== 'string' || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id))))
     throw Error('Invalid computer jobs');

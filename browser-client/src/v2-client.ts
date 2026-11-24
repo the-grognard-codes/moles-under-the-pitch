@@ -17,6 +17,7 @@ import type { ClientPhase } from './diagnostic-trace.ts';
 
 export type V2Message = Record<string, any>;
 export type PendingIntent = { accountId: string; request: V2Message };
+type ExpiryAcknowledgement = { requestId: string; status: 'pending' | 'accepted' | 'failed'; error?: string };
 type ClientOptions = {
   url: string; getToken: () => Promise<string>; onChange: (message: V2Message) => void;
   makeSocket?: (url: string) => WebSocket; storage?: Storage;
@@ -51,6 +52,8 @@ export class V2Client {
   private queuedLobbyReads = new Map<string, () => void>();
   private lobbyReadTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private diagnosticRequests = new Map<string, { operation: string; at: number; details?: boolean }>();
+  private acknowledgementAccountId = '';
+  private expiryAcknowledgements = new Map<string, ExpiryAcknowledgement>();
   accountId = '';
   state: SetupState | null = null;
   expiredMatchId: string | null = null;
@@ -146,15 +149,25 @@ export class V2Client {
     this.diagnosticRequests.clear(); this.options.diagnostics?.connection(false);
     if (this.skillUsePending) this.skillUseError = 'Preference outcome was not confirmed. Reconnect and reload your settings.';
     this.skillUsePending = null; this.skillUsePreferences = null; this.skillUseSaved = false;
+    for (const attempt of this.expiryAcknowledgements.values()) {
+      if (attempt.status === 'pending') {
+        attempt.status = 'failed';
+        attempt.error = 'ACKNOWLEDGEMENT_OUTCOME_UNKNOWN';
+      }
+    }
     const socket = this.socket; this.socket = null; this.accountId = ''; this.state = null; this.requests.clear();
     this.liveTranscript = false;
     socket?.close(); this.options.onChange({ type: 'status', code: 'DISCONNECTED' });
   }
 
   request(type: string, fields: V2Message = {}, mutation = false) {
+    return this.requestWithId(type, fields, mutation, crypto.randomUUID());
+  }
+
+  private requestWithId(type: string, fields: V2Message, mutation: boolean, requestId: string) {
     if (!this.accountId || this.socket?.readyState !== 1) throw Error('Reconnect before continuing.');
     const browseFields = type === 'browse' && this.options.browseOnly && this.includeBrowseDetails ? { includeDetails: true } : {};
-    const request = { ...fields, ...browseFields, version: 2, type, requestId: crypto.randomUUID() };
+    const request = { ...fields, ...browseFields, version: 2, type, requestId };
     if (isLobbyRead(type)) {
       const key = lobbyRequestKey(request);
       const pending = [...this.requests.values()].find(pending => isLobbyRead(pending.type) && lobbyRequestKey(pending) === key);
@@ -196,6 +209,25 @@ export class V2Client {
     send();
     this.options.onChange({ type: 'pending', requestType: type, operation: fields.operation, mutation });
     return request.requestId;
+  }
+
+  expiryAcknowledgement(matchId: string): Readonly<ExpiryAcknowledgement> | undefined {
+    return this.expiryAcknowledgements.get(matchId);
+  }
+
+  acknowledgeExpired(matchId: string) {
+    if (!uuid.test(matchId) || !this.accountId || this.selection?.watch) return;
+    const previous = this.expiryAcknowledgement(matchId);
+    if (previous?.status === 'pending' || previous?.status === 'accepted') return;
+    const requestId = previous?.requestId ?? crypto.randomUUID();
+    this.expiryAcknowledgements.set(matchId, { requestId, status: 'pending' });
+    // This write is idempotent per account and match. Its retry does not occupy the gameplay intent slot.
+    try { this.requestWithId('acknowledgeExpired', { matchId }, false, requestId); }
+    catch {
+      this.requests.delete(requestId);
+      this.expiryAcknowledgements.set(matchId, { requestId, status: 'failed', error: 'ACKNOWLEDGEMENT_OUTCOME_UNKNOWN' });
+      this.options.onChange({ type: 'expiredAcknowledgement', matchId, accepted: false });
+    }
   }
 
   private finishRequest(requestId: string) {
@@ -350,6 +382,10 @@ export class V2Client {
       if (message.requestId !== this.authenticationId || message.code !== 'ACCEPTED' || !uuid.test(message.accountId)) throw Error('Invalid authentication');
       if (message.liveTranscript && !this.authenticationOfferedLiveTranscript) throw Error('Unrequested live transcript');
       this.liveTranscript = message.liveTranscript === true;
+      if (this.acknowledgementAccountId !== message.accountId) {
+        this.acknowledgementAccountId = message.accountId;
+        this.expiryAcknowledgements.clear();
+      }
       this.accountId = message.accountId; this.options.onChange(message);
       diagnostics?.connection(true);
       this.request('browse');
@@ -436,6 +472,15 @@ export class V2Client {
         : request?.type === 'validateTeam' ? 'teamValidation' : request?.type;
       if (request ? message.type !== expected : message.type !== 'setupState' && message.type !== 'matchChat'
         && !(this.liveTranscript && message.type === 'matchTranscript')) throw Error('Uncorrelated response');
+    }
+    if (request?.type === 'acknowledgeExpired') {
+      const accepted = message.type === 'acknowledgeExpired';
+      if (accepted && message.matchId !== request.matchId) throw Error('Foreign expired match acknowledgement');
+      this.expiryAcknowledgements.set(request.matchId, accepted ? { requestId: request.requestId, status: 'accepted' }
+        : { requestId: request.requestId, status: 'failed', error: message.code });
+      this.finishRequest(request.requestId);
+      this.options.onChange({ type: 'expiredAcknowledgement', matchId: request.matchId, accepted });
+      return;
     }
     if (request?.type === 'skillUsePreferences') {
       if (message.type === 'skillUsePreferences') {

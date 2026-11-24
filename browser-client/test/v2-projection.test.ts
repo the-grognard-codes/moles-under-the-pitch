@@ -7,6 +7,7 @@ const messages = [
   { type: 'authentication', code: 'ACCEPTED', accountId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' },
   { type: 'error', code: 'AUTHENTICATION_REQUIRED' },
   { type: 'browse', code: 'ACCEPTED', matches: [{ matchId: '12345678-1234-1234-1234-123456789abc', label: 'Home vs Away' }] },
+  { type: 'acknowledgeExpired', code: 'ACCEPTED', matchId: '12345678-1234-1234-1234-123456789abc' },
   { type: 'computer', code: 'READY' },
   { type: 'computerAuthentication', code: 'ACCEPTED' },
   { type: 'computerJobs', code: 'AVAILABLE', matches: ['12345678-1234-1234-1234-123456789abc'] },
