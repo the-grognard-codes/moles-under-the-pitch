@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Acknowledge an expired match from its lobby card or direct link to remove it for your account across devices. Each coach controls their own listing. The server now requires schema 11.
+
 - Show the remaining resume time for quiet matches in the lobby and explain when a match has expired on its direct link.
 
 - Skip Java Checks for pull requests confined to allowlisted documentation, notes, and Development history. Pushes, manual runs, and other changes still run full Java verification.
