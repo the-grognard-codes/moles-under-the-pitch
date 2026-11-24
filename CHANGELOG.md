@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Show the remaining resume time for quiet matches in the lobby and explain when a match has expired on its direct link.
+- Reduce pitch panning stalls while players and the ball are moving.
 
 - Skip Java Checks for pull requests confined to allowlisted documentation, notes, and Development history. Pushes, manual runs, and other changes still run full Java verification.
 
