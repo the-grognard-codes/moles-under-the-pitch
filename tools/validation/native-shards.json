@@ -77,6 +77,7 @@
       "com.fumbbl.ffb.server.match.OptionalBlockSkillUseTest",
       "com.fumbbl.ffb.server.match.OptionalReactionSkillUseTest",
       "com.fumbbl.ffb.server.match.PreviewCopyTest",
+      "com.fumbbl.ffb.server.match.PreviewCopyWorkloadTest",
       "com.fumbbl.ffb.server.match.ReactiveDecisionAllowanceTest",
       "com.fumbbl.ffb.server.match.RecoveryJournalTest",
       "com.fumbbl.ffb.server.match.RecoveryNativeJsonTest",
@@ -249,8 +250,8 @@
     "com.fumbbl.ffb.server.match.OperatingEnvelopeTest": {
       "captureIntegratedEnvelope": "org.opentest4j.TestAbortedException: Assumption failed: Explicit isolated envelope schema required"
     },
-    "com.fumbbl.ffb.server.match.PreviewCopyTest": {
-      "measureCopyAtRevision50AndBeforeFullTime": "System property [preview.copy.probe] does not exist"
+    "com.fumbbl.ffb.server.match.PreviewCopyWorkloadTest": {
+      "measureCopyAtRevision50AndBeforeFullTime": "Environment variable [PREVIEW_COPY_WORKLOAD] does not exist"
     },
     "com.fumbbl.ffb.server.match.RecoveryJournalMariaDbTest": {
       "savedComputerJobStaysOffTheInventoryAcrossRestartAndReturnsOnResume": "org.opentest4j.TestAbortedException: Assumption failed: Opt-in empty recovery journal test database required",
