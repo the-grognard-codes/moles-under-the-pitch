@@ -464,6 +464,20 @@ public class TurnData implements IJsonSerializable {
 		getGame().notifyObservers(modelChange);
 	}
 
+	/** Turn state needed by the engine beyond the shared game-model format. */
+	public JsonObject continuationJson() {
+		return new JsonObject().add("singleUseReRolls", singleUseReRolls)
+			.add("reRollShowStarOneDrive", reRollShowStarOneDrive).add("actionWindow", actionWindow);
+	}
+
+	public void restoreContinuation(JsonObject saved) {
+		singleUseReRolls = saved.get("singleUseReRolls").asInt();
+		reRollShowStarOneDrive = saved.get("reRollShowStarOneDrive").asInt();
+		actionWindow = saved.get("actionWindow").asLong();
+		if (saved.size() != 3 || singleUseReRolls < 0 || reRollShowStarOneDrive < 0 || actionWindow < 0)
+			throw new IllegalArgumentException("Invalid turn continuation");
+	}
+
 	// JSON serialization
 
 	public JsonObject toJsonValue() {

@@ -1,5 +1,6 @@
 package com.fumbbl.ffb.server.match;
 
+import com.fumbbl.ffb.BlockDiceCategory;
 import com.fumbbl.ffb.DiceCategory;
 import com.fumbbl.ffb.FactoryType;
 import com.fumbbl.ffb.FieldCoordinate;
@@ -31,6 +32,7 @@ import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -144,7 +146,7 @@ class CompactMatchSnapshotTest {
             advanceToTurn(fixture);
             GameState nativeState = nativeState(baseline);
             Game game = nativeState.getGame();
-            Player<?> mover = game.getActingTeam().getPlayers()[0];
+            Player<?> mover = game.getActingTeam().getPlayers()[1];
             Player<?> marker = game.getOtherTeam(game.getActingTeam()).getPlayers()[0];
             UtilBox.putAllPlayersIntoBox(game);
             place(game, mover, 7, 7);
@@ -157,11 +159,16 @@ class CompactMatchSnapshotTest {
             baseline.apply(role, request(baseline, "action", "select-mover").add("actionId", declaration.get("id")));
             commit(baseline, 0);
 
+            game.getTurnData().setReRollsBrilliantCoachingOneDrive(0);
+            game.getTurnData().setReRollShowStarOneDrive(1);
+            int teamRerolls = game.getTurnData().getReRolls();
             forceRolls(nativeState, 1, 6, 6, 6);
             JsonArray waypoints = new JsonArray().add(new JsonObject().add("x", 8).add("y", 7))
                 .add(new JsonObject().add("x", 9).add("y", 7));
             baseline.apply(role, request(baseline, "route", "route-with-dodge").add("playerId", mover.getId())
                 .add("waypoints", waypoints));
+            game.getTurnDataHome().setSingleUseReRolls(1);
+            game.getTurnDataAway().setSingleUseReRolls(2);
             String paused = commit(baseline, 0);
             JsonObject snapshot = JsonObject.readFrom(paused);
             assertFalse(snapshot.get("pendingRoute").isNull());
@@ -170,7 +177,10 @@ class CompactMatchSnapshotTest {
             assertEquals(StepId.MOVE_DODGE, nativeState.getCurrentStep().getId());
             SetupSession restored = restoreAndCompare(fixture, baseline, paused);
             JsonObject teamReroll = action(view(baseline, role), "reroll", null);
-            assertTrue(teamReroll.getString("id", "").endsWith(":team"));
+            assertTrue(teamReroll.getString("label", "").contains("Star of the Show"));
+            Game restoredGame = nativeState(restored).getGame();
+            assertEquals(1, restoredGame.getTurnDataHome().getSingleUseReRolls());
+            assertEquals(2, restoredGame.getTurnDataAway().getSingleUseReRolls());
             JsonObject reroll = request(baseline, "action", "use-team-reroll").add("actionId", teamReroll.get("id"));
             long now = System.currentTimeMillis();
             baseline.apply(role, reroll, now);
@@ -179,7 +189,106 @@ class CompactMatchSnapshotTest {
             assertContinuation(commit(baseline, 0), commit(restored, 0));
             assertViews(baseline, restored);
             assertEquals(new FieldCoordinate(9, 7), game.getFieldModel().getPlayerCoordinate(mover));
+            assertEquals(0, restoredGame.getTurnData().getReRollShowStarOneDrive());
+            assertEquals(teamRerolls - 1, restoredGame.getTurnData().getReRolls());
         }
+    }
+
+    @Test
+    void aSuccessfulRerollOfAnOrdinaryRushDoesNotRollTheBallAndChainStep() throws Exception {
+        try (BogrukEngineFixture fixture = fixture("Human", "Orc", 49)) {
+            SetupSession baseline = fixture.session;
+            advanceToTurn(fixture);
+            GameState state = nativeState(baseline);
+            Game game = state.getGame();
+            Player<?> mover = game.getActingTeam().getPlayers()[1];
+            UtilBox.putAllPlayersIntoBox(game);
+            place(game, mover, 7, 7);
+            game.getFieldModel().setBallCoordinate(new FieldCoordinate(4, 4));
+            game.getFieldModel().setBallMoving(false);
+            String role = actorView(baseline).getString("actor", null);
+            JsonObject select = action(view(baseline, role), "select", mover.getId());
+            baseline.apply(role, request(baseline, "action", "select-rusher").add("actionId", select.get("id")));
+            commit(baseline, 0);
+
+            game.getActingPlayer().setCurrentMove(mover.getMovementWithModifiers());
+            forceRolls(state, 1, 6, 1);
+            baseline.apply(role, movement(baseline, "rush", mover.getId(), 8, 7));
+            String paused = commit(baseline, 0);
+            assertEquals(StepId.GO_FOR_IT, state.getCurrentStep().getId());
+            SetupSession restored = restoreAndCompare(fixture, baseline, paused);
+
+            JsonObject rerollAction = action(view(baseline, role), "reroll", null);
+            JsonObject reroll = request(baseline, "action", "reroll-rush").add("actionId", rerollAction.get("id"));
+            long now = System.currentTimeMillis();
+            baseline.apply(role, reroll, now);
+            restored.apply(role, reroll, now);
+            assertSameCapture(baseline.compactCapture(), restored.compactCapture());
+            String expected = commit(baseline, 0), actual = commit(restored, 0);
+            assertContinuation(expected, actual);
+            assertViews(baseline, restored);
+            assertEquals(new JsonArray().add(1), JsonObject.readFrom(actual).get("testRolls").asObject().get("General"));
+            assertEquals(new FieldCoordinate(8, 7), game.getFieldModel().getPlayerCoordinate(mover));
+        }
+    }
+
+    @Test
+    void restoresAnOrderedChainPushBeforeSelectingTheSecondDestination() throws Exception {
+        try (BogrukEngineFixture fixture = fixture("Human", "Orc", 50)) {
+            SetupSession baseline = fixture.session;
+            advanceToTurn(fixture);
+            GameState state = nativeState(baseline);
+            Game game = state.getGame();
+            Player<?> attacker = game.getActingTeam().getPlayers()[1];
+            Player<?>[] opposition = game.getOtherTeam(game.getActingTeam()).getPlayers();
+            UtilBox.putAllPlayersIntoBox(game);
+            place(game, attacker, 10, 7);
+            place(game, opposition[0], 11, 7);
+            place(game, opposition[1], 12, 6);
+            place(game, opposition[2], 12, 7);
+            place(game, opposition[3], 12, 8);
+            game.getFieldModel().setBallCoordinate(new FieldCoordinate(4, 4));
+            game.getFieldModel().setBallMoving(false);
+            BlockDiceCategory die = new BlockDiceCategory();
+            die.parseCommand("push", game, game.getActingTeam());
+            state.getDiceRoller().addTestRoll(die);
+
+            String role = actorView(baseline).getString("actor", null);
+            JsonObject select = action(view(baseline, role), "selectBlock", attacker.getId());
+            baseline.apply(role, request(baseline, "action", "select-block").add("actionId", select.get("id")));
+            commit(baseline, 0);
+            for (String kind : List.of("block", "blockDie")) {
+                JsonObject offered = offeredActions(view(baseline, role), kind).findFirst().orElseThrow();
+                baseline.apply(role, request(baseline, "action", kind).add("actionId", offered.get("id")));
+                commit(baseline, 0);
+            }
+            JsonObject firstPush = pushAt(view(baseline, role), 12, 7);
+            baseline.apply(role, request(baseline, "action", "first-push").add("actionId", firstPush.get("id")));
+            String betweenPushes = commit(baseline, 0);
+            assertEquals(StepId.PUSHBACK, state.getCurrentStep().getId());
+            SetupSession restored = restoreAndCompare(fixture, baseline, betweenPushes);
+
+            JsonObject secondPush = pushAt(view(baseline, role), 13, 7);
+            JsonObject request = request(baseline, "action", "second-push").add("actionId", secondPush.get("id"));
+            long now = System.currentTimeMillis();
+            baseline.apply(role, request, now);
+            restored.apply(role, request, now);
+            assertSameCapture(baseline.compactCapture(), restored.compactCapture());
+            assertContinuation(commit(baseline, 0), commit(restored, 0));
+            assertViews(baseline, restored);
+            Game restoredGame = nativeState(restored).getGame();
+            assertEquals(new FieldCoordinate(12, 7), restoredGame.getFieldModel().getPlayerCoordinate(
+                restoredGame.getPlayerById(opposition[0].getId())));
+            assertEquals(new FieldCoordinate(13, 7), restoredGame.getFieldModel().getPlayerCoordinate(
+                restoredGame.getPlayerById(opposition[2].getId())));
+        }
+    }
+
+    private JsonObject pushAt(JsonObject view, int x, int y) {
+        return offeredActions(view, "push").filter(choice -> {
+            JsonObject target = choice.get("target").asObject();
+            return target.getInt("x", -1) == x && target.getInt("y", -1) == y;
+        }).findFirst().orElseThrow();
     }
 
     @Test
@@ -257,11 +366,15 @@ class CompactMatchSnapshotTest {
         state.getDiceRoller().getTestRolls().put("General", rolls);
     }
 
-    private static JsonObject action(JsonObject view, String kind, String player) {
+    private static Stream<JsonObject> offeredActions(JsonObject view, String kind) {
         return view.get("actions").asArray().values().stream().map(JsonValue::asObject)
-            .filter(action -> kind.equals(action.getString("kind", null))
-                && (player == null ? action.getString("id", "").endsWith(":team")
-                    : player.equals(action.getString("sourcePlayerId", null))))
+            .filter(action -> kind.equals(action.getString("kind", null)));
+    }
+
+    private static JsonObject action(JsonObject view, String kind, String player) {
+        return offeredActions(view, kind)
+            .filter(action -> player == null ? action.getString("id", "").endsWith(":team")
+                : player.equals(action.getString("sourcePlayerId", null)))
             .findFirst().orElseThrow();
     }
 

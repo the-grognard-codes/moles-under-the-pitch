@@ -96,10 +96,13 @@ public class GameLog implements IJsonSerializable {
 	}
 
 	/** Drop the command prefix after a compact snapshot and its outcomes have committed. */
-	public void discardCapturedCommands(int throughCommandNr) {
+	public void discardCapturedCommands(int commandCount) {
 		synchronized (fServerCommands) {
 			if (recoveryCommands != null) throw new IllegalStateException("Cannot prune a recovery journal log");
-			if (fServerCommands.removeIf(command -> command.getCommandNr() <= throughCommandNr)) recoveryEpoch++;
+			if (commandCount > 0) {
+				fServerCommands.subList(0, commandCount).clear();
+				recoveryEpoch++;
+			}
 		}
 	}
 

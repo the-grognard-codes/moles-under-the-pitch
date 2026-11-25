@@ -90,6 +90,7 @@ public final class SetupSession {
 	private final SetupStaging staging;
 	private final boolean compact;
 	private int lastCapturedCommand;
+	private int capturedCommandCount;
 	private CompactMatchWrite.Capture compactCapture;
 	private CompactMatchWrite.History compactHistory;
 	private JsonObject unfinishedMovement;
@@ -249,6 +250,7 @@ public final class SetupSession {
 	private GameState newGameState(FantasyFootballServer server) {
 		return new GameState(server) {
 			@Override public boolean consumesDeclaredActions() { return SetupSession.this.routeV2; }
+			@Override public boolean usesCompactSnapshot() { return compact; }
 			@Override public void observeModelSync(ServerCommandModelSync sync) { blockPresentation.observe(this, sync); announcements.observe(sync); }
 			@Override public void observeEndTurnParameter(StepId source, boolean endTurn) { announcements.cause(getGame(), source, endTurn); }
 			@Override public void observeTurnoverReason(String reason) { announcements.reason(getGame(), reason); }
@@ -513,7 +515,7 @@ public final class SetupSession {
 		if (compactWriting || failed || boundary.recordCount() != revision + 1
 			|| compactHistory != null && (boundary.chatCount() < compactHistory.chatCount()
 				|| compactCapture == null && !compactHistory.digest().equals(boundary.digest()))
-			|| state.getGameLog().findMaxCommandNr() > lastCapturedCommand)
+			|| state.getGameLog().size() != capturedCommandCount)
 			throw new IllegalStateException("Invalid compact snapshot write boundary");
 		compactWriting = true;
 		boolean durable = false;
@@ -521,7 +523,8 @@ public final class SetupSession {
 			CompactMatchWrite candidate = new CompactMatchWrite(compactSnapshot(boundary), compactCapture);
 			CompactMatchWrite.Result result = Objects.requireNonNull(write.apply(candidate));
 			if (result == CompactMatchWrite.Result.DURABLE) {
-				state.getGameLog().discardCapturedCommands(lastCapturedCommand);
+				state.getGameLog().discardCapturedCommands(capturedCommandCount);
+				capturedCommandCount = 0;
 				compactHistory = boundary;
 				compactCapture = null;
 				durable = true;
@@ -741,20 +744,22 @@ public final class SetupSession {
 	}
 
 	private JsonObject recoveryNative(int commandFrom) {
-		return nativeWithoutLog().add("gameLog", state.getGameLog().recoveryJsonFrom(Math.max(0, commandFrom)));
+		JsonObject snapshot = nativeStateJson().add("gameLog", state.getGameLog().recoveryJsonFrom(Math.max(0, commandFrom)));
+		return new RecoveryNativeJson().normalize(snapshot);
 	}
 
 	private JsonObject compactNative() {
-		return nativeWithoutLog().add("continuation", state.continuationJson());
+		JsonObject snapshot = nativeStateJson().add("continuation", state.continuationJson());
+		return new RecoveryNativeJson().normalize(snapshot);
 	}
 
-	private JsonObject nativeWithoutLog() {
+	private JsonObject nativeStateJson() {
 		JsonObject snapshot = state.toJsonValue(false, 0);
 		// Native initFrom maps absent distance to zero. Before kickoff execution this value
 		// is always overwritten by the scatter roll; normalize only this versioned boundary.
 		for (JsonValue step : snapshot.get("stepStack").asObject().get("steps").asArray()) normalizeRecoveryStep(step.asObject());
 		if (snapshot.get("currentStep") != null) normalizeRecoveryStep(snapshot.get("currentStep").asObject());
-		return new RecoveryNativeJson().normalize(snapshot);
+		return snapshot;
 	}
 
 	private void normalizeRecoveryStep(JsonObject step) {
@@ -1797,6 +1802,7 @@ public final class SetupSession {
                 if (compactCapture != null) throw new IllegalStateException("Previous compact decision is uncommitted");
                 unfinishedMovement = new AcceptedActionPresentation().unfinishedMovement(decision);
                 lastCapturedCommand = capture.lastCommandNr;
+                capturedCommandCount = state.getGameLog().size();
                 compactCapture = new CompactMatchWrite.Capture(revision, lastCapturedCommand, ordered(nativeOutcomes).toString());
             } else {
                 JsonValue accepted = JsonValue.NULL;
