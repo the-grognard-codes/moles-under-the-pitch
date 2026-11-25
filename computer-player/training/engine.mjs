@@ -5,7 +5,7 @@ import os from 'node:os';
 export class Engine {
   constructor(config, onSpawn = () => {}, onExit = () => {}) {
     this.pending = new Map(); this.sequence = 0; this.error = null; this.diagnostic = '';
-    this.child = spawn(config.java, [`-Xmx${config.heapMiB}m`, '-XX:ActiveProcessorCount=1', '-cp', config.classpath,
+    this.child = spawn(config.java, [`-Xmx${config.heapMiB}m`, '-XX:ActiveProcessorCount=1', ...(config.jvmArguments ?? []), '-cp', config.classpath,
       'com.fumbbl.ffb.server.match.TrainingEngineHost', String(config.matchesPerJvm)], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     this.closed = new Promise(resolve => this.child.once('close', () => { onExit(this.child.pid); resolve(); }));
     this.child.on('spawn', () => {
@@ -24,7 +24,9 @@ export class Engine {
     this.child.stderr.on('data', data => { this.diagnostic = `${this.diagnostic}${data}`.slice(-4096); });
     this.child.on('error', error => this.fail(error));
     this.child.stdin.on('error', error => this.fail(error));
-    this.child.on('exit', (code, signal) => this.fail(Error(`Engine exited ${code ?? signal}: ${this.diagnostic}`)));
+    this.child.on('exit', (code, signal) => {
+      if (code !== 0 || !this.finishing) this.fail(Error(`Engine exited ${code ?? signal}: ${this.diagnostic}`));
+    });
   }
   command(body, timeoutMs) {
     if (this.error) return Promise.reject(this.error);
@@ -39,6 +41,13 @@ export class Engine {
     this.error ??= error;
     for (const pending of this.pending.values()) { clearTimeout(pending.timer); pending.reject(this.error); }
     this.pending.clear(); this.child.kill();
+  }
+  async finish() {
+    if (this.pending.size) throw Error('Cannot finish with pending engine requests');
+    this.finishing = true;
+    this.child.stdin.end();
+    await this.closed;
+    if (this.error) throw this.error;
   }
   close() { this.fail(Object.assign(Error('Engine stopped'), { code: 'budget_exhausted' })); this.lines.close(); this.child.stdin.destroy(); return this.closed; }
 }

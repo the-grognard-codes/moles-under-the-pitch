@@ -19,7 +19,9 @@ import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonValue;
 
 import java.lang.reflect.Field;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,6 +31,7 @@ import java.util.Random;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.framework;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockingDetails;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.withSettings;
 /** Real BB2025 engine and synthetic exhibition rosters; only external server services are mocked. */
@@ -50,7 +53,11 @@ final class BogrukEngineFixture implements AutoCloseable {
 	}
 
 	BogrukEngineFixture(String homeRoster, String awayRoster, long seed, boolean simulation) throws Exception {
-		this(homeRoster, awayRoster, seed, "00000000-0000-0000-0000-000000000021", DEFAULT_TEAM_PREFIX, simulation);
+		this(homeRoster, awayRoster, seed, simulation, false);
+	}
+
+	BogrukEngineFixture(String homeRoster, String awayRoster, long seed, boolean simulation, boolean measure) throws Exception {
+		this(homeRoster, awayRoster, seed, "00000000-0000-0000-0000-000000000021", DEFAULT_TEAM_PREFIX, simulation, measure);
 	}
 
 	BogrukEngineFixture(String homeRoster, String awayRoster, long seed, String id) throws Exception {
@@ -58,15 +65,16 @@ final class BogrukEngineFixture implements AutoCloseable {
 	}
 
 	BogrukEngineFixture(String homeRoster, String awayRoster, long seed, String id, String teamPrefix) throws Exception {
-		this(homeRoster, awayRoster, seed, id, teamPrefix, false);
+		this(homeRoster, awayRoster, seed, id, teamPrefix, false, false);
 	}
 
 	private BogrukEngineFixture(String homeRoster, String awayRoster, long seed, String id, String teamPrefix,
-		boolean simulation) throws Exception {
+		boolean simulation, boolean measure) throws Exception {
 		this.simulation = simulation;
 		server = mock(FantasyFootballServer.class, simulation ? withSettings().stubOnly() : withSettings());
 		debugLog = mock(DebugLog.class, simulation ? withSettings().stubOnly() : withSettings());
-		communication = mock(ServerCommunication.class, simulation ? withSettings().stubOnly() : withSettings());
+		communication = measure ? new ServerCommunication(server)
+			: mock(ServerCommunication.class, simulation ? withSettings().stubOnly() : withSettings());
 		ComputerOpponentService computers = new ComputerOpponentService(null);
 		FrozenTeam home = frozen(homeRoster, "home", "00000000-0000-0000-0000-000000000011", teamPrefix);
 		FrozenTeam away = frozen(awayRoster, "away", "00000000-0000-0000-0000-000000000012", teamPrefix)
@@ -89,13 +97,14 @@ final class BogrukEngineFixture implements AutoCloseable {
 		dice = new Random(seed);
 		session = SetupSession.startRecoverable(server, document, -2, true, true);
 		session.recordPlayerActivity("home", System.currentTimeMillis());
-		pinDice();
+		if (measure) seedRecoveryDice(seed);
+		else pinDice();
 	}
 
 	@Override
 	public void close() {
 		if (simulation) {
-			framework().clearInlineMock(communication);
+			if (mockingDetails(communication).isMock()) framework().clearInlineMock(communication);
 			framework().clearInlineMock(debugLog);
 			framework().clearInlineMock(server);
 		}
@@ -137,10 +146,25 @@ final class BogrukEngineFixture implements AutoCloseable {
 	}
 
 	private void pinDice() throws Exception {
+		gameState = nativeState();
+		gameState.getDiceRoller().setRecoveryRoll(sides -> dice.nextInt(sides) + 1);
+	}
+
+	private GameState nativeState() throws ReflectiveOperationException {
 		Field field = SetupSession.class.getDeclaredField("state");
 		field.setAccessible(true);
-		gameState = (GameState) field.get(session);
-		gameState.getDiceRoller().setRecoveryRoll(sides -> dice.nextInt(sides) + 1);
+		return (GameState) field.get(session);
+	}
+
+	private void seedRecoveryDice(long seed) throws ReflectiveOperationException {
+		gameState = nativeState();
+		Field diceField = SetupSession.class.getDeclaredField("recoveryDice");
+		diceField.setAccessible(true);
+		byte[] bytes = ByteBuffer.allocate(32).putLong(seed).array();
+		RecoveryDice recovery = new RecoveryDice(new JsonObject().add("version", 1)
+			.add("seed", Base64.getEncoder().encodeToString(bytes)).add("counter", 0));
+		diceField.set(session, recovery);
+		gameState.getDiceRoller().setRecoveryRoll(recovery::roll);
 	}
 
 	/** Same visible movement budget as the away computer projection, for the synthetic home coach. */

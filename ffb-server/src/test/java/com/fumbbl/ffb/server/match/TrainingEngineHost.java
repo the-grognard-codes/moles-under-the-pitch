@@ -3,10 +3,12 @@ package com.fumbbl.ffb.server.match;
 import com.eclipsesource.json.JsonObject;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryUsage;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -17,11 +19,15 @@ public final class TrainingEngineHost {
 
 	private final Map<String, BogrukEngineFixture> matches = new LinkedHashMap<>();
 	public static void main(String[] args) throws Exception {
-		new TrainingEngineHost().run(args.length == 0 ? 4 : Integer.parseInt(args[0]));
+		String directory = System.getProperty("ffb.stateSync.artifacts");
+		StateSyncFixtureCapture capture = directory == null ? null : new StateSyncFixtureCapture(Path.of(directory));
+		if (capture != null) StateSyncMoveTiming.install();
+		new TrainingEngineHost().run(args.length == 0 ? 4 : Integer.parseInt(args[0]), capture);
 	}
 
-	private void run(int capacity) throws Exception {
+	private void run(int capacity, StateSyncFixtureCapture capture) throws Exception {
 		if (capacity < 1 || capacity > 32) throw new IllegalArgumentException("Capacity must be 1..32");
+		if (capture != null && capacity != 1) throw new IllegalArgumentException("Fixture capture requires capacity 1");
 		try (BufferedReader input = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
 			String line;
 			while ((line = input.readLine()) != null) {
@@ -39,7 +45,8 @@ public final class TrainingEngineHost {
 						if (matches.size() >= capacity || matches.containsKey(matchId))
 							throw new IllegalArgumentException("Host capacity or duplicate match");
 						matches.put(matchId, new BogrukEngineFixture(command.getString("homeRoster", "Human"),
-							command.getString("awayRoster", "Orc"), command.getLong("seed", 42), true));
+							command.getString("awayRoster", "Orc"), command.getLong("seed", 42), true, capture != null));
+						if (capture != null) capture.start(matches.get(matchId).session);
 						response = matches.get(matchId).reply(role);
 					} else if ("close".equals(operation)) {
 						closeMatch(matchId);
@@ -48,8 +55,10 @@ public final class TrainingEngineHost {
 						BogrukEngineFixture fixture = matches.get(matchId);
 						if (fixture == null) throw new IllegalArgumentException("Unknown match");
 						if ("load".equals(operation)) response = fixture.reply(role);
-						else if ("apply".equals(operation)) response = fixture.apply(role, command.get("request").asObject());
-						else throw new IllegalArgumentException("Unknown operation");
+						else if ("apply".equals(operation)) {
+							JsonObject request = command.get("request").asObject();
+							response = capture == null ? fixture.apply(role, request) : measuredApply(capture, fixture, role, request);
+						} else throw new IllegalArgumentException("Unknown operation");
 					}
 					if ("home".equals(role) && matches.containsKey(matchId)) response.add("trainingMovement", matches.get(matchId).homeMovement());
 				} catch (Exception failure) {
@@ -66,6 +75,23 @@ public final class TrainingEngineHost {
 			for (BogrukEngineFixture fixture : matches.values()) fixture.close();
 			matches.clear();
 		}
+	}
+
+	private JsonObject measuredApply(StateSyncFixtureCapture capture, BogrukEngineFixture fixture, String role, JsonObject request)
+		throws IOException {
+		int beforeRevision = fixture.session.revision();
+		boolean staged = fixture.session.isStagedRequest(request);
+		StateSyncMoveTiming.begin(beforeRevision, request.getString("operation", ""));
+		JsonObject response;
+		try {
+			response = fixture.apply(role, request);
+			if (fixture.session.revision() != beforeRevision) capture.recordMove(StateSyncMoveTiming.result(fixture.session.revision()));
+		} finally {
+			StateSyncMoveTiming.clear();
+		}
+		if (!staged && "ACCEPTED".equals(response.getString("code", null)) && !response.getBoolean("duplicate", false))
+			capture.advance(fixture.session, fixture.document.matchId);
+		return response;
 	}
 
 	private void closeMatch(String matchId) {
