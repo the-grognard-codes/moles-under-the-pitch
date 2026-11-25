@@ -9,7 +9,7 @@ public final class MatchDocument {
 	public final Member home, away;
 	public final java.util.Map<String, Request> requests;
 	/** Private, durable terminal result. It is deliberately absent from public match projections. */
-	public final CompletedMatch completion;
+	final CompletedMatch completion;
 	public final ComputerCoach computer;
 	public MatchDocument(String matchId, int documentVersion, String intendedOpponent, Lifecycle lifecycle, Member home, Member away) { this(matchId,documentVersion,intendedOpponent,lifecycle,home,away,new java.util.LinkedHashMap<String,Request>()); }
 	public MatchDocument(String matchId, int documentVersion, String intendedOpponent, Lifecycle lifecycle, Member home, Member away, java.util.Map<String,Request> requests) {
@@ -30,6 +30,11 @@ public final class MatchDocument {
 	public MatchDocument completed(CompletedMatch result) {
 		if (lifecycle != Lifecycle.ACTIVATED || documentVersion != 3) throw new IllegalStateException("Match is not activated");
 		return new MatchDocument(matchId, 4, intendedOpponent, Lifecycle.COMPLETED, home, away, requests, result, computer);
+	}
+	/** Opens history from a document the caller has already authorized. */
+	public MatchHistory history() {
+		if (lifecycle != Lifecycle.COMPLETED || completion == null) throw new MatchService.Failure("NOT_COMPLETED");
+		return new ArtifactMatchHistory(completion);
 	}
 	public MatchDocument joined(Member opponent, String requestKey, String fingerprint) {
 		if (away != null) throw new IllegalStateException("Seat occupied");

@@ -16,10 +16,13 @@ class MatchResultV2Test {
         String matchId = "12345678-1234-1234-1234-123456789abc";
         MatchService matches = mock(MatchService.class);
         JsonObject artifact = new JsonObject().add("formatVersion", 2).add("matchId", matchId)
+            .add("engineVersion", CompletedMatch.ENGINE_VERSION).add("ruleset", "BB2025")
+            .add("catalogVersion", "catalog").add("presetId", "preset").add("presetVersion", "preset-version")
+            .add("homeScore", 1).add("awayScore", 0).add("finalRevision", 0)
             .add("events", new JsonArray().add(new JsonObject().add("revision", 0).add("kind", "FULL_TIME")))
             .add("transcript", new JsonObject().add("formatVersion", 2).add("records", new JsonArray()
                 .add(new JsonObject().add("native", new JsonArray().add(new JsonObject().add("commandNr", 1))))));
-        when(matches.result("home", matchId)).thenReturn(new CompletedMatch(artifact.toString()));
+        when(matches.resultHistory("home", matchId)).thenReturn(new ArtifactMatchHistory(new CompletedMatch(artifact)));
         JsonObject request = new JsonObject().add("version", 1).add("type", "matchResult").add("requestId", "result")
             .add("operation", "load").add("matchId", matchId);
 

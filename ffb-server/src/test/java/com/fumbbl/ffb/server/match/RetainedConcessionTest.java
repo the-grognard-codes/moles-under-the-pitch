@@ -104,7 +104,7 @@ class RetainedConcessionTest {
             };
             when(matches.load(anyString(), anyString())).thenAnswer(load);
             when(matches.loadForSetup(anyString(), anyString())).thenAnswer(load);
-            when(matches.result(anyString(), anyString())).thenAnswer(call -> document.get().completion);
+            when(matches.resultHistory(anyString(), anyString())).thenAnswer(call -> document.get().history());
             AtomicInteger commits = new AtomicInteger();
             doAnswer(call -> {
                 CompletedMatch completed = call.getArgument(2);

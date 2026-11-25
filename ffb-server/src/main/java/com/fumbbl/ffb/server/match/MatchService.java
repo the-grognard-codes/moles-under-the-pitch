@@ -144,11 +144,10 @@ public final class MatchService {
 		} catch (MatchRepository.OutcomeUnknown failure) { throw new OutcomeUnknown(matchId); }
 	}
 
-	public CompletedMatch result(String owner, String matchId) throws SQLException {
+	/** Opens a participant's completed history after the preparation and full artifact validate. */
+	public MatchHistory resultHistory(String owner, String matchId) throws SQLException {
 		identity(owner); selection(matchId, 1);
-		MatchDocument document = required(owner, matchId);
-		if (document.lifecycle != MatchDocument.Lifecycle.COMPLETED || document.completion == null) throw new Failure("NOT_COMPLETED");
-		return document.completion;
+		return required(owner, matchId).history();
 	}
 
 	private Result repeated(MatchDocument document, String owner, String requestId, String fingerprint) {
