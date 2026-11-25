@@ -1,6 +1,7 @@
 package com.fumbbl.ffb.server.match;
 
 import com.fumbbl.ffb.server.GameState;
+import com.fumbbl.ffb.server.local.CaptureRequestProbe;
 import com.fumbbl.ffb.server.util.UtilSkillBehaviours;
 
 import com.eclipsesource.json.JsonArray;
@@ -19,6 +20,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -48,7 +50,10 @@ public final class StateSyncStorageProbe {
 	public static void main(String[] args) throws Exception {
 		Path dir = Path.of(args[0]);
 		StateSyncStorageProbe probe = new StateSyncStorageProbe(dir);
-		probe.run(Integer.parseInt(args[2]), args.length == 4 && "--early".equals(args[3]));
+		int repeats = Integer.parseInt(args[2]);
+		if (repeats < 1) throw new IllegalArgumentException("Positive sample count required");
+		if (args.length == 4 && "--trace-checkpoints".equals(args[3])) probe.traceCheckpoints(repeats);
+		else probe.run(repeats, args.length == 4 && "--early".equals(args[3]));
 		Files.writeString(Path.of(args[1]), probe.samples.toString());
 	}
 
@@ -74,7 +79,6 @@ public final class StateSyncStorageProbe {
 	}
 
 	private void run(int repeats, boolean earlyOnly) throws Exception {
-		if (repeats < 1) throw new IllegalArgumentException("Positive sample count required");
 		long seed = JsonObject.readFrom(read("match")).getLong("seed", -1);
 		try (BogrukEngineFixture fixture = new BogrukEngineFixture("Human", "Orc", seed, true, true);
 			Connection admin = open(); ExecutorService worker = Executors.newSingleThreadExecutor()) {
@@ -82,6 +86,58 @@ public final class StateSyncStorageProbe {
 				stage = period;
 				measureStage(fixture, fixture.document, admin, worker, repeats);
 			}
+		}
+	}
+
+	/** Separately trace production recovery writes without enabling timing in the prototype rounds. */
+	private void traceCheckpoints(int repeats) throws Exception {
+		CaptureRequestProbe probe = new CaptureRequestProbe();
+		JsonObject request = new JsonObject().add("type", "setup").add("operation", "action").add("requestId", "checkpoint-probe");
+		JdbcRecoveryRepository repository = new JdbcRecoveryRepository(() -> DriverManager.getConnection(url, "root", password), true);
+		move = "baseline";
+		try (Connection admin = open()) {
+			for (String period : new String[]{"early", "late"}) {
+				stage = period;
+				traceCheckpointStage(repeats, probe, request, repository, admin);
+			}
+		}
+	}
+
+	private void traceCheckpointStage(int repeats, CaptureRequestProbe probe, JsonObject request,
+		JdbcRecoveryRepository repository, Connection admin) throws Exception {
+		String checkpoint = read(stage), entry = read(stage + "-journal");
+		String match = UUID.randomUUID().toString();
+		check(repository.save(new RecoveryRepository.Record(match, 1, checkpoint), 0));
+		try {
+			for (int i = 0; i < repeats; i++) {
+				long generationBeforeAppend = 1 + 2L * i;
+				check(repository.append(new RecoveryRepository.Record(match, generationBeforeAppend + 1, entry), generationBeforeAppend));
+				RecoveryRepository.Record next = new RecoveryRepository.Record(match, generationBeforeAppend + 2, checkpoint);
+				JsonObject trace = probe.details(request, () -> {
+					try {
+						return time("checkpointStore", () -> {
+							check(repository.save(next, generationBeforeAppend + 1));
+							return null;
+						});
+					} catch (Exception failure) {
+						throw new IllegalStateException("Checkpoint timing failed", failure);
+					}
+				});
+				JsonObject totals = trace.get("totals").asObject();
+				for (String phase : new String[]{"STORAGE_ENCODE", "STORAGE_COMPRESSION", "CHECKPOINT_SQL", "DB_CONNECT", "DB_WRITE", "DB_COMMIT"}) {
+					samples.add(new JsonObject().add("stage", stage).add("move", move).add("phase", phase)
+						.add("ms", totals.get(phase).asObject().get("ms")));
+				}
+			}
+		} finally {
+			deleteRecoveryRow(admin, match);
+		}
+	}
+
+	private void deleteRecoveryRow(Connection admin, String match) throws SQLException {
+		try (PreparedStatement cleanup = admin.prepareStatement("DELETE FROM ffb_match_recovery WHERE matchid=?")) {
+			cleanup.setString(1, match);
+			cleanup.executeUpdate();
 		}
 	}
 
@@ -176,7 +232,7 @@ public final class StateSyncStorageProbe {
 					bind(cleanup, row); cleanup.executeUpdate();
 				}
 			}
-			update(admin, "DELETE FROM ffb_match_recovery WHERE matchid=?", baseKey);
+			deleteRecoveryRow(admin, baseKey);
 		}
 	}
 

@@ -17,6 +17,55 @@ Each size is decoded JSON bytes / gzip bytes. Individual fields were compressed 
 | awayView | 31088 / 2921 | 26306 / 2853 | 13680 / 1826 |
 | rest | 64010 / 7309 | 539707 / 42082 | 540294 / 42160 |
 
+## Repeated storage rounds
+
+Each round uses three fresh 768 MiB JVMs and has 102 samples per stage and move shape. The first two rounds show the observed spread before the compact predecessor was reset to a distinct blob for each repetition. The computer-player suite overlapped the first round. Browser validation overlapped the slowest JVM of the second. The three quiet rounds use the same final probe and seed-43 fixture, with the actual penultimate blob before the terminal write. The isolated database was restarted before the two repeats.
+
+Commit and whole-task cells list ordinary / keyframe / rare-decision p99, in milliseconds. The DB health probe opens a connection and runs `SELECT 1`. It has nine samples per stage and round, so its p90 equals the maximum under nearest-rank sampling.
+
+| Run | Early commit p99 (ms) | Late commit p99 (ms) | Terminal commit p99 (ms) |
+| --- | ---: | ---: | ---: |
+| state-sync-storage-43 | 37.98 / 29.73 / 28.54 | 31.70 / 40.40 / 44.96 | 29.91 / 52.95 / 30.44 |
+| state-sync-storage-final | 56.85 / 42.38 / 51.22 | 32.54 / 37.40 / 34.25 | 160.66 / 163.33 / 117.02 |
+| state-sync-storage-quiet | 30.74 / 40.52 / 53.81 | 32.74 / 30.19 / 34.24 | 29.35 / 47.66 / 29.28 |
+| state-sync-storage-quiet-repeat1 | 43.27 / 38.09 / 40.42 | 98.49 / 80.41 / 118.73 | 95.25 / 77.60 / 65.32 |
+| state-sync-storage-quiet-repeat2 | 40.61 / 44.44 / 36.00 | 61.85 / 59.27 / 51.55 | 42.07 / 48.88 / 41.23 |
+
+| Run | Early whole-task p99 (ms) | Late whole-task p99 (ms) | Terminal whole-task p99 (ms) |
+| --- | ---: | ---: | ---: |
+| state-sync-storage-43 | 38.66 / 30.95 / 28.92 | 32.02 / 41.13 / 45.55 | 30.41 / 53.79 / 31.09 |
+| state-sync-storage-final | 57.54 / 43.56 / 51.58 | 33.83 / 38.23 / 35.03 | 161.47 / 164.68 / 117.73 |
+| state-sync-storage-quiet | 33.50 / 41.42 / 54.19 | 33.15 / 31.33 / 35.37 | 30.51 / 48.54 / 30.36 |
+| state-sync-storage-quiet-repeat1 | 43.83 / 39.15 / 40.84 | 99.23 / 81.25 / 120.12 | 96.02 / 79.36 / 65.80 |
+| state-sync-storage-quiet-repeat2 | 41.53 / 45.52 / 36.42 | 62.24 / 60.25 / 52.30 | 42.82 / 49.79 / 41.84 |
+
+| Run | Early DB round trip p50 / p90 / max (ms) | Late DB round trip p50 / p90 / max (ms) | Terminal DB round trip p50 / p90 / max (ms) |
+| --- | ---: | ---: | ---: |
+| state-sync-storage-43 | 9.26 / 10.34 / 10.34 | 8.84 / 15.93 / 15.93 | 7.92 / 10.52 / 10.52 |
+| state-sync-storage-final | 10.37 / 72.36 / 72.36 | 9.88 / 15.18 / 15.18 | 9.85 / 15.52 / 15.52 |
+| state-sync-storage-quiet | 11.46 / 14.13 / 14.13 | 10.19 / 12.14 / 12.14 | 10.18 / 12.80 / 12.80 |
+| state-sync-storage-quiet-repeat1 | 10.02 / 19.78 / 19.78 | 8.26 / 48.99 / 48.99 | 9.98 / 56.56 / 56.56 |
+| state-sync-storage-quiet-repeat2 | 7.91 / 11.12 / 11.12 | 7.75 / 18.04 / 18.04 | 7.14 / 19.70 / 19.70 |
+
+Late commit p99 still varied after five rounds. Across the three matched quiet rounds, ordinary write p99 ranged from 32.74 to 98.49 ms, keyframe from 30.19 to 80.41 ms, and rare-decision from 34.24 to 118.73 ms. Whole-task p99 ranged from 33.15 to 99.23 ms, 31.33 to 81.25 ms, and 35.37 to 120.12 ms respectively. Matched terminal ordinary and keyframe whole-task p99 ranged from 30.51 to 96.02 ms and 48.54 to 79.36 ms.
+
+Late DB round-trip medians stayed between 7.75 and 10.19 ms in the matched quiet rounds. The round with the highest late write p99 also had a 48.99 ms maximum DB round trip. The health probe is too small and separate from the commits to attribute the cause. The late rare-decision p99 crossed 100 ms in one quiet repeat, and ordinary and keyframe p99 sometimes exceeded the proposed 60 ms write target.
+
+Run the following commands from the repository root with the pinned JDK, training classpath and isolated database configured as in the outcome report. Use fresh output directories. The first two argument directories refer to retained evidence for the earlier probe versions.
+
+```powershell
+$fixture = '.tools/state-sync-smoke-fixed/selected'
+node tools/diagnostics/state-sync/run-storage.mjs $fixture .tools/state-sync-storage-quiet measure
+node tools/diagnostics/state-sync/run-storage.mjs $fixture .tools/state-sync-storage-quiet-repeat1 measure
+node tools/diagnostics/state-sync/run-storage.mjs $fixture .tools/state-sync-storage-quiet-repeat2 measure
+$rounds = @('43','final','quiet','quiet-repeat1','quiet-repeat2') | ForEach-Object { ".tools/state-sync-storage-$_" }
+node tools/diagnostics/state-sync/storage-rounds-report.mjs compare $rounds
+```
+
+## Reference run phase distributions
+
+The detailed distributions below use `state-sync-storage-quiet`, the first round using the distinct compact predecessor.
+
 Each distribution gives sample count / p50 / p90 / p99 / maximum. A dash means fewer than 100 samples for p99, or a metric that does not apply. A parent duration includes its children.
 
 | Cohort / operation | Milliseconds | Allocated bytes | Output bytes |
@@ -238,3 +287,25 @@ These totals sum the named JDBC read, decode or validation, and native restore o
 | terminal/compactRestore | 9 / 32.315 / 73.924 / — / 73.924 |
 | terminal/currentRestore | 9 / 3317.292 / 3630.105 / — / 3630.105 |
 | terminal/currentComputerFallback | 9 / 2219.599 / 2593.993 / — / 2593.993 |
+
+## Late recovery checkpoint store attribution
+
+The reference round's late checkpoint store took 843.43 ms at p50. JFR pause overlap was zero at p50 and 11.09 ms at maximum. A separate replay ran the same production repository replacement after appending one journal entry, using the same fixture and three fresh JVMs. It observed production request timing spans around the store and recorded new JFR and GC files. It calls the repository directly with the late training artifact, outside the browser admission path. The sequence isolates stored-value preparation and JDBC from the prototype and restore workloads.
+
+| Phase | Early (n / p50 / p90 / max ms) | Late (n / p50 / p90 / max ms) |
+| --- | ---: | ---: |
+| checkpointStore | 9 / 55.37 / 172.56 / 172.56 | 9 / 584.39 / 706.98 / 706.98 |
+| STORAGE_ENCODE | 9 / 31.90 / 36.94 / 36.94 | 9 / 525.74 / 614.29 / 614.29 |
+| STORAGE_COMPRESSION | 9 / 17.17 / 18.00 / 18.00 | 9 / 270.06 / 355.40 / 355.40 |
+| CHECKPOINT_SQL | 9 / 21.96 / 135.51 / 135.51 | 9 / 71.82 / 94.32 / 94.32 |
+| DB_CONNECT | 9 / 9.06 / 13.14 / 13.14 | 9 / 7.77 / 8.95 / 8.95 |
+| DB_WRITE | 9 / 5.58 / 120.26 / 120.26 | 9 / 59.72 / 80.37 / 80.37 |
+| DB_COMMIT | 9 / 3.10 / 6.76 / 6.76 | 9 / 2.59 / 3.04 / 3.04 |
+
+The replay's late storage encode took 525.74 ms at p50 and accounted for 85.53% to 89.96% of each measured late save. Gzip took 270.06 ms at p50 within encode. The rest of the encode span covers strict UTF-8 conversion and constructing and checking the encoded envelope. The JDBC section took 71.82 ms at p50 and includes both the checkpoint update and clearing the journal. No JFR stop-the-world GC pause overlapped the nine late saves in this traced replay. Its median was lower than the reference round's median, so the breakdown identifies where the time accumulates on this code path without assigning exact stage durations to the original samples. Each timing sample with a child span includes that child.
+
+```powershell
+$fixture = '.tools/state-sync-smoke-fixed/selected'
+node tools/diagnostics/state-sync/run-storage.mjs $fixture .tools/state-sync-storage-checkpoint-trace trace-checkpoints
+node tools/diagnostics/state-sync/storage-rounds-report.mjs trace-checkpoints .tools/state-sync-storage-checkpoint-trace
+```

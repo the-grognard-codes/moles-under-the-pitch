@@ -6,14 +6,16 @@ import { cpus, totalmem } from 'node:os';
 import { measurementStatistics } from '../history-analysis.mjs';
 
 const [fixtures, destination, mode = 'measure'] = process.argv.slice(2);
-assert.ok(fixtures && destination && ['smoke', 'measure'].includes(mode),
-  'Usage: node tools/diagnostics/state-sync/run-storage.mjs <selected> .tools/<new-output> [smoke|measure]');
+assert.ok(fixtures && destination && ['smoke', 'measure', 'trace-checkpoints'].includes(mode),
+  'Usage: node tools/diagnostics/state-sync/run-storage.mjs <selected> .tools/<new-output> [smoke|measure|trace-checkpoints]');
 const relativeOutput = relative(process.cwd(), resolve(destination)).replaceAll('\\', '/');
 assert.match(relativeOutput, /^\.tools\/[\w-]+$/);
 const java = process.env.FFB_STATE_SYNC_JAVA ?? 'java';
 const classpath = readFileSync(process.env.FFB_STATE_SYNC_CLASSPATH_FILE ?? '.tools/training-classpath.txt', 'utf8').trim();
 mkdirSync(destination);
-execFileSync(process.execPath, ['tools/diagnostics/state-sync/prepare.mjs', fixtures], { stdio: 'inherit' });
+if (mode !== 'trace-checkpoints') {
+  execFileSync(process.execPath, ['tools/diagnostics/state-sync/prepare.mjs', fixtures], { stdio: 'inherit' });
+}
 const groups = new Map();
 const slow = [];
 for (let jvm = 1; jvm <= (mode === 'smoke' ? 1 : 3); jvm++) {
@@ -22,7 +24,7 @@ for (let jvm = 1; jvm <= (mode === 'smoke' ? 1 : 3); jvm++) {
     '-XX:StartFlightRecording=settings=profile,filename=' + prefix + '.jfr',
     '-Xlog:gc*:file=' + prefix + '-gc.log:uptime,level,tags', '-cp', classpath,
     'com.fumbbl.ffb.server.match.StateSyncStorageProbe', fixtures, prefix + '.json',
-    mode === 'smoke' ? '1' : '3'], { stdio: 'inherit' });
+    mode === 'smoke' ? '1' : '3', ...(mode === 'trace-checkpoints' ? ['--trace-checkpoints'] : [])], { stdio: 'inherit' });
   for (const row of JSON.parse(readFileSync(prefix + '.json', 'utf8'))) {
     const key = [row.stage, row.move, row.phase].join('/');
     if (!groups.has(key)) groups.set(key, []);
