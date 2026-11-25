@@ -751,11 +751,7 @@ public final class BrowserV2Adapter implements BrowserProtocol {
 		Long completedAt = preparationCompletedAt.get(connection);
 		if (completedAt == null) {
 			completedAt = clock.millis();
-			JsonObject artifact = JsonObject.readFrom(document.completion.json());
-			if (artifact.get("transcript") != null) {
-				JsonArray records = artifact.get("transcript").asObject().get("records").asArray();
-				if (!records.isEmpty()) completedAt = records.get(records.size() - 1).asObject().get("at").asLong();
-			}
+			completedAt = matches.openHistory(document).completedAt().orElse(completedAt);
 			preparationCompletedAt.put(connection, completedAt);
 		}
 		if (clock.millis() - completedAt < 15 * 60 * 1000L) return false;

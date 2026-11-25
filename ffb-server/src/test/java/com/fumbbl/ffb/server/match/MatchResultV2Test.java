@@ -6,6 +6,8 @@ import com.eclipsesource.json.JsonValue;
 
 import org.junit.jupiter.api.Test;
 
+import java.sql.SQLException;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.mock;
@@ -16,10 +18,13 @@ class MatchResultV2Test {
         String matchId = "12345678-1234-1234-1234-123456789abc";
         MatchService matches = mock(MatchService.class);
         JsonObject artifact = new JsonObject().add("formatVersion", 2).add("matchId", matchId)
+            .add("engineVersion", CompletedMatch.ENGINE_VERSION).add("ruleset", "BB2025")
+            .add("catalogVersion", "catalog").add("presetId", "preset").add("presetVersion", "preset-version")
+            .add("homeScore", 1).add("awayScore", 0).add("finalRevision", 0)
             .add("events", new JsonArray().add(new JsonObject().add("revision", 0).add("kind", "FULL_TIME")))
             .add("transcript", new JsonObject().add("formatVersion", 2).add("records", new JsonArray()
                 .add(new JsonObject().add("native", new JsonArray().add(new JsonObject().add("commandNr", 1))))));
-        when(matches.result("home", matchId)).thenReturn(new CompletedMatch(artifact.toString()));
+        when(matches.resultHistory("home", matchId)).thenReturn(new ArtifactMatchHistory(new CompletedMatch(artifact)));
         JsonObject request = new JsonObject().add("version", 1).add("type", "matchResult").add("requestId", "result")
             .add("operation", "load").add("matchId", matchId);
 
@@ -28,6 +33,20 @@ class MatchResultV2Test {
         assertEquals(2, response.get("result").asObject().getInt("formatVersion", -1));
         assertEquals(1, response.get("result").asObject().getInt("eventCount", -1));
         assertNull(response.get("result").asObject().get("transcript"));
+        assertEquals(JsonValue.NULL, response.get("event"));
+    }
+
+    @Test void failedRangeReadKeepsThePersistenceFailureCode() throws Exception {
+        String matchId = "12345678-1234-1234-1234-123456789abc";
+        MatchService matches = mock(MatchService.class);
+        MatchHistory history = mock(MatchHistory.class);
+        when(matches.resultHistory("home", matchId)).thenReturn(history);
+        when(history.replayEvent(0)).thenThrow(new SQLException("Read failed"));
+        JsonObject request = new JsonObject().add("version", 1).add("type", "matchResult").add("requestId", "replay")
+            .add("operation", "replay").add("matchId", matchId).add("index", 0);
+
+        JsonObject response = new MatchResultJson().handle(matches, "home", request);
+        assertEquals("PERSISTENCE_FAILED", response.getString("code", null));
         assertEquals(JsonValue.NULL, response.get("event"));
     }
 }

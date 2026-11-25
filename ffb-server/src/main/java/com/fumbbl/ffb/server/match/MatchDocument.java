@@ -9,7 +9,7 @@ public final class MatchDocument {
 	public final Member home, away;
 	public final java.util.Map<String, Request> requests;
 	/** Private, durable terminal result. It is deliberately absent from public match projections. */
-	public final CompletedMatch completion;
+	final CompletedMatch completion;
 	public final ComputerCoach computer;
 	public MatchDocument(String matchId, int documentVersion, String intendedOpponent, Lifecycle lifecycle, Member home, Member away) { this(matchId,documentVersion,intendedOpponent,lifecycle,home,away,new java.util.LinkedHashMap<String,Request>()); }
 	public MatchDocument(String matchId, int documentVersion, String intendedOpponent, Lifecycle lifecycle, Member home, Member away, java.util.Map<String,Request> requests) {

@@ -104,7 +104,8 @@ class RetainedConcessionTest {
             };
             when(matches.load(anyString(), anyString())).thenAnswer(load);
             when(matches.loadForSetup(anyString(), anyString())).thenAnswer(load);
-            when(matches.result(anyString(), anyString())).thenAnswer(call -> document.get().completion);
+            when(matches.resultHistory(anyString(), anyString())).thenAnswer(call -> matches.openHistory(document.get()));
+            when(matches.openHistory(any())).thenCallRealMethod();
             AtomicInteger commits = new AtomicInteger();
             doAnswer(call -> {
                 CompletedMatch completed = call.getArgument(2);
@@ -146,6 +147,9 @@ class RetainedConcessionTest {
             long generation = stored.get().generation;
             SetupApplication restarted = new SetupApplication(fixture.server, matches, recovery);
             assertTrue(restarted.handle(role, request).getBoolean("duplicate", false));
+            JsonObject restartedStatus = restarted.handle(role, status);
+            assertEquals("ACCEPTED", restartedStatus.getString("code", null));
+            assertEquals(response.get("state"), restartedStatus.get("state"));
             assertEquals(generation, stored.get().generation);
             assertEquals("REQUEST_ID_REUSED", restarted.handle(role, JsonObject.readFrom(request.toString()).set("expectedRevision", originalRevision + 1)).getString("code", null));
             assertEquals("ACCEPTED", restarted.handle(role, new JsonObject().add("version", 1).add("type", "setup")

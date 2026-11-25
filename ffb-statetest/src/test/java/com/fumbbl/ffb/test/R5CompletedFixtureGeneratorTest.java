@@ -7,6 +7,7 @@ import com.fumbbl.ffb.server.match.CompletedMatch;
 import com.fumbbl.ffb.server.match.JdbcMatchRepository;
 import com.fumbbl.ffb.server.match.JdbcRecoveryRepository;
 import com.fumbbl.ffb.server.match.MatchDocument;
+import com.fumbbl.ffb.server.match.MatchHistory;
 import com.fumbbl.ffb.server.match.MatchJson;
 import com.fumbbl.ffb.server.match.MatchRepository;
 import com.fumbbl.ffb.server.match.MatchService;
@@ -145,7 +146,8 @@ class R5CompletedFixtureGeneratorTest {
 		}
 
 		MatchDocument completed = matches.load("home", fixtureId).document;
-		assertCompletedFixture(completed, recovery.find(fixtureId));
+		MatchHistory history = matches.openHistory(completed);
+		assertCompletedFixture(completed, history, recovery.find(fixtureId));
 		assertMemberships(connections, fixtureId, accounts);
 		if (lastRequest != null) {
 			RecoveryRepository.Record beforeRetry = recovery.find(fixtureId);
@@ -159,9 +161,9 @@ class R5CompletedFixtureGeneratorTest {
 
 		PausedSnapshot after = loadPausedSnapshot(connections, paused.matchId);
 		assertTrue(paused.same(after), "Completed fixture generation changed the retained paused fixture");
-		JsonObject replay = JsonObject.readFrom(completed.completion.json());
+		JsonObject replay = history.resultMetadata();
 		System.out.println("R5 completed fixture PASS: runtime=" + RUNTIME + ", engine=" + CompletedMatch.ENGINE_VERSION
-			+ ", finalRevision=" + replay.getInt("finalRevision", -1) + ", events=" + replay.get("events").asArray().size()
+			+ ", finalRevision=" + replay.getInt("finalRevision", -1) + ", events=" + replay.getInt("eventCount", -1)
 			+ ", pausedUnchanged=true");
 	}
 
@@ -243,23 +245,21 @@ class R5CompletedFixtureGeneratorTest {
 		assertTrue(source.validation.isValid(), "Frozen source team is no longer valid under the carried-forward catalog");
 	}
 
-	private void assertCompletedFixture(MatchDocument document, RecoveryRepository.Record recovery) {
+	private void assertCompletedFixture(MatchDocument document, MatchHistory history, RecoveryRepository.Record recovery) throws SQLException {
 		assertEquals(4, document.documentVersion);
 		assertEquals(MatchDocument.Lifecycle.COMPLETED, document.lifecycle);
-		assertNotNull(document.completion);
 		assertNotNull(recovery);
 		JsonObject payload = JsonObject.readFrom(recovery.json).get("payload").asObject();
 		assertEquals(RECOVERY_FORMAT, payload.getInt("recoveryVersion", -1));
 		assertEquals(RUNTIME, payload.getString("runtimeVersion", null));
 		assertEquals(CompletedMatch.ENGINE_VERSION, payload.getString("engineVersion", null));
 		assertEquals(REPLAY_FORMAT, payload.getInt("replayVersion", -1));
-		JsonObject replay = JsonObject.readFrom(document.completion.json());
+		JsonObject replay = history.resultMetadata();
 		assertEquals(REPLAY_FORMAT, replay.getInt("formatVersion", -1));
 		assertEquals(CompletedMatch.ENGINE_VERSION, replay.getString("engineVersion", null));
 		assertEquals("BB2025", replay.getString("ruleset", null));
-		JsonArray events = replay.get("events").asArray();
-		assertEquals(replay.getInt("finalRevision", -1) + 1, events.size());
-		assertEquals("FULL_TIME", events.get(events.size() - 1).asObject().get("state").asObject().getString("phase", null));
+		assertEquals(replay.getInt("finalRevision", -1) + 1, replay.getInt("eventCount", -1));
+		assertEquals("FULL_TIME", history.finalState().getString("phase", null));
 	}
 
 	private void assertPlayerParity(SetupApplication setup, String matchId) {

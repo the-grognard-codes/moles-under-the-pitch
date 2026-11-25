@@ -37,9 +37,7 @@ final class RetainedConcession {
     JsonObject view(String role) {
         JsonObject view;
         if (closed()) {
-            completed(); // Preserve artifact bounds and validation on status-only reads too.
-            JsonArray events = payload.get("concession").asObject().get("completion").asObject().get("events").asArray();
-            view = JsonObject.readFrom(events.get(events.size() - 1).asObject().get("state").toString());
+            view = new ArtifactMatchHistory(completed()).finalState();
         } else view = JsonObject.readFrom(payload.get("homeView").toString());
         view.set("callerRole", role).set("actions", new JsonArray()).set("prompt", JsonValue.NULL);
         view.remove("movementForecast");

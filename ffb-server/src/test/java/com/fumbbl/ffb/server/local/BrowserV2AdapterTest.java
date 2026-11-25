@@ -7,6 +7,7 @@ import com.fumbbl.ffb.server.match.CompletedMatch;
 import com.fumbbl.ffb.server.match.ComputerOpponentService;
 import com.fumbbl.ffb.server.match.FrozenTeam;
 import com.fumbbl.ffb.server.match.MatchDocument;
+import com.fumbbl.ffb.server.match.MatchHistory;
 import com.fumbbl.ffb.server.match.MatchMembership;
 import com.fumbbl.ffb.server.match.MatchMembershipRepository;
 import com.fumbbl.ffb.server.match.MatchRepository;
@@ -143,7 +144,9 @@ class BrowserV2AdapterTest {
 		assertEquals(0, connection.closeStatusCode);
 		CompletedMatch completion = new CompletedMatch(new JsonObject().add("formatVersion", 2).add("transcript", new JsonObject()
 			.add("records", new JsonArray().add(new JsonObject().add("at", finished)))).toString());
-		when(setup.browseDocument(MATCH)).thenReturn(active.completed(completion));
+		MatchDocument completed = active.completed(completion);
+		when(setup.browseDocument(MATCH)).thenReturn(completed);
+		when(matches.openHistory(completed)).thenCallRealMethod();
 		when(clock.millis()).thenReturn(finished + 899999L);
 		adapter.receive(connection, request("currentMatches", "retained").add("after", JsonValue.NULL).toString());
 		assertEquals(0, connection.closeStatusCode);
@@ -607,8 +610,10 @@ class BrowserV2AdapterTest {
 		when(access.playerRole(outsider, MATCH)).thenThrow(new MatchService.Failure("NOT_FOUND"));
 		when(access.require(spectator, ApplicationScope.PLAYER)).thenThrow(new MatchService.Failure("AUTHORIZATION"));
 		MatchService matches = mock(MatchService.class);
-		when(matches.result("home", MATCH)).thenReturn(new CompletedMatch(new JsonObject().add("matchId", MATCH)
-			.add("events", new com.eclipsesource.json.JsonArray().add(new JsonObject().add("revision", 0).add("kind", "FULL_TIME"))).toString()));
+		MatchHistory history = mock(MatchHistory.class);
+		when(matches.resultHistory("home", MATCH)).thenReturn(history);
+		when(history.resultMetadata()).thenReturn(new JsonObject().add("matchId", MATCH).add("eventCount", 1));
+		when(history.replayEvent(0)).thenReturn(new JsonObject().add("revision", 0).add("kind", "FULL_TIME"));
 		BrowserV2Adapter adapter = new BrowserV2Adapter(bearer -> "player".equals(bearer) ? player : "outsider".equals(bearer) ? outsider : spectator,
 			access, mock(SetupApplication.class), matches, mock(V2PreparationService.class), mock(BrowserSavedTeamJson.class));
 		Connection participant = new Connection(), viewer = new Connection();
@@ -629,9 +634,9 @@ class BrowserV2AdapterTest {
 		adapter.receive(unrelated, request("matchResult", "outside-replay").add("operation", "replay").add("matchId", MATCH).add("index", 0).toString());
 		assertEquals("NOT_FOUND", code(unrelated, 1));
 		assertEquals("NOT_FOUND", code(unrelated, 2));
-		verify(matches, times(2)).result("home", MATCH);
-		verify(matches, never()).result(FIRST, MATCH);
-		verify(matches, never()).result(outsider.accountId(), MATCH);
+		verify(matches, times(2)).resultHistory("home", MATCH);
+		verify(matches, never()).resultHistory(FIRST, MATCH);
+		verify(matches, never()).resultHistory(outsider.accountId(), MATCH);
 	}
 
 	@Test void rejectedAuthenticationDoesNotEchoOrLogProviderOrPrivatePayloads() throws Exception {

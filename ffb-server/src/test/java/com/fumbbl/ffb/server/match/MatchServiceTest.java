@@ -23,6 +23,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.UUID;
 
@@ -282,7 +283,7 @@ class MatchServiceTest {
 		CompletedMatch completed = completed(id, 2, 1);
 		service.complete("home", id, completed);
 		assertEquals(4, matches.rows.get(id).documentVersion);
-		assertEquals(completed, service.result("away", id));
+		assertEquals(completed, service.load("away", id).document.completion);
 		service.complete("away", id, new CompletedMatch(completed.json()));
 		assertEquals("COMPLETION_CONFLICT", assertThrows(MatchService.Failure.class, () -> service.complete("home", id, completed(id, 3, 1))).code);
 		assertEquals(null, json.publicDocument(service.load("home", id).document).get("completion"));
@@ -314,7 +315,7 @@ class MatchServiceTest {
 		String id = fixture.document.matchId;
 		matches.rows.put(id, new MatchRepository.Record(id, 3, json.encode(fixture.document).toString()));
 		CompletedMatch completed = persistRetainedHistory(fixture.document);
-		assertEquals(completed, service.result("away", id));
+		assertEquals(completed, service.load("away", id).document.completion);
 		service.complete("away", id, completed);
 		assertEquals(4, matches.rows.get(id).documentVersion);
 		MatchDocument restored = service.load("home", id).document;
@@ -497,13 +498,125 @@ class MatchServiceTest {
 	}
 
 	@Test
+	void completedHistoryPreservesResultReplayLogAndChatRepliesAcrossArtifactFormats() throws Exception {
+		int finalRevision = 6;
+		for (int format = 1; format <= 3; format++) {
+			String id = matchId(accepted("home", create(homeTeam, "away").set("requestId", "history-" + format)));
+			accepted("away", join(id, awayTeam));
+			accepted("home", activate(id));
+			JsonObject artifact = JsonObject.readFrom(completed(id, 2, 1).json()).set("formatVersion", format).set("finalRevision", finalRevision);
+			JsonArray events = new JsonArray();
+			MatchTranscript transcript = new MatchTranscript();
+			for (int revision = 0; revision <= finalRevision; revision++) {
+				boolean terminal = revision == finalRevision;
+				String kind = revision == 0 ? "START" : terminal ? "FULL_TIME" : "ACTION";
+				String actor = switch (revision) {
+					case 0, 6 -> "system";
+					case 3, 5 -> "away";
+					default -> "home";
+				};
+				JsonObject board = state(id, revision, 2, 1);
+				if (revision > 0 && !terminal) {
+					board.set("phase", "PLAY").set("half", revision < 4 ? 1 : 2).set("actor", actor);
+					board.set("homeTurn", "home".equals(actor) ? 1 : 2).set("awayTurn", 1);
+				}
+				JsonValue decision = revision == 0 ? JsonValue.NULL : terminal
+					? new JsonObject().add("operation", "sizeLimit").add("reason", MatchStopReason.MATCH_SIZE_LIMIT.name())
+					: new JsonObject().add("operation", "move");
+				events.add(new JsonObject().add("revision", revision).add("kind", kind).add("state", board));
+				transcript.append(revision, kind, actor, 100 + revision, decision, new JsonArray(), board, 0);
+			}
+			artifact.set("events", events);
+			if (format >= 2) artifact.add("transcript", transcript.json());
+			MatchChat chat = new MatchChat();
+			chat.append(id, "spectator", "message", "Good game", finalRevision, 107);
+			if (format == 3) artifact.add("chat", chat.json());
+			CompletedMatch completion = new CompletedMatch(artifact);
+			service.complete("home", id, completion);
+			MatchRepository.Record stored = matches.rows.get(id);
+
+			JsonObject metadata = JsonObject.readFrom(completion.json());
+			JsonArray storedEvents = metadata.get("events").asArray();
+			metadata.remove("events");
+			metadata.remove("transcript");
+			metadata.remove("chat");
+			metadata.add("eventCount", finalRevision + 1);
+			MatchResultJson endpoint = new MatchResultJson();
+			JsonObject request = new JsonObject().add("version", 1).add("type", "matchResult").add("requestId", "history")
+				.add("matchId", id).add("operation", "load");
+			JsonObject result = endpoint.handle(service, "away", request);
+			assertEquals("ACCEPTED", result.getString("code", null));
+			assertEquals(metadata, result.get("result"));
+			assertEquals(JsonValue.NULL, result.get("event"));
+			request.set("operation", "replay").add("index", 0);
+			for (int index = 0; index <= finalRevision; index++) {
+				JsonObject replay = endpoint.handle(service, "home", request.set("index", index));
+				assertEquals(metadata, replay.get("result"));
+				assertEquals(storedEvents.get(index), replay.get("event"));
+			}
+
+			MatchHistory history = service.resultHistory("away", id);
+			JsonObject expectedFinal = storedEvents.get(finalRevision).asObject().get("state").asObject();
+			assertEquals(expectedFinal, history.finalState());
+			history.finalState().get("players").asArray().add(new JsonObject());
+			assertEquals(expectedFinal, history.finalState());
+			assertEquals(new MatchHistory.Keyframe(1, storedEvents.get(1).asObject().get("state").asObject()),
+				history.keyframeAtOrBefore(1));
+			assertThrows(IllegalArgumentException.class, () -> history.keyframeAtOrBefore(finalRevision + 1));
+			assertEquals(format == 1 ? OptionalLong.empty() : OptionalLong.of(106), history.completedAt());
+			assertEquals(format == 1 ? List.of() : List.of(
+				new MatchHistory.TurnIndexEntry(1, new MatchHistory.Turn(1, "home", 1)),
+				new MatchHistory.TurnIndexEntry(3, new MatchHistory.Turn(1, "away", 1)),
+				new MatchHistory.TurnIndexEntry(4, new MatchHistory.Turn(2, "home", 1)),
+				new MatchHistory.TurnIndexEntry(5, new MatchHistory.Turn(2, "away", 1))), history.turnIndex());
+
+			SetupApplication setup = new SetupApplication(null, service);
+			JsonObject load = new JsonObject().add("version", 1).add("type", "setup").add("requestId", "final-state")
+				.add("operation", "load").add("matchId", id);
+			JsonObject completedReply = setup.handle("away", load);
+			assertEquals("ACCEPTED", completedReply.getString("code", null));
+			JsonObject completedView = completedReply.get("state").asObject();
+			assertEquals("away", completedView.getString("callerRole", null));
+			assertEquals(format == 1 ? null : MatchStopReason.MATCH_SIZE_LIMIT.name(), completedView.getString("stopReason", null));
+			if (format == 1) {
+				assertEquals("REPLAY_UNSUPPORTED", assertThrows(MatchService.Failure.class, () -> setup.transcriptPage(id, 0, 1)).code);
+			} else {
+				MatchTranscript storedTranscript = new MatchTranscript(JsonObject.readFrom(completion.json()).get("transcript").asObject());
+				assertEquals(storedTranscript.page(1, 2), setup.transcriptPage(id, 1, 2));
+				assertEquals(storedTranscript.page(finalRevision + 1, 1), setup.transcriptPage(id, finalRevision + 1, 1));
+				assertThrows(IllegalArgumentException.class, () -> history.recordPage(0, 9));
+			}
+			if (format == 3) {
+				MatchChat storedChat = new MatchChat(JsonObject.readFrom(completion.json()).get("chat").asObject());
+				assertEquals(storedChat.page(0, 1), setup.chatPage(id, 0, 1));
+				assertTrue(setup.sendChat(id, id, "spectator", "message", "Good game").duplicate);
+				assertEquals("REQUEST_ID_REUSED",
+					assertThrows(MatchService.Failure.class, () -> setup.sendChat(id, id, "spectator", "message", "Changed")).code);
+				assertEquals("MATCH_COMPLETED",
+					assertThrows(MatchService.Failure.class, () -> setup.sendChat(id, id, "spectator", "missing", "Good game")).code);
+			} else {
+				assertEquals("CHAT_UNAVAILABLE", assertThrows(MatchService.Failure.class, () -> setup.chatPage(id, 0, 1)).code);
+			}
+			assertEquals(stored.json, matches.rows.get(id).json);
+
+			// Even a replay of revision zero validates both copies of the terminal board.
+			JsonObject corrupt = json.encode(service.load("home", id).document);
+			JsonObject terminal = corrupt.get("completion").asObject().get("events").asArray().get(finalRevision).asObject()
+				.get("state").asObject();
+			terminal.set(format == 1 ? "homeScore" : "drive", 3);
+			matches.rows.put(id, new MatchRepository.Record(id, 4, corrupt.toString()));
+			assertEquals("REPLAY_UNSUPPORTED", endpoint.handle(service, "home", request.set("index", 0)).getString("code", null));
+		}
+	}
+
+	@Test
 	void unknownCompletionCommitReconcilesWithoutASecondTransition() throws Exception {
 		String id = matchId(accepted("home", create(homeTeam, "away")));
 		accepted("away", join(id, awayTeam)); accepted("home", activate(id));
 		CompletedMatch completed = completed(id, 0, 0); matches.unknown = true;
 		assertThrows(MatchService.OutcomeUnknown.class, () -> service.complete("home", id, completed));
 		matches.unknown = false; service.complete("away", id, completed);
-		assertEquals(4, matches.rows.get(id).documentVersion); assertEquals(completed, service.result("home", id));
+		assertEquals(4, matches.rows.get(id).documentVersion); assertEquals(completed, service.load("home", id).document.completion);
 	}
 
 	@Test
