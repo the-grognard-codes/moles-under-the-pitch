@@ -1,5 +1,7 @@
 # Improve pitch panning during player and ball playback
 
+This is the original proposal for #638. See the [current spec](pan-during-playback.md) and [delivery outcome](pan-during-playback-outcome.md).
+
 ## Abstract
 
 At 50°, a drag that is responsive when the pitch is stationary can stall during a player or loose-ball move. The benchmark in #637 isolates a substantial cost from applying movement transitions to stationary player markers as the camera pans. This child of #616 owns the production performance outcome. #635 owns visual alignment and may deliver the shared rendering change first.
