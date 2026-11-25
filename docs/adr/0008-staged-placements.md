@@ -3,6 +3,7 @@
 Status: accepted on 2026-11-15.
 Approval: [maintainer acceptance](../specs/staged-placements-adr.md#maintainer-acceptance)
 Amended: 2026-11-15, adjustment limit ([maintainer decision](../specs/staged-placements-adr.md#amendment-2026-11-15-adjustment-limit))
+Amended: 2026-11-25, what a confirm stores ([amendments to this record](#amendments-to-this-record))
 Date: 2026-11-15
 Issue: [#555](https://github.com/the-grognard-codes/fumbbl-rebuild/issues/555)
 Request: [staged placements ADR request](../specs/staged-placements-adr.md)
@@ -171,3 +172,7 @@ Replays and the match transcript record only confirmed states. A replay shows a 
 - **Durability or ordering.** A rules feature makes a placement-like action reveal information or offer the opponent a decision, or a dispute needs interim placements in a replay.
 - **Best-effort delivery.** It proves visibly unreliable for spectators on real networks.
 - **Stored formats.** The project leaves build status, and stored-format compatibility becomes mandatory for any further change in this area.
+
+## Amendments to this record
+
+- 2026-11-25. [ADR 0014](0014-match-state-records-and-live-sync.md) ([approval](../specs/match-state-sync-adr.md#maintainer-acceptance)) changes what a confirm stores: one revision with one match record, one write of the current state and one receipt, instead of a state snapshot, a checkpoint and a request-history entry. It takes over the per-event snapshots that the alternatives leave to #548. The rules on staging, live delivery and limits are unchanged, and so is recovery to a stage's base positions. They now apply to ADR 0014 in place of ADRs 0002 and 0004.

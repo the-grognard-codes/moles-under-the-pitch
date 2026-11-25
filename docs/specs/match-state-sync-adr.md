@@ -2,7 +2,7 @@
 
 Issue: [#611](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611)
 
-Status: requested; resulting ADR not yet accepted.
+Status: accepted on 2026-11-25 as [ADR 0014](../adr/0014-match-state-records-and-live-sync.md) ([maintainer acceptance](#maintainer-acceptance)).
 Source: [#550](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/550), [Codex's recovery, live sync and replay notes](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/550#issuecomment-7086931992), and the maintainer decisions of 2026-11-22 to 2026-11-24 recorded below. The decisions move here from #550 so that #550 stays on engine structure and ruleset separation. The remaining work of [#548](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/548) is folded in (decision 13).
 Reviewed: 2026-11-22, `main` at `5f6779969b644a406de379a36fbfe05f590ef037`. The evidence was rechecked against the same revision on 2026-11-24, and several statements below were corrected.
 Template: [ADR request template](../agents/adr-template.md).
@@ -23,7 +23,7 @@ This sets the server-to-client model for the rest of the project. The target is 
 
   Each revision therefore stores the board twice and its outcomes twice. That is about 56 KB per revision, or 39.12 MiB at about 713 revisions in the 2026-11-20 soak (#596). One full-state snapshot was about 16–20 KB in the 2026-11-15 soak (#548).
 - **Capture uses only the new tail of the native game log, but walks all of it.** `NativeOutcomeCapture.since` and `DriveTrackerPresentation` use commands after `transcript.nativeCursor`, and scan the log from command 1 to find them (`NativeOutcomeCapture.java:21-29`). Capture therefore also grows with match length. Restore compares the whole native state, log included (`SetupSession.java:387-388`), and the journal counts log entries (`RecoveryJournal.java:132`).
-- **Previews copy the whole engine, game log included.** `BlockPreviewPresentation.copy` (`:117-122`) and `PlannedBallTransfer` (`:43`) call `toJsonValue(true, 0)` and rebuild every logged command. The acting coach's view makes one copy for each player that can declare a block and has an adjacent target (`SetupSession.java:1275`). The cost has not been measured, and earlier harnesses had no opponents on the pitch, so they never reached this code.
+- **Previews copy the whole engine, game log included.** `BlockPreviewPresentation.copy` (`:117-122`) and `PlannedBallTransfer` (`:43`) call `toJsonValue(true, 0)` and rebuild every logged command. The acting coach's view makes one copy for each player that can declare a block and has an adjacent target (`SetupSession.java:1275`). Earlier harnesses had no opponents on the pitch, so they never reached this code. #650 has since measured it: one copy took 108.56 ms late, 11.13 times as long as early.
 - **Nothing else needs the full log.** Every user of `GameLog` on `main` at `eb5057d02` was read on 2026-11-24. Only capture, the two preview copies and recovery use it, and the previews don't read what they copy.
 - **Other reads take in the whole match.**
   - Each replay step parses the whole completed artifact to return one event (`MatchResultJson.java:26-38`). Each log page of a completed match also parses it, and rebuilds the whole transcript (`SetupApplication.java:1265-1271`).
@@ -43,7 +43,7 @@ This sets the server-to-client model for the rest of the project. The target is 
   - the native round trip includes the full log (`:387-388`);
   - the request map is rebuilt (`:339-358`).
 - **Compaction rewrites the whole base at least every 31 journal entries**, and sooner once the journal passes 2 MiB (`RecoveryJournal.java:12-14, 41, 52-53`). Each entry also carries the current native state, both coach views and all chat (`SetupSession.java:497-517`), so the real interval needs measuring. Codex's isolated replay showed a one-square move triggering that rewrite, taking 3.7–4.9 s cold against the 2,000 ms budget.
-- **Full time builds the whole match.** It assembles the completed match in memory and stores it (`SetupSession.java:1601-1611`). In the soak, finishing a match of about 38 MiB needed about 400 MiB of temporary heap (#594). Requests waited more than 5 s in 38 episodes, about 25 of which began within about 20 s of a full-time result (#593). **Where that blocked time goes has not been measured**, so its link to this path is a correlation. The measurement below attributes it.
+- **Full time builds the whole match.** It assembles the completed match in memory and stores it (`SetupSession.java:1601-1611`). In the soak, finishing a match of about 38 MiB needed about 400 MiB of temporary heap (#594). Requests waited more than 5 s in 38 episodes, about 25 of which began within about 20 s of a full-time result (#593). **Where that blocked time goes has not been measured**, so its link to this path is a correlation. #650 didn't establish that link: the size limit and the request deadline stopped late full time before its commit.
 - **Live updates send the full state twice** to connections with the live transcript on.
   - Each coach recipient gets a full view for its role, after a `matches.load` for that recipient (`SetupApplication.java:1167-1194`). Spectators get re-parsed copies of one shared public view (`ActiveMatchPublisher.java:187-217`).
   - Connections with the live transcript on also get the record, which repeats the state (`LiveMatchTranscript.java:28`).
@@ -62,11 +62,11 @@ This sets the server-to-client model for the rest of the project. The target is 
   - ADR 0008 (staged placements)
   - ADR 0012 (versioned JSON over WebSockets)
   - ADR 0013 (application seams). It put match storage behind a repository interface and anticipated "a future canonical event log".
-- **Limits of the evidence:** the split of the 39 MiB by field is estimated, not measured. The size of the native snapshot alone, and its growth over a match, are not measured. Soak figures come from computer-driven matches of about 113 decisions each.
+- **Limits of this evidence, as written before the measurement.** The split of the 39 MiB by field was estimated, and the size and growth of the native snapshot weren't measured. #650 has since measured both ([outcome](match-state-sync-measurement-outcome.md)). Soak figures come from computer-driven matches of about 113 decisions each.
 
 ## Maintainer decisions
 
-Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decisions 14–20 accept the recommended answers to [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290) of the implementation plan.
+Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decisions 22–30 are from 2026-11-25. Decisions 22–29 settle the questions the ADR draft (PR #655) left open, and decision 30 follows Codex's review of it. Decisions 14–20 accept the recommended answers to [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290) of the implementation plan.
 
 1. **Scope.** This issue owns the storage and sync decision and its ADR. #550 keeps engine structure and the ruleset-boundary review, and treats this ADR as an input: it settles the persistence and presentation seams that #550's review maps.
 2. **One record serves live play, catch-up and replay.** The transcript record evolves to format 4:
@@ -74,10 +74,10 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decis
    - It replaces the full `state` with a **public patch**. An earlier version of this request also listed a public-state digest here, but the maintainer had not decided it. Decision 12 now rules it out for now.
    - **Keyframes** (a full public snapshot) are written periodically for seeking.
    - Live viewers receive the record, catch-up reads it, and replay plays it.
-3. **Replay storage is written in the move's own transaction.** The transaction updates the restore snapshot, writes the exact-request receipt, and appends the record plus any keyframe. There is no background replay worker. Revisit only if storage cost requires it.
+3. **Replay storage is written in the move's own transaction.** The transaction updates the restore snapshot, writes the exact-request receipt, and appends the record plus any keyframe. There is no background replay worker. Revisit only if storage cost requires it. The maintainer kept this after the measurement, and can revisit a worker thread for the SQL writes if performance on the GCP hosting is significantly worse ([2026-11-25](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/656#issuecomment-7153291066)).
 4. **Publish after commit**, as today.
 5. **Old formats are retired.** All existing matches are cleared, active and completed. Older artifacts are refused with `RECOVERY_UNSUPPORTED`, as in ADRs 0007 and 0008.
-6. **Required outcome: the cost of a move does not grow with match length.** It is held to ADR 0006's p99 ≤ 100 ms per task. The numbers are set after the measurement below.
+6. **Required outcome: the cost of a move does not grow with match length.** It is held to ADR 0006's p99 ≤ 100 ms per task. The numbers are set after the measurement below. Decision 29 sets them.
 7. **The new storage and the replay reader are built together.** Which part comes first within that work is open.
 8. **Match log and chat.** The records are the durable log. The client caches and pages what it has received. Neither the game log nor chat is in the restore object.
 9. **Full-time and load timing are part of this measurement**, replacing #593's instrumentation.
@@ -93,6 +93,15 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decis
 19. **Drift is always checked in tests and soaks.** Live keyframe comparison and reports are included as ticket 17 of #651.
 20. **Chat keeps its 512-message limit.**
 21. **Finished matches keep all their replay records.**
+22. **The 1,024 limit counts only matches that can still be played.** Finished, abandoned and expired matches don't count. Expiry uses the lobby's existing rule, including when nothing has recorded it yet.
+23. **Records of abandoned and expired matches are kept**, with no automatic deletion.
+24. **Chat doesn't advance the storage generation.** It has its own rows and index.
+25. **The history digest covers match records only**, not keyframes or chat.
+26. **What makes a record** is the operation table in the ADR draft: activation, accepted decisions, confirmed stages, declined or timed-out reactions, concession and full time. Other durable changes update the match without a record.
+27. **The public view's outline is accepted.** Ticket 20 of #651 proposes the exact field list, with tests that private data stays out, for the maintainer's approval.
+28. **The four working assumptions in #651 are accepted:** whole-player and whole-section patches, one storage version per match, the row summary, and tests in batches.
+29. **The targets are #650's proposals**, as in the ADR draft's budgets. The proof (ticket 19b) sets the p99 for restore.
+30. **The cutover waits for live coach and spectator updates** (tickets 13 and 14 of #651), so that the delivery target is tested on the real path at the right time. Losing existing matches and replays isn't a concern, as in decision 5.
 
 ## Scope and deliverables
 
@@ -131,7 +140,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decis
    - that ADR 0006 is unchanged.
 4. **Implementation plan**, in [#651](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651) (`docs/specs/match-state-sync-tickets.md`): twenty-six tickets, revised after Codex's review of 2026-11-24. Tickets 1–3 don't depend on the ADR and are filed as #652, #653 and #654. The rest are filed when the ADR is accepted. They carry every item from #548.
 
-**Sequencing:** #610 has merged (PR #612), so the measurement and the ADR draft are both unblocked. The measurement (#650) comes first.
+**Sequencing:** #610 has merged (PR #612), and the measurement (#650) is done (PR #656). The ADR is PR #655.
 
 **Excluded:**
 - Production code changes. Measurement scripts are allowed.
@@ -144,7 +153,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decis
 - **Restore snapshot:**
   - What it contains: the native snapshot and continuation; dice and random-number state; clocks; pending decisions; save/resume state; computer memory; counters (storage generation, gameplay revision, record and chat sequences, decision limit); the absolute command number and the last captured command; the unfinished movement narrative; the phase, announcement, block and drive-tracker cursors.
   - Proof that its size does not grow with match length.
-  - Restore reads no history.
+  - Rebuilding the match uses the snapshot alone. A bounded check of the newest records admits it (decision 17).
 - **Identity and order.** The storage generation (compare-and-swap), the gameplay revision (one record each) and the chat index are separate counters, and a staged placement's sequence is transient. The ADR defines which operations append a record, advance the generation, only acknowledge, or update a stage. Saves, resumes, proposal expiry, refused setups, clock maintenance and abandonment change stored data without a new revision. Live changes at one revision need their own order.
 - **Exact-request receipts (decision 15):** the canonical fingerprint, accepted revision, code and any error details; a reused ID with different content; two devices on one seat; save/resume's limit of 256 requests, which is a hard limit; chat's own author-scoped uniqueness, including after the match ends.
 - **Row summary, for the lobby and for computer probes (the probe part is from #548).** Each committed write stores a small summary in the current-state row, bound to the storage generation, with absolute expiry times and maintenance inputs: gameplay revision, actor, prompt actor, phase, half, turn, score and save/resume status. The lobby listing reads it instead of the snapshot.
@@ -220,8 +229,8 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decis
 - **Publish before commit.** Rejected by decision 4.
 - **Rebuild state by re-executing inputs deterministically.** Rejected: ADR 0004's rule that recovery never reruns commands stands.
 
-**Open, for the maintainer:**
-- **The plan's working assumptions**, listed in #651 and kept by the review: patch shape, one writer per match, the row summary and the order of test changes. They become decisions when the ADR is accepted. So does the table of what each operation writes.
+**Open when this was requested, with where each was settled:**
+- **The plan's working assumptions**, listed in #651 and kept by the review: patch shape, one writer per match, the row summary and the order of test changes. Accepted as decision 28. The table of what each operation writes is decision 26.
 - **Detail for decision 19.** A client can't send its whole state in a drift report, because inbound messages are capped at 16 KiB (`BrowserMatchSocket.java:15`) and one state is about 16–20 KB. Today's soak reads state straight from the wire (`overnight-soak.mjs:125-135`), so it has to use the client's applied state.
 - **Detail for the ADR to settle under decision 8:**
   - The native engine log leaves the restore object and is never persisted. Only the tail not yet captured stays in memory.
@@ -229,9 +238,8 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decis
   - Each chat message is an appended row with its own index. The ADR defines its order relative to records, and the restore object keeps only counters.
   - The client owns display, retention and pagination of what it has received, as a cache. The server serves older pages on reload, device change, spectator join, dropped frames and replay.
   - Caching across reloads in browser storage is optional and deferred.
-- Keyframe cadence and tail size, after the measurement.
-- The numeric targets under decision 6, after the measurement.
-- **The 1,024-match limit.** Today activation stops when `ffb_match_recovery` holds 1,024 matches, and the server never deletes those rows. With decision 21, finished matches have to stop counting toward it. Whether abandoned and expired matches count, and how long they are kept, is open.
+- Keyframe cadence, tail size and the numeric targets under decision 6: decision 29. Ticket 19b still sets the p99 for restore, and ticket 20 still brings the exact field list for approval.
+- **The 1,024-match limit.** Today activation stops when `ffb_match_recovery` holds 1,024 matches, and the server never deletes those rows. Settled by decisions 22 and 23: only matches that can still be played count, and no records are deleted automatically.
 
 ## Related tickets
 
@@ -274,11 +282,15 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decis
 - The follow-up tickets are filed.
 - #548, #593, #594 and #596 are closed as *not planned*, each with a link to the ADR.
 
+## Maintainer acceptance
+
+On 2026-11-25 the maintainer accepted the ADR at `401dad454`, in the conversation where it was prepared: "ADR looks good. Go ahead and assign it a number, I'll merge once CI clears." It took the number 0014. Accepting it changed its status and tense, and the records it supersedes, amends and extends, in PR #655. The follow-up tickets are filed, and the four superseded issues closed, once that PR is merged.
+
 ## Validation and handoff
 
 - **Now:** documentation and measurement scripts only. Check links, and confirm the cited symbols at the reviewed revision.
 - **Branch and PR:** create a new branch. The PR says `Part of #<this issue>`. Do not merge, and do not mark the ADR accepted without the maintainer's approval.
-- **Later:** the implementation tickets prove decision 6 with early- and late-match comparisons at the default heap, zero history reads on restore, and process-death tests around the commit. They also run the [retained-move acceptance case](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611#issuecomment-7122189387): a legal move whose checkpoint write fails before commit, retried once through cold recovery, advances the durable revision exactly once within the request budget. The `codex/retained-move-retry` patch is on hold until that check runs.
+- **Later:** the implementation tickets prove decision 6 with early- and late-match comparisons at the default heap, a restore that rebuilds from the snapshot alone with only the bounded tail check, and process-death tests around the commit. They also run the [retained-move acceptance case](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611#issuecomment-7122189387): a legal move whose checkpoint write fails before commit, retried once through cold recovery, advances the durable revision exactly once within the request budget. The `codex/retained-move-retry` patch is on hold until that check runs.
 - **Later, from #548:**
   - **Memory.** With the resident cache full, a large match finishes, both coaches read it, and another match is served meanwhile, at `-Xmx768m` with 32 sessions (`MatchMemoryBudget.java:10`). This replaces #548's real-play item, which #524 already met, and carries #594's full-cache case.
   - **Row summary.** Unchanged probes and the lobby listing neither read nor hash the snapshot, and a committed human move still wakes the computer.

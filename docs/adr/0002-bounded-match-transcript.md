@@ -1,5 +1,10 @@
 # A bounded transcript shares the authoritative match checkpoint
 
+Status: superseded on 2026-11-25 by [ADR 0014](0014-match-state-records-and-live-sync.md) ([approval](../specs/match-state-sync-adr.md#maintainer-acceptance)).
+ADR 0014 lists [what happens to each rule](0014-match-state-records-and-live-sync.md#what-happens-to-each-rule-of-adrs-0002-and-0004) of this record. Running matches still work as described
+here, as amended by ADRs 0004 and 0008, until its cutover, and these rules hold
+for the old storage until it is removed.
+
 **Format amendment (2026-11-21).** [ADR 0007](0007-server-owned-turn-sequence-presentation.md)
 replaces the embedded format-2 policy below with format 3 for readers and
 writers when implemented. It retains the checkpoint, digest and admission

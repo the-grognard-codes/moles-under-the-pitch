@@ -6,7 +6,7 @@ Promotion issue: [#610](https://github.com/the-grognard-codes/moles-under-the-pi
 
 Promotion request: [Founding ADR consolidation](../specs/adr-founding-records.md)
 
-V2 is now the sole browser runtime. See [amendments and follow-up](#amendments-and-follow-up).
+V2 is now the sole browser runtime, and ADR 0014 amends snapshot recovery and resync. See [amendments and follow-up](#amendments-and-follow-up).
 
 ## Original decision, 2026-09-06
 
@@ -23,3 +23,4 @@ Use TLS and an explicitly validated origin/authentication policy for public conn
 ## Amendments and follow-up
 
 - 2026-11-03. V1 retirement left V2 as the sole browser runtime and retained shared formats needed for V2 replay and recovery. [V1 retirement outcome](../specs/v1-retirement-outcome.md)
+- 2026-11-25. [ADR 0014](0014-match-state-records-and-live-sync.md) ([approval](../specs/match-state-sync-adr.md#maintainer-acceptance)) replaces full-snapshot recovery, and the full resync for slow clients, with a snapshot plus revisioned changes and a bounded snapshot repair. Versioned JSON over WebSockets, request correlation and the bounded outbound queues are unchanged.

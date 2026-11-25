@@ -6,7 +6,7 @@ Promotion issue: [#610](https://github.com/the-grognard-codes/moles-under-the-pi
 
 Promotion request: [Founding ADR consolidation](../specs/adr-founding-records.md)
 
-Later decisions refined publication, the pitch renderer, storage and engine-worker ownership. See [amendments and follow-up](#amendments-and-follow-up).
+Later decisions refined publication, the pitch renderer, storage, match records and engine-worker ownership. See [amendments and follow-up](#amendments-and-follow-up).
 
 ## Original decision, 2026-09-06
 
@@ -39,3 +39,4 @@ Keep current snapshots/replay format behind a repository interface initially, wi
 - 2026-09-27. [ADR 0002](0002-bounded-match-transcript.md) refined the initial snapshot and replay policy. It stored the native checkpoint and public transcript together in one recovery artifact, committing an accepted action and its outcomes atomically.
 - 2026-10-22. [ADR 0004](0004-durable-recovery-journal.md) superseded ADR 0002's single-blob layout with a base checkpoint, native continuations and append-only history committed in one transaction. The repository interface, public transcript and atomic acceptance guarantee still apply.
 - 2026-11-09. [ADR 0006](0006-single-engine-worker.md) specified single-worker ownership and bounded blocking I/O.
+- 2026-11-25. [ADR 0014](0014-match-state-records-and-live-sync.md) ([approval](../specs/match-state-sync-adr.md#maintainer-acceptance)) superseded ADRs 0002 and 0004. Match storage stays behind the repository interface. Its match records are the "future canonical event log" anticipated above: they hold domain facts, not recorded UI commands.
