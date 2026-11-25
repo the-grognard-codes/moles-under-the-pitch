@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep block, blitz, pass and hand-off previews responsive late in matches by skipping the native game log when copying the engine for a preview.
+
 - Keep players, their shadows, selection squares and the ball aligned with the pitch while moving, panning and zooming in live matches and replays.
 - Acknowledge an expired match from its lobby card or direct link to remove it for your account across devices. Each coach controls their own listing. The server now requires schema 11.
 

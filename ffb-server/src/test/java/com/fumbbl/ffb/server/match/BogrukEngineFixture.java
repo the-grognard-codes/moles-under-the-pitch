@@ -119,8 +119,12 @@ final class BogrukEngineFixture implements AutoCloseable {
 
 	/** Drives committed native decisions without adding staged placement requests. */
 	JsonObject recordedDecision(JsonObject view, String requestId, int sequence) {
+		return recordedDecision(document.matchId, view, requestId, sequence % 16 == 0);
+	}
+
+	static JsonObject recordedDecision(String matchId, JsonObject view, String requestId, boolean endTurn) {
 		JsonObject request = new JsonObject().add("version", 1).add("type", "setup").add("requestId", requestId)
-			.add("matchId", document.matchId).add("expectedRevision", view.getInt("revision", -1));
+			.add("matchId", matchId).add("expectedRevision", view.getInt("revision", -1));
 		if (!view.get("prompt").isNull()) {
 			JsonObject prompt = view.get("prompt").asObject();
 			return request.add("operation", "choice").add("promptId", prompt.get("id"))
@@ -134,7 +138,7 @@ final class BogrukEngineFixture implements AutoCloseable {
 			String kind = candidate.getString("kind", "");
 			String id = candidate.getString("id", "");
 			if (id.endsWith(":decline-event") || id.endsWith(":end-event")
-				|| id.endsWith(":confirm-solid-defence") || kind.equals("endTurn") && sequence % 16 == 0) {
+				|| id.endsWith(":confirm-solid-defence") || kind.equals("endTurn") && endTurn) {
 				action = candidate;
 				break;
 			}

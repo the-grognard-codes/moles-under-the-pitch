@@ -66,5 +66,6 @@ Line numbers are at `main` `eb5057d02`.
 
 ## Completion Notes
 
+- The [outcome report](preview-copies-without-game-log-outcome.md) records acceptance evidence and the benchmark used by #650.
 - Unit, browser and game-server build tests should be performed after code changes are complete.
 - Failures in these tests should prompt one or more debug session rounds until the code is clear, a roadblock is encountered, or user input is needed.
