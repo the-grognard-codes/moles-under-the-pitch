@@ -1,5 +1,6 @@
 package com.fumbbl.ffb.server.match;
 
+import com.eclipsesource.json.Json;
 import com.eclipsesource.json.JsonArray;
 import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonValue;
@@ -41,6 +42,24 @@ class MatchTranscriptTest {
         JsonObject saved = transcript.json();
         saved.get("records").asArray().get(0).asObject().set("revision", 2);
         assertThrows(IllegalArgumentException.class, () -> new MatchTranscript(saved));
+    }
+
+    @Test void rejectsMalformedNativeReportsWhenLoadingStoredRecords() {
+        MatchTranscript transcript = new MatchTranscript();
+        transcript.append(0, "START", "system", 100L, JsonValue.NULL,
+            new JsonArray().add(new JsonObject().add("commandNr", 1).add("reportList", JsonValue.NULL)), state(0), 1);
+        JsonObject saved = transcript.json();
+        JsonObject sync = saved.get("records").asArray().get(0).asObject().get("native").asArray().get(0).asObject();
+        assertEquals(1, new MatchTranscript(saved).size());
+        for (String malformed : new String[] {
+            "5", "{\"reports\":7}", "{\"reports\":[3]}",
+            "{\"reports\":[{\"reportId\":\"secretWeaponBan\",\"playerIds\":false}]}",
+            "{\"reports\":[{\"reportId\":\"turnEnd\",\"knockoutRecoveryArray\":{}}]}",
+            "{\"reports\":[{\"reportId\":\"kickoffResult\",\"kickoffResult\":[]}]}"
+        }) {
+            sync.set("reportList", Json.parse(malformed));
+            assertThrows(IllegalArgumentException.class, () -> new MatchTranscript(saved), malformed);
+        }
     }
 
     @Test void unfinishedMovementRemainsAnIsolatedLatestRecordViewAcrossRestore() {

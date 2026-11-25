@@ -61,18 +61,18 @@ class DriveTrackerPresentationTest {
 
     @Test void usesCurrentDriveReportsIncludingFailedRecoveryAndHandledWeaponChecks() {
         current(StepId.SETUP);
-        presentation.record(1, "SETUP", "home", new JsonArray());
+        presentation.recorded(1, "SETUP", "home", new JsonArray());
         JsonArray prior = syncs(report("secretWeaponBan", "playerIds", new JsonArray().add("old")));
-        presentation.record(1, "PLAY", "home", prior);
+        presentation.recorded(1, "PLAY", "home", prior);
         JsonArray current = syncs(report("turnEnd", "knockoutRecoveryArray", new JsonArray().add(
             new JsonObject().add("playerId", "failed").add("successful", false))),
             report("secretWeaponBan", "playerIds", new JsonArray().add("handled")));
-        presentation.record(2, "SETUP", "away", current);
+        presentation.recorded(2, "SETUP", "away", current);
         JsonObject result = project(2, "SETUP");
         assertTrue(result.getBoolean("secretWeapons", false));
         assertTrue(result.getBoolean("knockouts", false));
         assertEquals("home", result.getString("receivingRole", null));
-        presentation.record(3, "SETUP", null, new JsonArray());
+        presentation.recorded(3, "SETUP", null, new JsonArray());
         assertFalse(project(3, "SETUP").getBoolean("secretWeapons", true));
         assertFalse(project(3, "SETUP").getBoolean("knockouts", true));
         assertFalse(project(2, "SETUP").getBoolean("secretWeapons", true));
@@ -86,7 +86,7 @@ class DriveTrackerPresentationTest {
             { "Quick Snap", "QUICK_SNAP", "QUICK_SNAP" }, { "Charge", "CHARGE", "BLITZ" } }) {
             when(game.getTurnMode()).thenReturn(TurnMode.valueOf(event[2]));
             DriveTrackerPresentation tracker = new DriveTrackerPresentation();
-            tracker.record(1, "SETUP", "home", syncs(report("kickoffResult", "kickoffResult", JsonValue.valueOf(event[0]))));
+            tracker.recorded(1, "SETUP", "home", syncs(report("kickoffResult", "kickoffResult", JsonValue.valueOf(event[0]))));
             JsonObject active = tracker.project(state, 1, "PLAY", List::of);
             assertEquals(event[1], active.getString("event", null));
             assertFalse(active.getBoolean("eventComplete", true));
@@ -97,7 +97,7 @@ class DriveTrackerPresentationTest {
 
     @Test void readsPendingNativeReportsBeforeTheCurrentDecisionIsAppended() {
         current(StepId.SETUP);
-        presentation.record(1, "SETUP", "home", new JsonArray());
+        presentation.recorded(1, "SETUP", "home", new JsonArray());
         JsonObject sync = syncs(report("turnEnd", "knockoutRecoveryArray", new JsonArray().add(new JsonObject())),
             report("kickoffResult", "kickoffResult", JsonValue.valueOf("Charge")))
             .get(0).asObject();
@@ -113,26 +113,41 @@ class DriveTrackerPresentationTest {
         assertEquals("CHARGE", preview.getString("event", null));
         assertEquals(before, presentation.exportSummary());
         assertFalse(project(1, "SETUP").getBoolean("knockouts", true));
-        presentation.record(1, "SETUP", "away", pending);
+        presentation.recorded(1, "SETUP", "away", pending);
         assertTrue(new NativeOutcomeCapture().since(log, 1).modelSyncs.isEmpty());
         assertEquals(preview, project(1, "SETUP"));
     }
 
+    @Test void previewsThePendingEventAndRetainsTheFirstCommittedEvent() {
+        current(StepId.SETUP);
+        JsonArray first = syncs(report("kickoffResult", "kickoffResult", JsonValue.valueOf("High Kick")));
+        JsonObject pending = syncs(report("kickoffResult", "kickoffResult", JsonValue.valueOf("Charge"))).get(0).asObject();
+        presentation.recorded(1, "SETUP", "home", first);
+        assertEquals("CHARGE", presentation.project(state, 1, "SETUP", () -> List.of(pending)).getString("event", null));
+        presentation.recorded(1, "SETUP", "away", List.of(pending));
+        assertEquals("HIGH_KICK", project(1, "SETUP").getString("event", null));
+    }
+
     @Test void continuesFromAnExportedSummaryWithoutRecords() {
         current(StepId.SETUP);
+        when(game.isHomePlaying()).thenReturn(true);
         JsonArray current = syncs(report("secretWeaponBan", "playerIds", new JsonArray().add("handled")),
+            report("turnEnd", "knockoutRecoveryArray", new JsonArray().add(new JsonObject())),
             report("kickoffResult", "kickoffResult", JsonValue.valueOf("Charge")));
-        presentation.record(2, "SETUP", "away", current);
+        presentation.recorded(2, "SETUP", "away", current);
         DriveTrackerPresentation restored = new DriveTrackerPresentation();
         restored.restoreSummary(presentation.exportSummary());
         JsonArray later = syncs(report("kickoffResult", "kickoffResult", JsonValue.valueOf("High Kick")));
-        presentation.record(2, "SETUP", "home", later);
-        restored.record(2, "SETUP", "home", later);
+        presentation.recorded(2, "SETUP", "home", later);
+        restored.recorded(2, "SETUP", "home", later);
+        presentation.recorded(2, "SETUP", "home", new JsonArray());
+        restored.recorded(2, "SETUP", "home", new JsonArray());
         JsonObject expected = project(2, "SETUP");
         assertEquals(expected, restored.project(state, 2, "SETUP", List::of));
         assertEquals("home", expected.getString("receivingRole", null));
         assertEquals("CHARGE", expected.getString("event", null));
         assertTrue(expected.getBoolean("secretWeapons", false));
+        assertTrue(expected.getBoolean("knockouts", false));
         assertFalse(restored.project(state, 1, "SETUP", List::of).getBoolean("secretWeapons", true));
     }
 

@@ -14,52 +14,84 @@ import com.eclipsesource.json.JsonArray;
 import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonValue;
 
+import java.io.InputStreamReader;
 import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DriveTrackerMatchTest {
-    // Hashes of the per-revision tracker projections on main (0277e63b3).
     @Test void solidDefenceTrackerMatchesLiveRecoveryAndReplay() throws Exception {
-        playCompleteMatch(2, "SOLID_DEFENCE", "3df07eeb7e53ec9f69ac84e7315b2921a45a08bf92371d323f4d7822c8656a3d");
+        playCompleteMatch(2, "SOLID_DEFENCE");
     }
 
     @Test void chargeTrackerMatchesLiveRecoveryAndReplay() throws Exception {
-        playCompleteMatch(5, "CHARGE", "76584a92f97d5f956fabe2236b6e789746aad9e0682d0a5d2e00415435f4e09a");
+        playCompleteMatch(5, "CHARGE");
     }
 
-    private void playCompleteMatch(int die, String kickoffEvent, String mainProjectionDigest) throws Exception {
+    private void playCompleteMatch(int die, String kickoffEvent) throws Exception {
         SetupSessionMovementTest.Fixture fixture = new SetupSessionMovementTest.Fixture(0, true);
         SetupSession session = fixture.session;
-        GameState nativeState = nativeState(session);
+        GameState nativeState = sessionField(session, "state", GameState.class);
         nativeState.getDiceRoller().setRecoveryRoll(sides -> Math.min(sides, die));
         JsonObject live = view(session, "home");
-        JsonArray projected = new JsonArray();
+        JsonArray baseline = baseline(kickoffEvent);
+        DriveTrackerPresentation.Summary carried = null;
+        SetupSession continuing = null;
         Set<String> observedReports = new HashSet<>();
-        Set<String> observedEvents = new HashSet<>();
-        int trackerRestores = 0;
         boolean scored = false;
+        boolean continuedToVisibleTracker = false;
 
-        for (int revision = 0; revision < 100; revision++) {
+        for (int revision = 0; revision < baseline.size(); revision++) {
             assertEquals(revision, live.getInt("revision", -1));
             JsonValue tracker = tracker(live);
-            projected.add(tracker);
+            assertEquals(baseline.get(revision), tracker, "Main projection at revision " + revision);
             JsonObject record = session.transcriptPage(revision, 1).get("records").asArray().get(0).asObject();
-            assertEquals(tracker, tracker(record.get("state").asObject()), "Live and recorded revision " + revision);
-            collectReports(record.get("native").asArray(), observedReports);
-            if (tracker.isObject()) {
-                if (!tracker.asObject().get("event").isNull()) observedEvents.add(tracker.asObject().get("event").asString());
-                SetupSession restored = new SetupSession(fixture.server, fixture.document, session.recoveryArtifact());
-                for (String role : new String[] { "home", "away" })
-                    assertEquals(tracker, tracker(view(restored, role)), "Restored " + role + " revision " + revision);
-                trackerRestores++;
+            JsonObject recordedView = record.get("state").asObject();
+            assertEquals(tracker, tracker(recordedView), "Recorded projection at revision " + revision);
+            JsonArray outcomes = record.get("native").asArray();
+            collectReports(outcomes, observedReports);
+
+            // Continue a fresh tracker using only the exported value and this revision's native outcomes.
+            DriveTrackerPresentation hop = new DriveTrackerPresentation();
+            if (carried != null) {
+                hop.restoreSummary(carried);
+                assertEquals(carried, hop.exportSummary(), "Imported summary before revision " + revision);
+            }
+            int drive = recordedView.getInt("drive", -1);
+            String phase = recordedView.getString("phase", null);
+            hop.recorded(drive, phase, recordedView.getString("actor", null), outcomes);
+            carried = hop.exportSummary();
+            assertEquals(carried, summary(session), "Live summary at revision " + revision);
+            JsonObject carriedProjection = hop.project(nativeState, drive, phase, List::of);
+            assertEquals(tracker, carriedProjection == null ? JsonValue.NULL : carriedProjection,
+                "Summary-only projection at revision " + revision);
+
+            SetupSession restored = new SetupSession(fixture.server, fixture.document, session.recoveryArtifact());
+            assertEquals(carried, summary(restored), "Checkpoint summary at revision " + revision);
+            for (String role : new String[] { "home", "away" })
+                assertEquals(tracker, tracker(view(restored, role)), "Restored " + role + " revision " + revision);
+            if (continuing != null) {
+                assertEquals(carried, summary(continuing), "Continued summary after touchdown at revision " + revision);
+                assertEquals(tracker, tracker(view(continuing, "home")), "Continued projection at revision " + revision);
+                if (tracker.isObject()) {
+                    continuing = null;
+                    continuedToVisibleTracker = true;
+                }
+            }
+            if ("TOUCHDOWN".equals(record.getString("kind", null))) {
+                continuing = restored;
+                sessionField(continuing, "state", GameState.class).getDiceRoller().setRecoveryRoll(sides -> Math.min(sides, die));
             }
             if ("FULL_TIME".equals(live.getString("phase", null))) break;
+            assertTrue(revision + 1 < baseline.size(), "Match ran past its baseline before full time");
             String actor = live.getString("actor", null);
             JsonObject decisionView = view(session, actor);
             JsonObject request = decision(fixture, decisionView, revision);
@@ -70,29 +102,40 @@ class DriveTrackerMatchTest {
             }
             JsonObject response = session.apply(actor, request);
             assertEquals("ACCEPTED", response.getString("code", null), response::toString);
+            if (continuing != null) {
+                JsonObject recoveredResponse = continuing.apply(actor, request);
+                assertEquals("ACCEPTED", recoveredResponse.getString("code", null), recoveredResponse::toString);
+            }
             live = response.get("state").asObject();
         }
 
         assertEquals("FULL_TIME", live.getString("phase", null));
+        assertEquals(baseline.size(), live.getInt("revision", -1) + 1);
         assertTrue(live.getInt("homeScore", 0) + live.getInt("awayScore", 0) > 0);
-        assertTrue(trackerRestores >= 6, "Both sides of setup and kick targeting restore across multiple drives");
-        assertTrue(observedEvents.contains(kickoffEvent), observedEvents::toString);
+        assertTrue(continuedToVisibleTracker, "The match restored at touchdown continued to a visible tracker");
         assertEquals(Set.of("kickoffResult", "secretWeaponBan", "knockoutRecovery"), observedReports);
 
         JsonObject completed = JsonObject.readFrom(session.completedMatch().json());
         JsonArray replay = completed.get("events").asArray();
         JsonArray records = completed.get("transcript").asObject().get("records").asArray();
         CanonicalJson canonical = new CanonicalJson();
-        assertEquals(projected.size(), replay.size());
-        assertEquals(projected.size(), records.size());
+        assertEquals(baseline.size(), replay.size());
+        assertEquals(baseline.size(), records.size());
         for (int revision = 0; revision < replay.size(); revision++) {
-            String expected = canonical.encode(projected.get(revision), 1024);
+            String expected = canonical.encode(baseline.get(revision), 1024);
             assertEquals(expected, canonical.encode(tracker(replay.get(revision).asObject().get("state").asObject()), 1024),
                 "Completed replay event " + revision);
             assertEquals(expected, canonical.encode(tracker(records.get(revision).asObject().get("state").asObject()), 1024),
                 "Completed replay transcript revision " + revision);
         }
-        assertEquals(mainProjectionDigest, new JsonDigest().sha256(projected), "Tracker projections across the full match");
+    }
+
+    /** Tracker output at each revision on main (0277e63b3), driven by the same dice and decisions. */
+    private JsonArray baseline(String kickoffEvent) throws Exception {
+        try (var resource = getClass().getResourceAsStream("/drive-tracker-baseline.json")) {
+            assertNotNull(resource);
+            return JsonObject.readFrom(new InputStreamReader(resource, StandardCharsets.UTF_8)).get(kickoffEvent).asArray();
+        }
     }
 
     private JsonObject decision(SetupSessionMovementTest.Fixture fixture, JsonObject live, int revision) {
@@ -152,9 +195,13 @@ class DriveTrackerMatchTest {
         return value == null ? JsonValue.NULL : value;
     }
 
-    private GameState nativeState(SetupSession session) throws Exception {
-        Field field = SetupSession.class.getDeclaredField("state");
+    private DriveTrackerPresentation.Summary summary(SetupSession session) throws Exception {
+        return sessionField(session, "driveTracker", DriveTrackerPresentation.class).exportSummary();
+    }
+
+    private <T> T sessionField(SetupSession session, String name, Class<T> type) throws Exception {
+        Field field = SetupSession.class.getDeclaredField(name);
         field.setAccessible(true);
-        return (GameState) field.get(session);
+        return type.cast(field.get(session));
     }
 }

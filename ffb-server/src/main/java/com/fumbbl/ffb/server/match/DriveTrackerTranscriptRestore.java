@@ -10,7 +10,7 @@ final class DriveTrackerTranscriptRestore {
         for (JsonValue value : records) {
             JsonObject record = value.asObject();
             JsonObject state = record.get("state").asObject();
-            tracker.record(state.getInt("drive", -1), state.getString("phase", null), state.getString("actor", null),
+            tracker.recorded(state.getInt("drive", -1), state.getString("phase", null), state.getString("actor", null),
                 record.get("native").asArray());
         }
     }

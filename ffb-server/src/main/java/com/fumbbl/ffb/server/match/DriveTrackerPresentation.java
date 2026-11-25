@@ -18,15 +18,17 @@ import java.util.function.Supplier;
 final class DriveTrackerPresentation {
     /** Committed drive facts, sufficient to continue projection without replaying past outcomes. */
     record Summary(int drive, boolean setupSeen, String firstSetupActor, boolean secretWeapons, boolean knockouts,
-        String event) { }
+        String event) {
+        Summary(int drive) { this(drive, false, null, false, false, null); }
+    }
 
-    private Summary summary = new Summary(-1, false, null, false, false, null);
+    private Summary summary = new Summary(-1);
 
     Summary exportSummary() { return summary; }
 
     void restoreSummary(Summary saved) { summary = saved; }
 
-    void record(int drive, String phase, String actor, Iterable<? extends JsonValue> outcomes) {
+    void recorded(int drive, String phase, String actor, Iterable<? extends JsonValue> outcomes) {
         Summary previous = summaryFor(drive);
         boolean firstSetup = !previous.setupSeen() && "SETUP".equals(phase);
         Reports added = new Reports();
@@ -54,6 +56,7 @@ final class DriveTrackerPresentation {
         Reports pending = new Reports();
         pending.readSyncs(pendingOutcomes.get());
 
+        // Preserve the current roll in the pre-append view even when an earlier revision supplied a roll.
         String event = pending.event == null ? committed.event() : pending.event;
         if (event == null && game.getDialogParameter() instanceof DialogPlayerChoiceParameter) {
             PlayerChoiceMode choice = ((DialogPlayerChoiceParameter) game.getDialogParameter()).getPlayerChoiceMode();
@@ -95,7 +98,7 @@ final class DriveTrackerPresentation {
     }
 
     private Summary summaryFor(int drive) {
-        return summary.drive() == drive ? summary : new Summary(drive, false, null, false, false, null);
+        return summary.drive() == drive ? summary : new Summary(drive);
     }
 
     private static final class Reports {

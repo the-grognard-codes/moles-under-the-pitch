@@ -49,8 +49,10 @@ final class MatchTranscript {
                 throw new IllegalArgumentException("Invalid transcript decision");
             priorTime = at;
             for (JsonValue nativeValue : record.get("native").asArray()) {
-                validateBlock(nativeValue.asObject(), record.get("state").asObject());
-                int number = nativeValue.asObject().getInt("commandNr", -1);
+                JsonObject sync = nativeValue.asObject();
+                validateBlock(sync, record.get("state").asObject());
+                validateReports(sync);
+                int number = sync.getInt("commandNr", -1);
                 if (number <= priorNative || number > cursor) throw new IllegalArgumentException("Native transcript order");
                 priorNative = number;
             }
@@ -118,6 +120,26 @@ final class MatchTranscript {
     private void validateBlock(JsonObject sync, JsonObject state) {
         JsonValue context = sync.get("blockContext");
         if (context != null && !context.isNull()) new BlockHighlightJson().context(context.asObject(), state.get("players").asArray());
+    }
+
+    private void validateReports(JsonObject sync) {
+        JsonValue list = sync.get("reportList");
+        if (list == null || list.isNull()) return;
+        JsonValue reports = list.isObject() ? list.asObject().get("reports") : null;
+        if (reports == null || !reports.isArray()) throw new IllegalArgumentException("Invalid native report list");
+        for (JsonValue value : reports.asArray()) {
+            if (!value.isObject()) throw new IllegalArgumentException("Invalid native report");
+            JsonObject report = value.asObject();
+            String id = report.getString("reportId", "");
+            JsonValue detail = switch (id) {
+                case "secretWeaponBan" -> report.get("playerIds");
+                case "turnEnd" -> report.get("knockoutRecoveryArray");
+                case "kickoffResult" -> report.get("kickoffResult");
+                default -> null;
+            };
+            if (detail != null && !("kickoffResult".equals(id) ? detail.isString() : detail.isArray()))
+                throw new IllegalArgumentException("Invalid native report payload");
+        }
     }
 
     int size() { return records.size(); }

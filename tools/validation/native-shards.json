@@ -117,6 +117,7 @@
       "com.fumbbl.ffb.server.match.CompletedMatchMemoryTest",
       "com.fumbbl.ffb.server.match.ComputerPolicyRecoveryTest",
       "com.fumbbl.ffb.server.match.DecisionLimitTest",
+      "com.fumbbl.ffb.server.match.DriveTrackerMatchTest",
       "com.fumbbl.ffb.server.match.DriveTrackerPresentationTest",
       "com.fumbbl.ffb.server.match.FirebaseProviderPolicyTest",
       "com.fumbbl.ffb.server.match.HistoryScalingWorkloadTest",

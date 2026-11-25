@@ -1178,8 +1178,7 @@ public final class SetupSession {
 	private JsonObject view(String role) { return view(role, false); }
 
 	private JsonObject view(String role, boolean live) {
-		return view(role, live, () -> transcript == null ? List.of()
-			: new NativeOutcomeCapture().since(state.getGameLog(), transcript.nativeCursor()).modelSyncs);
+		return view(role, live, () -> captureNativeOutcomes(null).modelSyncs);
 	}
 
 	private JsonObject view(String role, boolean live, Supplier<List<JsonObject>> pendingOutcomes) {
@@ -1587,10 +1586,14 @@ public final class SetupSession {
 
     private void recordEvent(String kind, String role, JsonValue decision) { recordEvent(kind, role, decision, null); }
 
+    private NativeOutcomeCapture.Capture captureNativeOutcomes(NativeRollPresentation rollPresentation) {
+        return transcript == null ? new NativeOutcomeCapture.Capture(0, List.of())
+            : new NativeOutcomeCapture().since(state.getGameLog(), transcript.nativeCursor(), rollPresentation);
+    }
+
     private void recordEvent(String kind, String role, JsonValue decision, NativeRollPresentation rollPresentation) {
-        NativeOutcomeCapture.Capture capture = transcriptV2
-            ? new NativeOutcomeCapture().since(state.getGameLog(), transcript.nativeCursor(), rollPresentation) : null;
-        JsonObject snapshot = view("home", false, () -> capture == null ? List.of() : capture.modelSyncs)
+        NativeOutcomeCapture.Capture capture = captureNativeOutcomes(rollPresentation);
+        JsonObject snapshot = view("home", false, () -> capture.modelSyncs)
             .set("actions", new JsonArray()).set("prompt", JsonValue.NULL);
         snapshot.remove("savedFormations");
         if (computerPolicy != null) computerPolicy.observe(snapshot,
@@ -1600,7 +1603,7 @@ public final class SetupSession {
         JsonObject event = new JsonObject().add("revision", revision).add("kind", kind).add("state", snapshot);
         freezeEvent(event);
         decisionLimit.recorded(kind, snapshot);
-        if (capture != null) {
+        if (transcript != null) {
             announcements.decorate(capture.modelSyncs);
             JsonArray nativeOutcomes = new JsonArray();
             capture.modelSyncs.forEach(sync -> { blockPresentation.decorate(sync); nativeOutcomes.add(sync); });
@@ -1612,7 +1615,7 @@ public final class SetupSession {
             }
             transcript.append(revision, kind, role, Math.max(System.currentTimeMillis(), transcript.lastTime()), accepted,
                 nativeOutcomes, snapshot, capture.lastCommandNr);
-            driveTracker.record(drive, snapshot.getString("phase", null), snapshot.getString("actor", null), capture.modelSyncs);
+            driveTracker.recorded(drive, snapshot.getString("phase", null), snapshot.getString("actor", null), capture.modelSyncs);
         }
         blockPresentation.recorded();
         announcements.recorded();
