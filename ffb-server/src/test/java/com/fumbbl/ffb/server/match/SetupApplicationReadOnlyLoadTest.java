@@ -448,6 +448,7 @@ class SetupApplicationReadOnlyLoadTest {
 			.getString("code", null));
 		MatchDocument completed = fixture.engine.document.completed(fixture.engine.session.completedMatch());
 		when(fixture.matches.loadForSetup(computerRole, fixture.id)).thenReturn(new MatchService.Result(completed, false));
+		when(fixture.matches.openHistory(completed)).thenCallRealMethod();
 
 		SetupApplication.HandleOutcome outcome = fixture.application().handleComputerWithOutcome(computerRole, fixture.load());
 		assertEquals("ACCEPTED", outcome.response().getString("code", null));
