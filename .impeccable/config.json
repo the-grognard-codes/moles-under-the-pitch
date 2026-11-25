@@ -125,6 +125,24 @@
         ],
         "createdAt": "2026-11-19T08:26:33.451Z",
         "reason": "Codex: GameView assigns los only to pitch columns 12 and 13 to mark the line of scrimmage."
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          ".worktrees/635-movement-alignment/browser-client/src/live-pitch.css"
+        ],
+        "createdAt": "2026-11-24T05:54:18.581Z",
+        "reason": "Codex review: selected-player and dugout edge colors identify sides on the match pitch."
+      },
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          ".worktrees/635-movement-alignment/browser-client/src/live-pitch.css"
+        ],
+        "createdAt": "2026-11-24T05:54:18.630Z",
+        "reason": "Codex review: curved team-colored underline identifies a player marker on the pitch."
       }
     ]
   }

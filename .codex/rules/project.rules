@@ -1,11 +1,16 @@
 # The legacy Windows sandbox still protects .git despite explicit profile grants.
 # These exceptions support Git workflows authorized in the current task.
+# Elevated topic-branch pushes use the normal approval path. A prefix cannot
+# tell whether a push without an explicit destination targets main.
 prefix_rule(
-    pattern=["git", ["add", "commit", "switch", "fetch", "pull", "push", "tag", "worktree"]],
+    pattern=["git", ["add", "commit", "switch", "fetch", "pull", "tag", "worktree"]],
     decision="allow",
     justification="Allow authorized Git workflows for this trusted project without repeated sandbox prompts.",
-    match=["git switch -c feature/example", "git add .codex/config.toml", "git push origin HEAD"],
-    not_match=["git reset --hard", "git clean -fdx", "git config --global core.editor code"],
+    match=["git switch -c feature/example", "git add .codex/config.toml", "git fetch origin main"],
+    not_match=[
+        "git push origin HEAD", "git push origin HEAD:main", "git reset --hard",
+        "git clean -fdx", "git config --global core.editor code",
+    ],
 )
 
 # Each supported deployment script validates the target environment itself.
