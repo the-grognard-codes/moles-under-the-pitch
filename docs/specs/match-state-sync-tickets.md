@@ -77,6 +77,7 @@ flowchart LR
   T8 --> T10[10 Full time]
   T9a --> T10
   T5 --> T12[12 Markers]
+  T7b --> T10
   T7b --> T19a[19a Acceptance gate]
   T14 --> T19a
   T9b --> T19a
@@ -106,7 +107,7 @@ flowchart LR
   T17 --> T19b
 ```
 
-The longest chain is 20, 5, 7a, 9a, 10, 19a, 11b, 11c and 19b. The gate (19a) also needs tickets 13 and 14, because it measures the real coach and spectator path (decision 30). Ticket 13 needs ticket 5 and works for matches in either storage, so coaches can see smaller updates before the cutover.
+The longest chain is 20, 5, 7a, 7b or 9a, 10, 19a, 11b, 11c and 19b. The gate (19a) also needs tickets 13 and 14, because it measures the real coach and spectator path (decision 30). Ticket 13 needs ticket 5 and works for matches in either storage, so coaches can see smaller updates before the cutover.
 
 ## Filed now
 
@@ -161,7 +162,7 @@ Filed as #654. The transcript stops owning presentation state, and the tracker t
 - Decoding is strict and versioned, and marker identities are stable. BB2025 mapping stays behind the shared record types.
 - The projection is built once on the engine worker, after native resolution and before the transaction, and computes no actions, forecasts or previews. Nothing private enters a record or keyframe.
 - Save status, reaction deadlines and clocks travel as ordered status updates with time anchors and their storage generation, not as record or keyframe data. A save and a resume at a keyframe's revision cause no drift report and no rollback when the keyframe is applied. Staged and provisional moves stay overlays on the committed state.
-- A test fails if a public field changes without appearing in a patch.
+- A test fails if a field of the recorded view changes without appearing in a patch. The parity checks cover the recorded view. A save at a keyframe's revision changes the live status with no patch.
 
 ### 6. A match restores from a compact snapshot alone
 
@@ -186,7 +187,7 @@ Filed as #654. The transcript stops owning presentation state, and the tracker t
 - Receipts are private rows found by match, actor and request ID, with the fingerprint, accepted revision, code and any error details (decision 15). Tests cover two devices on one seat, a cold restart, the computer player's retry, a timed reaction for the same role, and a reused ID with different content. The limit of 256 save requests stays as it is.
 - The running digest is updated in the same transaction (decision 17).
 - Restore checks the generation and the newest 32 records, or all of them if fewer, against the snapshot's gameplay revision in one consistent read. Tests cover all records missing, the last one missing, a gap, and a generation ahead of the records. Older history isn't read.
-- After an unknown commit, a bounded reconciliation runs without another request, and repairs connected, authorized viewers. Tests cover both outcomes with the acting coach gone, and a compare-and-swap loser across two devices. The receipt is checked before a stale or completed refusal, and the losing candidate is never published.
+- After an unknown commit, a bounded reconciliation runs without another request, and repairs connected, authorized viewers. It reads under the match row's lock, and a lock timeout stays unknown. Tests cover both outcomes with the acting coach gone, a first probe that starts on a second connection while the original writer still holds the row, for a commit and for a rollback, and a compare-and-swap loser across two devices. The receipt is checked before a stale or completed refusal, and the losing candidate is never published.
 - MariaDB tests cover commit, rollback, an unknown outcome, an exact retry, a stale retry, and process death before and after commit. Nothing is published before commit.
 - The [retained-move acceptance case](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611#issuecomment-7122189387) passes, and the write and restore targets are met.
 - Limits for a record, keyframe, snapshot and receipt are defined here, with evidence that every legal outcome fits. Storage admission reserves for them and rejects before native execution.
@@ -231,7 +232,7 @@ Filed as #654. The transcript stops owning presentation state, and the tracker t
 
 - A read fails closed on a gap. Reading the first, middle and last part of a match costs the same at any length.
 - A terminal fixture is used until ticket 10 produces a real finished match. An old-format match still opens through ticket 4's reader.
-- Only participants can read a finished match, as today.
+- Only participants can read a finished match's result and replay, as today. An authorized spectator of a registered match can still read its public history, with the recorded view only. Tests cover a connected spectator catching up after sealing, revoked access, and that no offers or result data are served.
 
 ### 9b. Replay, results and the match log use ranges
 
@@ -246,13 +247,13 @@ Filed as #654. The transcript stops owning presentation state, and the tracker t
 
 **What it delivers:** Full time and concession store the result as the final state, the records and the sealed running digest.
 
-**Blocked by:** tickets 8 and 9a.
+**Blocked by:** tickets 7b, 8 and 9a.
 
 - Expiry and abandonment don't change: the match stays activated, the lobby derives its status, and dismissal stays per account. Their records are kept (decision 23).
 - The result, the prepared match's lifecycle and the terminal state change together, or each intermediate state is recoverable to the same result after a restart.
-- An unknown terminal commit reaches the waiting opponent without another request. Tests cover regular full time, a concession, a retained concession from an incompatible session, refusal before commit, an unknown commit either way, conflict, process death after commit, deferred completion, timer-driven completion, and the old size-limit stop. No second record or concession appears.
+- An unknown terminal commit reaches the waiting opponent without another request, including when the first probe starts while the terminal writer still holds the row. Tests cover regular full time, a concession, a retained concession from an incompatible session, refusal before commit, an unknown commit either way, conflict, process death after commit, deferred completion, timer-driven completion, and the old size-limit stop. No second record or concession appears.
 - The digest covers the records in order, with defined bytes, and not keyframes or chat (decision 25). The audit rebuilds keyframes, including revision zero's, from the records alone. A separate audit detects a deleted, changed or reordered record.
-- A finished match keeps all its records (decision 21). The limit of 1,024 matches held for recovery (`JdbcRecoveryRepository.java:31`) counts only matches that can still be played (decision 22). Tests at the limit finish a match, abandon a match, and let a match expire without anything recording it, and each then activates another. The count uses ticket 7b's `playable_until` under serialized admission.
+- A finished match keeps all its records (decision 21). The limit of 1,024 matches held for recovery (`JdbcRecoveryRepository.java:31`) counts only matches that can still be played (decision 22). Tests at the limit finish a match, abandon a match, and let a match expire without anything recording it, and each then activates another. The count uses ticket 7b's `playable_until` under serialized admission. Tests also cover a renewal whose commit is still unknown at the deadline, and a clock set back in the running server and before a restart.
 - The quarantine journal, its cooldown and the admission guard stay.
 - Finishing meets the full-time target, with the same cost early and late.
 
@@ -303,7 +304,7 @@ Filed as #654. The transcript stops owning presentation state, and the tracker t
 
 - Every request still gets its own reply, even if the record is over 256 KiB or can't be queued.
 - The browser checks the match and the base revision, and detects duplicates and gaps. A replaced or dropped update always leads to a bounded, authorized snapshot, including when no further move follows and when the repair read itself fails (#519).
-- A snapshot and a page state the revision they start from, so nothing is applied twice. Joining and reloading get a snapshot and the latest page. The browser keeps the applied state and the last presented record as separate cursors, so playback continues across a repair without repeating or skipping a move, including when the base has left the tail. Until ticket 15, the missing records come from today's paged transcript.
+- A snapshot and a page state the revision they start from, so nothing is applied twice. Joining and reloading get a snapshot and the latest page. The browser keeps the applied state and the last presented record as separate cursors, so playback continues across a repair without repeating or skipping a move, including when the base has left the tail. Until ticket 15, the missing records come from today's paged transcript for an old-format match, and from ticket 9a's range reader for a format-4 match, which exists before any real match uses format 4.
 - Envelopes carry only that role's offers. Access is rechecked when an update is queued and after it was deferred. Publication still follows the commit, and staged placements keep their order.
 - Tests cover two rapid moves from different coaches, two devices on one seat, a slow connection, revocation during deferral, a reconnect with an unresolved move, and a terminal update with no later frame.
 - It works for matches in either storage. Bytes per move are reported against #650's baseline.
@@ -365,7 +366,7 @@ Filed as #654. The transcript stops owning presentation state, and the tracker t
 
 - The targets are agreed first. The cutover waits on any correctness or budget miss.
 - With the resident cache full, a large match finishes, both coaches read it, and another match is served meanwhile. The evidence reports rows and bytes, worker p99, queue wait, peak and retained heap at 768 MiB, and releases. This carries #593's queue stall, #594's full cache and #596's long human match.
-- It runs on the production path, not a prototype, including delivery to both coaches and three spectators. Limits for one record, page, tail and resident cache are verified. Ticket 7a defines the durable ones.
+- It runs on the production path, not a prototype, including delivery to both coaches and three spectators. It proves a repair outside the tail on the new storage. Limits for one record, page, tail and resident cache are verified. Ticket 7a defines the durable ones.
 
 ### 19b. Proof after the rollout
 

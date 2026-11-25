@@ -82,7 +82,7 @@ Decoding is strict and versioned, and refuses unknown versions.
 
 There is one public view (D14), in two parts. The **recorded view** is everything that records can reproduce. Replay, the audit, keyframes and drift checks use only that. The **current status** is the save status, and the anchors for clocks and reaction deadlines. It can change without a revision, so it travels beside the recorded view with its storage generation, and never enters a record or keyframe. Applying a keyframe or an old page keeps the latest authorized status.
 
-Its outline here is accepted, and ticket 20 proposes the exact field list for the maintainer's approval (D27). The view holds player, team and ball facts, score, phase, weather, revealed outcomes, phase gates, save status, who must decide and what kind of decision it is, and the pass range and Kick options shown on the pitch. Every viewer gets it: both coaches, spectators and replay.
+Its outline here is accepted, and ticket 20 proposes the exact field list for the maintainer's approval (D27). The view holds player, team and ball facts, score, phase, weather, revealed outcomes, phase gates, save status, who must decide and what kind of decision it is, and the pass range and Kick options shown on the pitch. Every viewer gets the recorded view: both coaches, spectators and replay. Live viewers also get the current status.
 
 A **coach's offer** is private to that coach: legal actions, prompt identity and options, movement forecast, player action menu, block preview, threats and saved formations. The computer player's data stays on its authenticated channel. Offers never enter a record, keyframe or public message.
 
@@ -100,7 +100,7 @@ One database transaction per accepted decision (D3):
 
 - **Acceptance** waits for the durable commit. An action is accepted and published only after it (D4).
 - **Admission.** An action is refused before native execution when the store can't reserve room for its record, keyframe, snapshot and receipt at their largest. Ticket 7a defines those limits, with evidence that every legal outcome fits, before the store depends on them. They are separate from the live frame limit: an update too large to send is still committed, and repaired.
-- **Unknown commit.** The session is released. Today nothing is published, and nothing follows up until a request or timer loads the match (`SetupApplication.java:1024-1025`), so a connected opponent could wait forever if the acting coach leaves. Instead, a bounded reconciliation on the engine worker reads the stored generation, revision and receipt, without waiting for another request, and repairs the connected, still authorized viewers from what is stored. It retries with backoff until it has an answer. A losing candidate is never published.
+- **Unknown commit.** The session is released. Today nothing is published, and nothing follows up until a request or timer loads the match (`SetupApplication.java:1024-1025`), so a connected opponent could wait forever if the acting coach leaves. Instead, a bounded reconciliation on the engine worker reads the stored generation, revision and receipt, without waiting for another request, and repairs the connected, still authorized viewers from what is stored. That read takes the match row's lock, so it runs only after the original writer has committed or rolled back. An ordinary read could miss a commit still in flight. A lock timeout or a read conflict means the outcome is still unknown, and it tries again with backoff. A missing receipt proves a rollback only under that lock. A losing candidate is never published.
 - **Crash before commit.** Nothing happened. **Crash after commit and before publication.** Viewers repair themselves, as below.
 - **No worker.** There is no background replay worker (D3). The maintainer kept D3 after #650's results, and can revisit a worker thread for the SQL writes if performance on the GCP hosting is significantly worse ([2026-11-25](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/656#issuecomment-7153291066)).
 
@@ -120,7 +120,7 @@ A receipt holds the match, actor and request ID, the canonical fingerprint, the 
 - Every request keeps its own correlated reply, even when the record is over the live frame limit or can't be queued.
 - The browser checks the match and the base revision, ignores duplicates and detects gaps. A snapshot or a page states the revision it starts from, so nothing is applied twice.
 - **A missed update always leads to a repair.** Today a newer state replaces a deferred one (`PublicationDelivery.java:50-57`), which is safe only for complete states. A replaced, dropped or oversized update makes the recipient due a bounded, authorized snapshot, including when no further move follows and when a repair read fails.
-- The browser keeps two cursors: the state it has applied, and the last record it has presented. A repair moves the first and not the second. A connected viewer in ordinary forward playback gets the records in between from authorized, bounded stored ranges, so no move is skipped, and overlapping replies, pushes and pages are deduplicated. Reconnect, hidden-tab recovery and seek keep ADR 0007's rule of starting from a baseline.
+- The browser keeps two cursors: the state it has applied, and the last record it has presented. A repair moves the first and not the second. A connected viewer in ordinary forward playback gets the records in between from authorized, bounded stored ranges in the match's own storage format, so no move is skipped, and overlapping replies, pushes and pages are deduplicated. Reconnect, hidden-tab recovery and seek keep ADR 0007's rule of starting from a baseline.
 - A snapshot or repair carries the chat watermark, so that a lost last message is found although no revision or generation moved.
 - Joining and reloading get a snapshot and the latest page. Short gaps can be filled from a tail that is bounded in records and bytes (see Budgets), or from stored records. The oldest records leave the tail at either limit, and a browser whose base has left it gets an authorized snapshot. Offers never enter the tail. Neither source restores the match.
 - Staged placements are delivered as in ADR 0008.
@@ -130,7 +130,7 @@ A receipt holds the match, actor and request ID, the canonical fingerprint, the 
 
 The records are the durable log (D8). Pages are read by range, start from a keyframe, and fail on a gap. The browser caches and pages what it has received, and rebuilds each state with one shared reducer. Neither the log nor chat is in the restore snapshot or in a live state message.
 
-Log lines and replay derive from recorded outcomes without running the engine. Names resolve on read. A finished match is readable by its participants only, as today.
+Log lines and replay derive from recorded outcomes without running the engine. Names resolve on read. Access stays as today. The result and the replay of a finished match are for its participants. Its public history stays readable by an authorized spectator of a registered match, rechecked on each read (`V2MatchAccess.spectatorTranscript`), although live watching ends. That reader also serves a connected spectator who missed the last moves, and carries only the recorded view: no offers, and no participant-only result data.
 
 ### Full time, concession, expiry and abandonment
 
@@ -145,7 +145,12 @@ Each state write stores one indexed value, `playable_until`, derived from the lo
 - open-ended, for a match with no retention deadline, and for a computer match whose proposal or unsuspended reaction times out strictly before its retention deadline, because that must be applied first;
 - otherwise the retention deadline. A match expires at that moment, not after it.
 
-Activation counts rows above one sampled time, stops at 1,024, and runs under today's serialized admission. For a stored state, the rule gives the same answer at every later time, and requests and timers apply expiry before anything that could extend it (`SetupApplication.java:945-950`, `SetupSession.java:685-695`). A match that has left the count therefore can't return to it, and the limit isn't exceeded. That order has to be kept, and tests hold it. An open-ended match that nobody touches again still counts, as it is still listed as playable today.
+Activation counts rows above one sampled time, stops at 1,024, and runs under today's serialized admission. For a stored state, the rule gives the same answer at every later time, and requests and timers apply expiry before anything that could extend it (`SetupApplication.java:945-950`, `SetupSession.java:685-695`). A match that has left the count therefore doesn't return to it. The limit then holds under three conditions:
+- one engine worker in one server process is the only writer of matches (ADR 0006);
+- a match whose last commit is still unknown counts as playable until it is reconciled, because an unconfirmed renewal may still land;
+- within a process, expiry and the count use one time that never goes backwards, even if the server's clock does.
+
+If the clock has been set back when the server restarts, or two servers overlap, the count can exceed 1,024. Matches already stored stay writable, as they are today at capacity, and new activations wait until the count falls. An open-ended match that nobody touches again still counts, as it is still listed as playable today.
 
 The out-of-memory quarantine journal, its cooldown and the admission guard are separate and stay.
 
