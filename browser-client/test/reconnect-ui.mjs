@@ -111,11 +111,13 @@ try {
         requests.push({ connection: connections, request });
         if (request.type === 'authenticate') send({ type: 'authentication', requestId: request.requestId, code: 'ACCEPTED', accountId });
         else if (request.type === 'setup') {
-          if (request.operation === 'action') revision++;
+          const finalAction = request.operation === 'action';
+          if (finalAction) revision++;
+          // Deferred result persistence still sends the accepted full-time state with the action receipt.
           send({ type: 'setupState', requestId: request.requestId, code: 'ACCEPTED', duplicate: false,
-            state: { matchId, revision, callerRole: 'home', actor: 'home', phase: 'PLAY', prompt: null,
+            state: { matchId, revision, callerRole: 'home', actor: 'home', phase: finalAction ? 'FULL_TIME' : 'PLAY', prompt: null,
               players: [], actions: [], weather: 'NICE', homeRerolls: 0, awayRerolls: 0, turn: 1,
-              turnMode: 'REGULAR', ball: null, activePlayerId: null, half: 1, drive: 1,
+              turnMode: finalAction ? 'END_GAME' : 'REGULAR', ball: null, activePlayerId: null, half: 2, drive: 2,
               homeTurn: 1, awayTurn: 0, homeScore: 0, awayScore: 0 } });
         }
       });
@@ -145,6 +147,7 @@ try {
       assert.deepEqual(await page.evaluate(() => JSON.parse(sessionStorage.getItem('ffb.intent.v2'))), pending,
         'Reconnect preserves the exact retained request');
       await page.getByRole('button', { name: 'Repeat retained request', exact: true }).click();
+      await page.getByText('Match finished.', { exact: false }).waitFor();
       await page.waitForFunction(() => sessionStorage.getItem('ffb.intent.v2') === null);
       assert.deepEqual(requests.filter(({ request }) => request.type === 'setup' && request.operation === 'action')
         .map(({ request }) => request), [pending.request], 'Only explicit retry submits the original intent once');
@@ -153,6 +156,7 @@ try {
     await page.close();
   }
   console.log('PASS unavailable connected match views reconnect, authenticate and reload without replaying retained gameplay');
+  console.log('PASS the accepted final action receipt shows full time and clears the retained request without a result reply');
 } finally {
   await browser.close();
   await server.close();

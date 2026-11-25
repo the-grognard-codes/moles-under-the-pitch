@@ -122,38 +122,36 @@ for (const coach of ['bogruk','gobbo']) test(`${coach} normal transport repairs 
   const [code]=await once(child,'exit');assert.equal(code,0,errors);assert.equal(confirmations,2);assert.ok(placements>0 && placements<=22);
 });
 
-for (const failureCode of ['PERSISTENCE_FAILED', 'COMPLETION_PENDING']) {
-  test(`computer worker yields ${failureCode} to the daemon after one load`, { timeout: 5000 }, async t => {
-    const server = createServer();
-    const sockets = new Set();
-    let loads = 0;
-    server.on('upgrade', (request, socket) => {
-      sockets.add(socket); socket.on('error', () => {});
-      const accept = createHash('sha1').update(`${request.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64');
-      socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
-      readFrames(socket, body => {
-        if (body.type === 'authenticateComputer') send(socket, { version: 2, type: 'computerAuthentication', requestId: body.requestId, code: 'ACCEPTED' });
-        else {
-          loads++;
-          send(socket, { version: 2, type: 'setupState', requestId: body.requestId, code: failureCode, duplicate: false, state: null });
-        }
-      });
+test('computer worker yields PERSISTENCE_FAILED to the daemon after one load', { timeout: 5000 }, async t => {
+  const server = createServer();
+  const sockets = new Set();
+  let loads = 0;
+  server.on('upgrade', (request, socket) => {
+    sockets.add(socket); socket.on('error', () => {});
+    const accept = createHash('sha1').update(`${request.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64');
+    socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
+    readFrames(socket, body => {
+      if (body.type === 'authenticateComputer') send(socket, { version: 2, type: 'computerAuthentication', requestId: body.requestId, code: 'ACCEPTED' });
+      else {
+        loads++;
+        send(socket, { version: 2, type: 'setupState', requestId: body.requestId, code: 'PERSISTENCE_FAILED', duplicate: false, state: null });
+      }
     });
-    server.listen(0, '127.0.0.1'); await once(server, 'listening');
-    const child = spawn(process.execPath, ['src/main.mjs', '--match', matchId,
-      '--url', `ws://127.0.0.1:${server.address().port}/browser/v2`, '--origin', origin], {
-      cwd: new URL('..', import.meta.url), windowsHide: true,
-      env: { ...process.env, FFB_COMPUTER_SERVICE_TOKEN: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }
-    });
-    t.after(async () => { await stopChild(child); for (const socket of sockets) socket.destroy(); server.close(); });
-    let errors = '';
-    child.stderr.on('data', chunk => { errors += chunk; });
-    const [code] = await once(child, 'close');
-    assert.equal(code, persistenceUnavailableExitCode, errors);
-    assert.equal(loads, 1);
-    assert.equal(errors, '', 'The daemon owns the one diagnostic per backoff cycle');
   });
-}
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const child = spawn(process.execPath, ['src/main.mjs', '--match', matchId,
+    '--url', `ws://127.0.0.1:${server.address().port}/browser/v2`, '--origin', origin], {
+    cwd: new URL('..', import.meta.url), windowsHide: true,
+    env: { ...process.env, FFB_COMPUTER_SERVICE_TOKEN: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' }
+  });
+  t.after(async () => { await stopChild(child); for (const socket of sockets) socket.destroy(); server.close(); });
+  let errors = '';
+  child.stderr.on('data', chunk => { errors += chunk; });
+  const [code] = await once(child, 'close');
+  assert.equal(code, persistenceUnavailableExitCode, errors);
+  assert.equal(loads, 1);
+  assert.equal(errors, '', 'The daemon owns the one diagnostic per backoff cycle');
+});
 
 for (const broadcast of [false, true]) {
   test('computer worker exits cleanly after a size stop ' + (broadcast ? 'broadcast' : 'on its action'), { timeout: 5000 }, async t => {

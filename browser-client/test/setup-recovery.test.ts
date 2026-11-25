@@ -6,7 +6,7 @@ const matchId = '12345678-1234-1234-1234-123456789abc';
 const retained = { subject: 'away', matchId, request: { version: 1, type: 'setup', operation: 'action', requestId: 'lost-ack', matchId, expectedRevision: 7, actionId: 'native-action' } };
 test('retains the exact uncertain action and original subject across reload', () => {
   assert.deepEqual(decodeRetainedSetup(JSON.stringify(retained)), retained);
-  for (const code of ['PERSISTENCE_FAILED', 'MATCH_OUTCOME_UNKNOWN', 'COMPLETION_PENDING'] as const) assert.equal(setupOutcomeUncertain(code), true);
+  for (const code of ['PERSISTENCE_FAILED', 'MATCH_OUTCOME_UNKNOWN'] as const) assert.equal(setupOutcomeUncertain(code), true);
   for (const code of ['ACCEPTED', 'STALE_REVISION', 'WRONG_ACTOR', 'SESSION_UNAVAILABLE'] as const) assert.equal(setupOutcomeUncertain(code), false);
 });
 test('does not restore corrupt storage, credentials, foreign matches or product-external commands', () => {

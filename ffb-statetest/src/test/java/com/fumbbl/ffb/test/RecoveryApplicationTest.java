@@ -43,9 +43,9 @@ class RecoveryApplicationTest {
 		if (measuredWorker != null) { measuredWorker.join(20000); assertFalse(measuredWorker.isAlive()); }
 	}
 
-	private JsonObject onWorker(java.util.function.Supplier<JsonObject> operation) throws Exception {
+	private <T> T onWorker(java.util.function.Supplier<T> operation) throws Exception {
 		if (measuredTransport == null) return operation.get();
-		java.util.concurrent.CompletableFuture<JsonObject> result = new java.util.concurrent.CompletableFuture<>();
+		java.util.concurrent.CompletableFuture<T> result = new java.util.concurrent.CompletableFuture<>();
 		long queued = System.nanoTime();
 		assertTrue(measuredTransport.submit(() -> {
 			queueNanos.add(System.nanoTime() - queued);
@@ -238,18 +238,16 @@ class RecoveryApplicationTest {
 		assertTrue(accepted(app(fixture).handle(terminalRole, terminalRequest)).getBoolean("duplicate", false));
 	}
 
-	@Test void refusedResultWriteReportsPendingAndKeepsTheDurableFinalDecisionAcrossRestart() throws Exception {
+	@Test void deferredResultWritePublishesFullTimeAndKeepsTheDurableFinalDecisionAcrossRestart() throws Exception {
 		Fixture fixture = fixture();
 		SetupApplication application = new SetupApplication(new TestServer().getServer(), fixture.matches, fixture.recovery, true);
 		accepted(application.activate("home", activate(fixture.id, "activate").toString()));
 		fixture.repository.completionBudgetRefused = true;
-		JsonObject terminal = finish(application, fixture.id);
-		String role = terminal.getString("testRole", null);
-		terminal.remove("testRole");
-		SetupApplication.HandleOutcome refused = application.handleWithOutcome(role, terminal);
-		assertEquals("ACCEPTED", refused.response().getString("code", null));
-		assertTrue(refused.publish());
-		assertEquals("FULL_TIME", refused.response().get("state").asObject().getString("phase", null));
+		FinishedMatch finished = finishWithResponse(application, fixture.id);
+		assertEquals("FULL_TIME", accepted(finished.response).get("state").asObject().getString("phase", null));
+		assertTrue(fixture.repository.completionAttempts > 0);
+		assertEquals("ACTIVATED", fixture.matches.load("home", fixture.id).document.lifecycle.name());
+		assertTrue(finished.publish);
 		long durable = fixture.recovery.rows.get(fixture.id).generation;
 		fixture.repository.completionBudgetRefused = false;
 		SetupApplication restarted = app(fixture);
@@ -257,7 +255,7 @@ class RecoveryApplicationTest {
 		assertEquals("FULL_TIME", loaded.getString("phase", null));
 		assertEquals(durable, fixture.recovery.rows.get(fixture.id).generation);
 		int reads = fixture.recovery.reads;
-		assertTrue(accepted(restarted.handle(role, terminal)).getBoolean("duplicate", false));
+		assertTrue(accepted(restarted.handle(finished.role, finished.request)).getBoolean("duplicate", false));
 		assertEquals(reads + 1, fixture.recovery.reads, "Completed requests read the recovery record once");
 	}
 
@@ -495,8 +493,9 @@ class RecoveryApplicationTest {
 		private final JsonObject request;
 		private final String role;
 		private final JsonObject response;
-		private FinishedMatch(JsonObject request, String role, JsonObject response) {
-			this.request = request; this.role = role; this.response = response;
+		private final boolean publish;
+		private FinishedMatch(JsonObject request, String role, SetupApplication.HandleOutcome outcome) {
+			this.request = request; this.role = role; this.response = outcome.response(); this.publish = outcome.publish();
 		}
 	}
 
@@ -505,7 +504,8 @@ class RecoveryApplicationTest {
 		SetupSession session = (SetupSession) ((Map<?, ?>) field.get(application)).get(id);
 		java.lang.reflect.Field stateField = SetupSession.class.getDeclaredField("state"); stateField.setAccessible(true);
 		com.fumbbl.ffb.server.GameState engine = (com.fumbbl.ffb.server.GameState) stateField.get(session);
-		JsonObject last = null, terminalResponse = null; String role = null;
+		JsonObject last = null; String role = null;
+		SetupApplication.HandleOutcome terminalOutcome = null;
 		for (int index = 0; index < 160 && !session.isComplete(); index++) {
 			JsonObject view = accepted(onWorker(() -> application.handle("home", load(id, "view")))).get("state").asObject();
 			role = view.getString("actor", null);
@@ -527,17 +527,17 @@ class RecoveryApplicationTest {
 			}
 			long actionStarted = System.nanoTime();
 			String selectedRole = role; JsonObject selectedRequest = last;
-			JsonObject response = onWorker(() -> application.handle(selectedRole, selectedRequest));
-			terminalResponse = response;
+			terminalOutcome = onWorker(() -> application.handleWithOutcome(selectedRole, selectedRequest));
+			JsonObject response = terminalOutcome.response();
 			actionNanos.add(System.nanoTime() - actionStarted);
 			if (response.get("state") != null && !response.get("state").isNull())
 				maxSnapshotBytes = Math.max(maxSnapshotBytes, response.get("state").toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
 			sampledHeapPeak = Math.max(sampledHeapPeak, java.lang.management.ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getUsed());
-			if (!session.isComplete() || !("COMPLETION_PENDING".equals(response.getString("code", null)) || "PERSISTENCE_FAILED".equals(response.getString("code", null))
-				|| "MATCH_OUTCOME_UNKNOWN".equals(response.getString("code", null)))) accepted(response);
+			String code = response.getString("code", null);
+			if (!session.isComplete() || !("PERSISTENCE_FAILED".equals(code) || "MATCH_OUTCOME_UNKNOWN".equals(code))) accepted(response);
 		}
 		assertTrue(session.isComplete());
-		return new FinishedMatch(last, role, terminalResponse);
+		return new FinishedMatch(last, role, terminalOutcome);
 	}
 	@Test
 	void recreatedApplicationRestoresAcceptedActivationAndRequestRetry() throws Exception {

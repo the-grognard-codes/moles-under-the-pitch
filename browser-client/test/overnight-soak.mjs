@@ -353,14 +353,6 @@ async function decide(view) {
   const action = selectAction(view);
   try { return await actionUI(view, action); }
   catch (failure) {
-    if (/COMPLETION_PENDING/.test(failure.message)) {
-      // The final decision is durable; the server's timer retries the result write. Wait, then reload.
-      log('completion-pending', { revision: view.revision });
-      await retainedRequests.captureRefusals();
-      await sleep(5000); await page.reload(); await page.getByLabel('Live match pitch').waitFor({ timeout: 60_000 });
-      await ensureDiagnostics();
-      return state();
-    }
     if (await repeatRetainedRequest()) return state();
     log('ui-action-fallback', { kind: action.kind, reason: failure.message.slice(0, 200) });
     const fresh = await state();
