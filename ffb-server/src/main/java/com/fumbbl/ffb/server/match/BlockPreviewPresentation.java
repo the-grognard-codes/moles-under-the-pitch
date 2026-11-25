@@ -116,7 +116,7 @@ final class BlockPreviewPresentation {
 
     private GameState copy() {
         GameState preview = new GameState(state.getServer());
-        preview.initFrom(state.getServer().getFactorySource(), state.toJsonValue(true, 0));
+        preview.initFrom(state.getServer().getFactorySource(), state.toJsonValue(false, 0));
         UtilSkillBehaviours.registerBehaviours(preview.getGame(), state.getServer().getDebugLog());
         return preview;
     }

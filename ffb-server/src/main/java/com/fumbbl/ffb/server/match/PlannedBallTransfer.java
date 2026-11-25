@@ -40,7 +40,7 @@ final class PlannedBallTransfer {
         if (!possession) throw new MatchService.Failure("INVALID_TARGET");
 
         GameState preview = new GameState(state.getServer());
-        preview.initFrom(state.getServer().getFactorySource(), state.toJsonValue(true, 0));
+        preview.initFrom(state.getServer().getFactorySource(), state.toJsonValue(false, 0));
         UtilSkillBehaviours.registerBehaviours(preview.getGame(), state.getServer().getDebugLog());
         Game game = preview.getGame();
         Player<?> player = game.getPlayerById(playerId);
