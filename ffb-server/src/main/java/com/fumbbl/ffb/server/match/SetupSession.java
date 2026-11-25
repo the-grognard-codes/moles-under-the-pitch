@@ -34,6 +34,7 @@ import com.fumbbl.ffb.net.commands.ClientCommandEndTurn;
 import com.fumbbl.ffb.net.commands.ClientCommandPlayerChoice;
 import com.fumbbl.ffb.net.commands.ClientCommandReceiveChoice;
 import com.fumbbl.ffb.net.commands.ClientCommandSetupPlayer;
+import com.fumbbl.ffb.net.commands.ClientCommandUseSkill;
 import com.fumbbl.ffb.net.commands.ServerCommandModelSync;
 import com.fumbbl.ffb.option.GameOptionBoolean;
 import com.fumbbl.ffb.option.GameOptionId;
@@ -49,6 +50,7 @@ import com.fumbbl.ffb.server.net.ReceivedCommand;
 import com.fumbbl.ffb.server.skilluse.SkillUsePreferences;
 import com.fumbbl.ffb.server.step.KickoffAdjustmentBudget;
 import com.fumbbl.ffb.server.step.StepId;
+import com.fumbbl.ffb.server.step.bb2025.StepEndTurn;
 import com.fumbbl.ffb.server.step.generator.EndGame;
 import com.fumbbl.ffb.server.step.generator.SequenceGenerator;
 import com.fumbbl.ffb.server.step.generator.StartGame;
@@ -1027,7 +1029,7 @@ public final class SetupSession {
 		long now = saveResume && saveResumeState.suspended() ? saveResumeState.suspendedAt : System.currentTimeMillis();
 		long elapsed = running ? Math.max(0L, now - started) : Math.max(0L, game.getTurnTime());
 		long excess = Math.max(0L, elapsed - TURN_ALLOWANCE_MS);
-		boolean home = reactiveDecision.pending() ? reactiveDecision.normalHome() : game.isHomePlaying();
+		boolean home = clockOwnerHome(homeTurnEndingBeforeStarOfTheShow());
 		return new JsonObject().add("activeRole", running ? JsonValue.valueOf(home ? "home" : "away") : JsonValue.NULL)
 			.add("turnElapsedMs", running ? elapsed : 0L)
 			.add("homeReserveMs", Math.max(0L, RESERVE_ALLOWANCE_MS - homeReserveUsedMs - (home ? excess : 0L)))
@@ -1175,7 +1177,8 @@ public final class SetupSession {
 		int oldHomeTurn = game.getTurnDataHome().getTurnNr(), oldAwayTurn = game.getTurnDataAway().getTurnNr();
 		long oldTurnStarted = state.getTurnTimeStarted();
 		boolean oldHomePlaying = game.isHomePlaying();
-		boolean normalHomePlaying = reactiveDecision.pending() ? reactiveDecision.normalHome() : oldHomePlaying;
+		Boolean pendingTouchdownEndingHome = homeTurnEndingBeforeStarOfTheShow();
+		boolean normalHomePlaying = clockOwnerHome(pendingTouchdownEndingHome);
 		long oldElapsed = oldTurnStarted > 0 ? Math.max(0L, System.currentTimeMillis() - oldTurnStarted) : game.getTurnTime();
 		int oldScore = homeScore() + awayScore();
 		StepId oldStep = step();
@@ -1226,7 +1229,14 @@ public final class SetupSession {
 			blockPresentation.finishCommand(state, pendingRoute != null);
 			if (oldTurnStarted > 0 && !game.isTurnTimeEnabled() && game.getFinished() == null)
 				game.setTurnTime(Math.max(0L, System.currentTimeMillis() - oldTurnStarted));
-			if (chatV1 && (oldHalf != game.getHalf() || oldHomeTurn != game.getTurnDataHome().getTurnNr() || oldAwayTurn != game.getTurnDataAway().getTurnNr())) {
+			boolean awaitingStarOfTheShow = homeTurnEndingBeforeStarOfTheShow() != null;
+			boolean resolvedStarOfTheShow = pendingTouchdownEndingHome != null && !awaitingStarOfTheShow
+				&& command instanceof ClientCommandUseSkill;
+			boolean turnCounterChanged = oldHalf != game.getHalf() || oldHomeTurn != game.getTurnDataHome().getTurnNr()
+				|| oldAwayTurn != game.getTurnDataAway().getTurnNr();
+			// Defer the off-turn counter adjustment's reserve charge until the Star of the Show response.
+			if (chatV1 && !awaitingStarOfTheShow
+				&& (turnCounterChanged || resolvedStarOfTheShow && pendingTouchdownEndingHome != oldHomePlaying)) {
 				long excess = Math.min(RESERVE_ALLOWANCE_MS, Math.max(0L, oldElapsed - TURN_ALLOWANCE_MS));
 				if (normalHomePlaying) homeReserveUsedMs = Math.min(RESERVE_ALLOWANCE_MS, homeReserveUsedMs + excess);
 				else awayReserveUsedMs = Math.min(RESERVE_ALLOWANCE_MS, awayReserveUsedMs + excess);
@@ -1248,12 +1258,14 @@ public final class SetupSession {
 			if (!compact) history.put(key, new Record(fingerprint, "ACCEPTED"));
 			boolean newHalf = oldHalf > 0 && game.getHalf() != oldHalf;
 			boolean touchdown = homeScore() + awayScore() != oldScore;
-			if (!isComplete() && (newHalf || touchdown)) drive++;
+			// A scoring update can pause for Star of the Show before the drive transition.
+			boolean startsNextDrive = (newHalf || touchdown || resolvedStarOfTheShow) && !awaitingStarOfTheShow;
+			if (!isComplete() && startsNextDrive) drive++;
 			if (defaultSetup && step() == StepId.SETUP && (oldStep != StepId.SETUP || !oldActor.equals(actor())))
 				deployDefaultSetup();
             JsonObject progress = narrative.finishMovement(game, movement, pendingRoute != null);
             logPresentation.set("movement", progress == null ? JsonValue.NULL : progress);
-            if (!isComplete() && !newHalf && !touchdown) endRunawayPeriod(decisionTime);
+			if (!isComplete() && !startsNextDrive && !touchdown) endRunawayPeriod(decisionTime);
 			recordEvent(isComplete() ? "FULL_TIME" : newHalf ? "HALFTIME" : touchdown ? "TOUCHDOWN" : DecisionLimit.ACTION, role, acceptedDecision, rollPresentation);
 			return reply(id, "ACCEPTED", false, role);
 		} catch (RuntimeException failure) {
@@ -1766,6 +1778,17 @@ public final class SetupSession {
 		requireAvailable();
 		return state.getGame().getFinished() != null;
 	}
+
+    private Boolean homeTurnEndingBeforeStarOfTheShow() {
+        return state.getCurrentStep() instanceof StepEndTurn endTurn
+            ? endTurn.getHomeTurnEndingBeforeStarOfTheShow() : null;
+    }
+
+	private boolean clockOwnerHome(Boolean pendingTouchdownEndingHome) {
+		if (pendingTouchdownEndingHome != null) return pendingTouchdownEndingHome;
+		return reactiveDecision.pending() ? reactiveDecision.normalHome() : state.getGame().isHomePlaying();
+	}
+
     private int homeScore() { return state.getGame().getGameResult().getTeamResultHome().getScore(); }
     private int awayScore() { return state.getGame().getGameResult().getTeamResultAway().getScore(); }
     /** One source for the guard and the period fields frozen in every public snapshot. */
@@ -1809,7 +1832,8 @@ public final class SetupSession {
         int halfBefore = game.getHalf(), scoreBefore = homeScore() + awayScore();
         new DecisionPeriodEnd().finish(state,
             reactiveDecision.pending() ? reactiveDecision.normalHome() : game.isHomePlaying(), periodMode);
-        if (!isComplete() && (halfBefore != game.getHalf() || scoreBefore != homeScore() + awayScore())) drive++;
+        if (!isComplete() && homeTurnEndingBeforeStarOfTheShow() == null
+            && (halfBefore != game.getHalf() || scoreBefore != homeScore() + awayScore())) drive++;
         confirmedKickoff = null;
         if (defaultSetup && step() == StepId.SETUP) deployDefaultSetup();
         refreshReaction(decisionTime);
