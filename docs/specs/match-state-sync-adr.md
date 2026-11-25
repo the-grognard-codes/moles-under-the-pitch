@@ -66,7 +66,7 @@ This sets the server-to-client model for the rest of the project. The target is 
 
 ## Maintainer decisions
 
-Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decisions 14–20 accept the recommended answers to [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290) of the implementation plan.
+Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decisions 22–29 are from 2026-11-25 and settle the questions the ADR draft (PR #655) left open. Decisions 14–20 accept the recommended answers to [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290) of the implementation plan.
 
 1. **Scope.** This issue owns the storage and sync decision and its ADR. #550 keeps engine structure and the ruleset-boundary review, and treats this ADR as an input: it settles the persistence and presentation seams that #550's review maps.
 2. **One record serves live play, catch-up and replay.** The transcript record evolves to format 4:
@@ -77,7 +77,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decis
 3. **Replay storage is written in the move's own transaction.** The transaction updates the restore snapshot, writes the exact-request receipt, and appends the record plus any keyframe. There is no background replay worker. Revisit only if storage cost requires it. The maintainer kept this after the measurement, and can revisit a worker thread for the SQL writes if performance on the GCP hosting is significantly worse ([2026-11-25](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/656#issuecomment-7153291066)).
 4. **Publish after commit**, as today.
 5. **Old formats are retired.** All existing matches are cleared, active and completed. Older artifacts are refused with `RECOVERY_UNSUPPORTED`, as in ADRs 0007 and 0008.
-6. **Required outcome: the cost of a move does not grow with match length.** It is held to ADR 0006's p99 ≤ 100 ms per task. The numbers are set after the measurement below. #650's proposed numbers are in the ADR draft (PR #655).
+6. **Required outcome: the cost of a move does not grow with match length.** It is held to ADR 0006's p99 ≤ 100 ms per task. The numbers are set after the measurement below. Decision 29 sets them.
 7. **The new storage and the replay reader are built together.** Which part comes first within that work is open.
 8. **Match log and chat.** The records are the durable log. The client caches and pages what it has received. Neither the game log nor chat is in the restore object.
 9. **Full-time and load timing are part of this measurement**, replacing #593's instrumentation.
@@ -93,6 +93,14 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decis
 19. **Drift is always checked in tests and soaks.** Live keyframe comparison and reports are included as ticket 17 of #651.
 20. **Chat keeps its 512-message limit.**
 21. **Finished matches keep all their replay records.**
+22. **The 1,024 limit counts only matches that can still be played.** Finished, abandoned and expired matches don't count. Expiry uses the lobby's existing rule, including when nothing has recorded it yet.
+23. **Records of abandoned and expired matches are kept**, with no automatic deletion.
+24. **Chat doesn't advance the storage generation.** It has its own rows and index.
+25. **The history digest covers match records only**, not keyframes or chat.
+26. **What makes a record** is the operation table in the ADR draft: activation, accepted decisions, confirmed stages, declined or timed-out reactions, concession and full time. Other durable changes update the match without a record.
+27. **The public view's outline is accepted.** Ticket 20 of #651 proposes the exact field list, with tests that private data stays out, for the maintainer's approval.
+28. **The four working assumptions in #651 are accepted:** whole-player and whole-section patches, one storage version per match, the row summary, and tests in batches.
+29. **The targets are #650's proposals**, as in the ADR draft's budgets. The proof (ticket 19b) sets the p99 for restore.
 
 ## Scope and deliverables
 
@@ -231,7 +239,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decis
   - Caching across reloads in browser storage is optional and deferred.
 - Keyframe cadence and tail size, after the measurement.
 - The numeric targets under decision 6, after the measurement.
-- **The 1,024-match limit.** Today activation stops when `ffb_match_recovery` holds 1,024 matches, and the server never deletes those rows. With decision 21, finished matches have to stop counting toward it. Whether abandoned and expired matches count, and how long they are kept, is open.
+- **The 1,024-match limit.** Today activation stops when `ffb_match_recovery` holds 1,024 matches, and the server never deletes those rows. Settled by decisions 22 and 23: only matches that can still be played count, and no records are deleted automatically.
 
 ## Related tickets
 

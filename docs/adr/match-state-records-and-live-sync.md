@@ -11,7 +11,7 @@ On acceptance, amends: [ADR 0001](0001-active-match-publication.md), [ADR 0007](
 
 Today a match's whole history is part of its recovery document. Compaction, restore, full time and replay all read or write it, and a move that triggers compaction gets slower as the match goes on. Each browser also receives the full state on every move. This ADR stores a compact current state and one append-only record per accepted decision, in one transaction, and sends browsers the same record. **The cost of a move then doesn't grow with match length.**
 
-This is a draft. **D1–D21** mark the maintainer decisions recorded in #611. Everything else is proposed and becomes a decision only when this ADR is accepted.
+This is a draft. **D1–D29** mark the maintainer decisions recorded in #611. Everything else is proposed and becomes a decision only when this ADR is accepted.
 
 ## Decision and boundaries
 
@@ -36,7 +36,7 @@ Three counters stay separate:
 - The **gameplay revision** identifies a record. One accepted decision makes one revision and one record.
 - The **chat index** orders chat messages within the match. Each message also names the gameplay revision it was sent at, which places it among the records.
 
-A staged placement's sequence stays transient (ADR 0008). Live changes at one gameplay revision carry the storage generation, so that a browser orders them and doesn't discard a valid save update.
+The table below is D24 and D26. A staged placement's sequence stays transient (ADR 0008). Live changes at one gameplay revision carry the storage generation, so that a browser orders them and doesn't discard a valid save update.
 
 | Operation | Record | Generation | Other |
 | --- | --- | --- | --- |
@@ -72,7 +72,7 @@ A format-4 record holds domain facts only:
 
 It never holds browser commands, rendered views, private data or BB2025-specific types in the shared record shape.
 
-A **public patch** carries each changed player and each changed top-level public section whole. Players are keyed by ID, can be added and removed, and keep a stable order. A section that ends is removed explicitly, which is different from unchanged and from `null`. A keyframe is the complete public view at its record's revision.
+A **public patch** carries each changed player and each changed top-level public section whole (D28). Players are keyed by ID, can be added and removed, and keep a stable order. A section that ends is removed explicitly, which is different from unchanged and from `null`. A keyframe is the complete public view at its record's revision.
 
 The public projection is built once per revision, on the engine worker, after native resolution and capture and before the transaction. It computes no actions, forecasts or previews. The patch is the difference from the previous committed projection, and a keyframe revision reuses the same projection.
 
@@ -80,7 +80,7 @@ Decoding is strict and versioned, and refuses unknown versions.
 
 ### Public view and coach offers
 
-There is one public view (D14). It holds player, team and ball facts, score, phase, weather, revealed outcomes, phase gates, save status, who must decide and what kind of decision it is, and the pass range and Kick options shown on the pitch. Every viewer gets it: both coaches, spectators and replay.
+There is one public view (D14). Its outline here is accepted, and ticket 20 proposes the exact field list for the maintainer's approval (D27). It holds player, team and ball facts, score, phase, weather, revealed outcomes, phase gates, save status, who must decide and what kind of decision it is, and the pass range and Kick options shown on the pitch. Every viewer gets it: both coaches, spectators and replay.
 
 A **coach's offer** is private to that coach: legal actions, prompt identity and options, movement forecast, player action menu, block preview, threats and saved formations. The computer player's data stays on its authenticated channel. Offers never enter a record, keyframe or public message.
 
@@ -133,7 +133,7 @@ Full time and concession store the final state, seal the digest and record the r
 
 **Expiry and abandonment aren't full time.** The match stays activated, the lobby derives its status from deadlines, and dismissal stays per account (#639, #643, #644).
 
-A finished match keeps all its records (D21). It stops counting toward the limit on matches held for recovery, which today counts every match ever activated.
+A finished match keeps all its records (D21), and so does an abandoned or expired one, with no automatic deletion (D23). The limit on matches held for recovery, which today counts every match ever activated, counts only matches that can still be played (D22). Expiry is recorded only when a request or timer touches the match, so the count applies the lobby's expiry rule to the row summary's absolute deadlines. A deadline that moves later can take the count slightly over the limit.
 
 The out-of-memory quarantine journal, its cooldown and the admission guard are separate and stay.
 
@@ -143,13 +143,13 @@ The out-of-memory quarantine journal, its cooldown and the admission guard are s
 - **On a page read:** a gap fails.
 - **On audit:** a separate check verifies every record against the running digest (D17). It detects a deleted, changed or reordered record.
 
-The digest is an ordered commitment that starts at revision zero, advances with each record, and is sealed with its count at full time. It covers record bytes in their stored canonical form. Keyframes can be rebuilt from records, so they aren't covered, and the audit checks them by rebuilding. Chat isn't covered. It is archival integrity, not a live-state digest, which stays ruled out (D12).
+The digest is an ordered commitment that starts at revision zero, advances with each record, and is sealed with its count at full time. It covers record bytes in their stored canonical form, and nothing else (D25). Keyframes can be rebuilt from records, so they aren't covered, and the audit checks them by rebuilding. Chat isn't covered. It is archival integrity, not a live-state digest, which stays ruled out (D12).
 
 ADR 0002 requires a terminal digest, but none was built: the completed result has no digest today (`SetupSession.java:1608-1619`). Decision 17 therefore adds one.
 
 ### Row summary, lobby and computer coach
 
-Each durable write stores a small summary with the storage generation: gameplay revision, actor, prompt actor, phase, half, turn, score, save/resume status, absolute expiry times and maintenance inputs. The lobby reads it, and it answers an unchanged computer probe. The snapshot stays authoritative. When the summary can't answer safely, the full restore path does.
+Each durable write stores a small summary (D28) with the storage generation: gameplay revision, actor, prompt actor, phase, half, turn, score, save/resume status, absolute expiry times and maintenance inputs. The lobby reads it, and it answers an unchanged computer probe. The snapshot stays authoritative. When the summary can't answer safely, the full restore path does.
 
 ### Drift checks
 
@@ -161,7 +161,7 @@ No history stays resident beyond the tail. `MatchMemoryBudget` and the frozen hi
 
 ### Budgets
 
-ADR 0006 is unchanged: p99 ≤ 100 ms per healthy worker task, and 2,000 ms per failed request. The targets below are #650's proposals. Each must hold early and late in a match (D6), on the real implementation.
+ADR 0006 is unchanged: p99 ≤ 100 ms per healthy worker task, and 2,000 ms per failed request. The targets below are #650's proposals, accepted as D29. Each must hold early and late in a match (D6), on the real implementation.
 
 | Measure | Target | Measured in #650 |
 | --- | --- | --- |
@@ -183,7 +183,7 @@ ADR 0006 is unchanged: p99 ≤ 100 ms per healthy worker task, and 2,000 ms per 
 ### Formats, compatibility and cutover
 
 - The storage and the replay reader are built together (D7).
-- Each match has one storage version, chosen at activation and stored with its unpublished seed. Nothing is written in both formats.
+- Each match has one storage version (D28), chosen at activation and stored with its unpublished seed. Nothing is written in both formats.
 - The new storage is used only in tests until replay, chat, expiry and full time work on it.
 - ADR 0007's markers are emitted before any match is cleared (D16). A complete correctness, latency and memory gate and a rehearsal of the schema change, restore and rollback also come first.
 - At the cutover, all existing matches are cleared: active, saved and completed (D5). Older data is refused with `RECOVERY_UNSUPPORTED`.
@@ -295,28 +295,31 @@ Applied only on acceptance, in the accepting revision:
 **Known gaps.** None of the controls here exists yet.
 - The budgets were measured on a prototype on one machine, not on the real implementation. The write target isn't met consistently, and full-time tasks exceeded 100 ms in one of five rounds. The maintainer kept D3 on this evidence. The compact snapshot was flat in the one match measured.
 - ADR 0007's markers aren't built (ticket 12; #603 settles the touchdown order first).
-- The public view is not yet defined field by field (ticket 20). Today's views send every role the actions, prompts and forecasts.
+- The public view is not yet defined field by field (D27, ticket 20). Today's views send every role the actions, prompts and forecasts.
 - Old history is checked when it is read or audited, not at restore.
-- Records of finished matches accumulate (D21), so storage grows with the number of matches played. Today activation stops when `ffb_match_recovery` holds 1,024 matches (`JdbcRecoveryRepository.java:31`), the server never deletes those rows, and a finished match is kept inside its prepared match. What happens to abandoned and expired matches isn't decided.
+- Records of finished, abandoned and expired matches accumulate (D21, D23), so storage grows with the number of matches activated. Today activation stops when `ffb_match_recovery` holds 1,024 matches (`JdbcRecoveryRepository.java:31`), the server never deletes those rows, and a finished match is kept inside its prepared match.
 - `docs/specs/match-state-sync-tickets.md` lists the twenty-six tickets. #652, #653 and #654 are filed. The rest are filed on acceptance.
 
-## Open before acceptance
+## Settled on 2026-11-25
 
-| Question | Proposed here | Settled by |
-| --- | --- | --- |
-| Budgets, keyframe cadence, tail size | #650's proposals, filled in on the maintainer's request | Maintainer, by accepting this ADR |
-| What each operation writes | The table above | Maintainer |
-| Whether chat advances the storage generation | No | Maintainer, with ticket 8 |
-| What the digest covers | Record bytes only, not keyframes or chat | Maintainer |
-| Whether abandoned and expired matches count toward the 1,024 limit, and how long they are kept | Not proposed | Maintainer |
-| The public view, field by field | The list above | Maintainer, with ticket 20's fixtures |
-| Patch shape, one storage version per match, row summary | As above, kept by Codex's review | Maintainer |
+| Question | Answer |
+| --- | --- |
+| Which matches count toward the 1,024 limit | Only those that can still be played (D22) |
+| How long abandoned and expired matches are kept | Kept, with no automatic deletion (D23) |
+| Whether chat advances the storage generation | No (D24) |
+| What the digest covers | Match records only (D25) |
+| What each operation writes | The table above (D26) |
+| The public view | The outline above. Ticket 20's exact list needs the maintainer's approval (D27) |
+| Patch shape, one storage version per match, row summary, tests in batches | Accepted (D28) |
+| Budgets, keyframe cadence, tail size | #650's proposals (D29) |
+
+Nothing is left open. The ADR itself isn't accepted yet.
 
 ## Revisit conditions
 
 - The measured cost of a write, restore, publication or full time grows with match length again.
 - The GCP hosting is significantly slower than #650's measurements, which would reopen having no worker thread for the SQL writes (D3).
-- Storage per match or the number of rows becomes a problem.
+- Storage per match or the number of rows becomes a problem, which would reopen keeping every record (D21, D23).
 - Measured patch sizes justify field-level patches or a binary encoding.
 - Drift reports show browsers disagreeing with the server, which would reopen the state digest (D12).
 - Interior damage to history has to be found at restore rather than on read or audit.

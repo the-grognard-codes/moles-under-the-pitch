@@ -4,7 +4,7 @@ Issue: [#651](https://github.com/the-grognard-codes/moles-under-the-pitch/issues
 
 Parent: [#611](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611) ([ADR request](match-state-sync-adr.md)). Measurement: [#650](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/650) ([spec](match-state-sync-measurement.md)).
 
-Status: revised on 2026-11-24 after [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290). The maintainer accepted the recommended answers to its questions, recorded as decisions 14–20 in #611. Decision 21 was added later that day. Tickets 1–3 are filed (#652, #653 and #654). The other 23 are candidates, filed when the ADR is accepted. Line numbers are at `main` `eb5057d02`.
+Status: revised on 2026-11-24 after [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290). The maintainer accepted the recommended answers to its questions, recorded as decisions 14–20 in #611. Decision 21 was added later that day, and decisions 22–29 on 2026-11-25. Tickets 1–3 are filed (#652, #653 and #654). The other 23 are candidates, filed when the ADR is accepted. Line numbers are at `main` `eb5057d02`.
 
 ## Goal
 
@@ -25,7 +25,7 @@ Tickets 7, 9, 11 and 19 are split. The old numbers keep their letters, so the re
 
 ## What the tickets assume
 
-Decisions 14–21 in #611 govern. These working assumptions were kept by the review, and become decisions when the ADR is accepted:
+Decisions 14–29 in #611 govern. The review kept these working assumptions, and the maintainer accepted the first four (decision 28):
 
 - **Patches** replace whole players and whole top-level public sections. Keyed players support insertion, removal and a stable order. A section that ends is removed explicitly, which is different from unchanged and from `null`.
 - **One writer per match.** Each match's storage version is chosen at activation and stored with the unpublished activation seed and the revision-zero record, so a crash or a changed setting reopens the same seed. The new storage is test-only until chat, replay, expiry and full time work. Nothing is written in both formats.
@@ -35,7 +35,7 @@ Decisions 14–21 in #611 govern. These working assumptions were kept by the rev
 
 ## What each operation writes
 
-Proposed for the ADR. Three counters stay separate: the **storage generation** (compare-and-swap), the **gameplay revision** (one record each), and the **chat index**. A staged placement's sequence is transient.
+Accepted as decisions 24 and 26. Three counters stay separate: the **storage generation** (compare-and-swap), the **gameplay revision** (one record each), and the **chat index**. A staged placement's sequence is transient.
 
 | Operation | Record | Generation | Chat row |
 | --- | --- | --- | --- |
@@ -43,14 +43,14 @@ Proposed for the ADR. Three counters stay separate: the **storage generation** (
 | Accepted decision, confirmed stage, declined or timed-out reaction, concession, full time | Yes | Yes | No |
 | Refused setup without staging | No; a receipt with the errors | Yes | No |
 | Save and resume steps, proposal expiry, abandonment, decision-clock maintenance | No | Yes | No |
-| Chat message | No | To be decided with ticket 8 | Yes |
+| Chat message | No | No | Yes |
 | Staged placement, staged refusal, load, exact retry | No | No | No |
 
 Live messages need their own order for changes at one gameplay revision, so that a browser doesn't discard a valid save update.
 
-## Waiting for #650
+## Numbers from #650
 
-Keyframe cadence, the size of the in-memory tail, and the numeric targets.
+Keyframe cadence, the size of the in-memory tail and the numeric targets are the budgets in the ADR draft (PR #655, decision 29).
 
 ## Dependencies
 
@@ -133,6 +133,7 @@ Filed as #654. The transcript stops owning presentation state, and the tracker t
 - Who must decide comes from an authoritative source, not from the first available action (`SetupSession.java:1458`).
 - A waiting coach and a spectator with no actions see the normal waiting text, not "Reconnect if the match appears stuck". The waiting coach's read-only range inspection still works.
 - Accepted decisions and native outcomes have an allowlist too. Today the recorder copies the request and removes only `computerDecision`.
+- The maintainer approves the exact field list before the view is used (decision 27).
 - Parity fixtures from today's screens cover both coaches, a spectator and replay, including privacy-negative cases. Related: #487.
 
 ## Storage and replay
@@ -241,11 +242,11 @@ Filed as #654. The transcript stops owning presentation state, and the tracker t
 
 **Blocked by:** tickets 8 and 9a.
 
-- Expiry and abandonment don't change: the match stays activated, the lobby derives its status, and dismissal stays per account.
+- Expiry and abandonment don't change: the match stays activated, the lobby derives its status, and dismissal stays per account. Their records are kept (decision 23).
 - The result, the prepared match's lifecycle and the terminal state change together, or each intermediate state is recoverable to the same result after a restart.
 - Tests cover regular full time, a concession, a retained concession from an incompatible session, refusal before commit, an unknown commit either way, conflict, process death after commit, deferred completion, timer-driven completion, and the old size-limit stop. No second record or concession appears.
-- The digest covers the records in order, with defined bytes and a defined treatment of keyframes and chat. A separate audit detects a deleted, changed or reordered record.
-- A finished match keeps all its records (decision 21) and stops counting toward the limit of 1,024 matches held for recovery (`JdbcRecoveryRepository.java:31`). A test finishes a match at that limit and then activates another.
+- The digest covers the records in order, with defined bytes, and not keyframes or chat (decision 25). The audit checks keyframes by rebuilding them. A separate audit detects a deleted, changed or reordered record.
+- A finished match keeps all its records (decision 21). The limit of 1,024 matches held for recovery (`JdbcRecoveryRepository.java:31`) counts only matches that can still be played (decision 22). Tests at the limit finish a match, abandon a match, and let a match expire without anything recording it, and each then activates another. A match that isn't past its deadline still counts.
 - The quarantine journal, its cooldown and the admission guard stay.
 - Finishing meets the full-time target, with the same cost early and late.
 
