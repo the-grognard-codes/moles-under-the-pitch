@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
-import { analysisFiles, sampleStatistics as stats } from './history-analysis.mjs';
+import { analysisFiles, readHistoryEvidence, sampleStatistics } from './history-analysis.mjs';
 
 const [directory, ...flags] = process.argv.slice(2);
 assert.ok(directory && flags.every(flag => flag === '--assert-flat'), 'Usage: node tools/diagnostics/analyze-history-scaling.mjs directory [--assert-flat]');
-const { readJson: read, writeJson, writeMarkdown } = analysisFiles(directory);
-const provenance = read('provenance.json'), fixtures = read('fixtures.json'), verification = read('verification.json');
-const runs = [1,2,3].map(index => read(`run-${index}.json`));
-const retained = fixtures.fixtures.filter(fixture => fixture.file);
+const { readJson, writeJson, writeMarkdown } = analysisFiles(directory);
+const { provenance, fixtures, verification, runs } = readHistoryEvidence(readJson);
+const retained = fixtures.filter(fixture => fixture.file);
 assert.ok(retained.length >= 2 && retained[0].addedDecisions === 0);
 const expectedSamples = provenance.samplesPerCohort;
 assert.ok(Number.isInteger(expectedSamples) && expectedSamples >= 2);
@@ -25,12 +24,12 @@ for (const fixture of retained) for (const action of ['move','pass']) for (const
     return matches[0].samples;
   });
   const samples = cohorts.flat();
-  const timing = field => stats(samples.map(sample => sample.timing[field]));
+  const timing = field => sampleStatistics(samples.map(sample => sample.timing[field]));
   rows.push({ addedDecisions: fixture.addedDecisions, action, storagePath, artifactBytes: fixture.artifactBytes,
     handlingMs: timing('handlingMs'), applyMs: timing('sessionApplyMs'), checkpointMs: timing('checkpointMs'),
     serializationMs: timing('recoverySerializeMs'), cursorMs: timing('recoveryCursorMs'), fingerprintMs: timing('recoveryFingerprintMs'),
-    allocatedBytes: stats(samples.map(sample => sample.allocatedBytes)), loadMs: stats(samples.map(sample => sample.coldLoadMs)),
-    cohortHandlingMedians: cohorts.map(cohort => stats(cohort.map(sample => sample.timing.handlingMs)).median) });
+    allocatedBytes: sampleStatistics(samples.map(sample => sample.allocatedBytes)), loadMs: sampleStatistics(samples.map(sample => sample.coldLoadMs)),
+    cohortHandlingMedians: cohorts.map(cohort => sampleStatistics(cohort.map(sample => sample.timing.handlingMs)).median) });
 }
 const longest = retained.at(-1).addedDecisions;
 const comparisons = rows.filter(row => row.addedDecisions === longest).map(row => {

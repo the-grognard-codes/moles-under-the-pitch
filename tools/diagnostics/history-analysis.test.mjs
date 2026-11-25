@@ -4,7 +4,7 @@ import { appendFileSync, mkdtempDisposableSync, readFileSync, writeFileSync } fr
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { sampleStatistics } from './history-analysis.mjs';
+import { measurementStatistics, sampleStatistics } from './history-analysis.mjs';
 
 test('sample statistics preserve exact medians and each analyzer’s p95 policy', () => {
   const values = [10, 1, 4, 2];
@@ -18,6 +18,13 @@ test('sample statistics preserve exact medians and each analyzer’s p95 policy'
   for (const invalid of [[], [-1], [NaN], [Infinity]]) {
     assert.throws(() => sampleStatistics(invalid), { name: 'AssertionError' });
   }
+});
+
+test('state sync measurements report p99 only with at least 100 samples', () => {
+  const values = Array.from({ length: 100 }, (_, index) => index + 1);
+  assert.deepEqual(measurementStatistics([]), { count: 0, p50: null, p90: null, p99: null, max: null });
+  assert.deepEqual(measurementStatistics(values.slice(0, 99)), { count: 99, p50: 50, p90: 90, p99: null, max: 99 });
+  assert.deepEqual(measurementStatistics(values), { count: 100, p50: 50.5, p90: 90, p99: 99, max: 100 });
 });
 
 test('analyzers write compatible summaries and fingerprint all normalized sources', context => {
@@ -73,7 +80,10 @@ test('analyzers write compatible summaries and fingerprint all normalized source
   run(firstWarm);
   assert.deepEqual(readJson('first-warm-summary.json'), summary);
 
-  appendFileSync(join(directory, helper), '\r\n// Source fingerprint variation.\r\n');
-  run(firstWarm);
-  assert.notEqual(readJson('first-warm-summary.json').analyzerSha256, summary.analyzerSha256);
+  for (const source of [firstWarm, helper]) {
+    writeScripts('\n');
+    appendFileSync(join(directory, source), '\n// Source fingerprint variation.\n');
+    run(firstWarm);
+    assert.notEqual(readJson('first-warm-summary.json').analyzerSha256, summary.analyzerSha256, source);
+  }
 });

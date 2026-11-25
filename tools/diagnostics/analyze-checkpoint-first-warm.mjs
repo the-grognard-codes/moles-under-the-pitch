@@ -1,15 +1,12 @@
 // Privacy-safe companion to the native history workload. Never emits fixture payloads or identities.
 import assert from 'node:assert/strict';
-import { analysisFiles, analyzerSourceSha256, sampleStatistics } from './history-analysis.mjs';
+import { analysisFiles, readHistoryEvidence, analyzerSourceSha256, sampleStatistics } from './history-analysis.mjs';
 
 const [directory, ...options] = process.argv.slice(2);
 assert.ok(directory && options.length <= 1 && options.every(option => /^--checkpoint-ceiling-ms=[1-9][0-9]*$/.test(option)),
   'Usage: node tools/diagnostics/analyze-checkpoint-first-warm.mjs <directory> [--checkpoint-ceiling-ms=1000]');
-const { readJson: read, writeJson, writeMarkdown } = analysisFiles(directory);
-const provenance = read('provenance.json');
-const verification = read('verification.json');
-const runs = [1, 2, 3].map(index => read(`run-${index}.json`));
-const fixtures = read('fixtures.json').fixtures;
+const { readJson, writeJson, writeMarkdown } = analysisFiles(directory);
+const { provenance, fixtures, verification, runs } = readHistoryEvidence(readJson);
 assert.ok(Array.isArray(fixtures) && fixtures.length >= 2, 'At least two retained fixtures are required');
 assert.ok(fixtures.every(fixture => typeof fixture?.file === 'string' && fixture.file.trim().length > 0),
   'Every fixture must name its artifact file');
@@ -23,7 +20,7 @@ const expectedCohorts = fixtures.length * 4;
 assert.equal(verification.verified.length, expectedCohorts, 'One verification row per cohort is required');
 assert.ok(verification.verified.every(row => row.verified === true));
 runs.forEach((run, index) => { assert.equal(run.repeat, index + 1); assert.equal(run.maxHeapBytes, 768 * 1048576); assert.equal(run.javaVersion, runs[0].javaVersion); assert.equal(run.results.length, expectedCohorts); });
-const stats = values => sampleStatistics(values, 20);
+const statisticsWithSupportedP95 = values => sampleStatistics(values, 20);
 const fields = ['handlingMs', 'sessionApplyMs', 'checkpointMs', 'recoverySerializeMs', 'recoveryCursorMs',
   'recoveryFingerprintMs', 'checkpointStoreMs'];
 const rows = [];
@@ -44,8 +41,8 @@ for (const fixture of fixtures) for (const action of ['move', 'pass']) for (cons
     const samples = matching.flatMap(row => temperature === 'warm' ? row.samples : [row.firstSample]);
     const slow = samples.toSorted((a, b) => b.timing.checkpointMs - a.timing.checkpointMs)[0];
     rows.push({ addedDecisions: cohort.addedDecisions, action: cohort.action, storagePath: cohort.storagePath, temperature,
-      phases: Object.fromEntries(fields.map(field => [field, stats(samples.map(sample => sample.timing[field]))])),
-      coldRestoreMs: stats(samples.map(sample => sample.coldLoadMs)), allocatedBytes: stats(samples.map(sample => sample.allocatedBytes)),
+      phases: Object.fromEntries(fields.map(field => [field, statisticsWithSupportedP95(samples.map(sample => sample.timing[field]))])),
+      coldRestoreMs: statisticsWithSupportedP95(samples.map(sample => sample.coldLoadMs)), allocatedBytes: statisticsWithSupportedP95(samples.map(sample => sample.allocatedBytes)),
       slowestCheckpoint: Object.fromEntries(fields.map(field => [field, slow.timing[field]])) });
   }
 }
