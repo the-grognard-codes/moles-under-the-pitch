@@ -1,17 +1,20 @@
 # Store a match as its current state and append-only records, and send live changes from the same records
 
-Status: proposed
+Status: accepted by the maintainer on 2026-11-25.
+Approval: [maintainer acceptance](../specs/match-state-sync-adr.md#maintainer-acceptance)
 Issue: [#611](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611)
 Request: [match state, history and live sync](../specs/match-state-sync-adr.md)
 Plan: [#651](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651) ([tickets](../specs/match-state-sync-tickets.md)), with [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290)
 Measurement: [#650](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/650), [reported](../specs/match-state-sync-measurement-outcome.md), with evidence on [storage](../reviews/650-state-sync-storage.md), [moves](../reviews/650-state-sync-moves.md) and [full time](../reviews/650-state-sync-full-time.md)
 Evidence revision: `main` at `eb5057d022865f255005c0cd86f5101d503b37a3`. Line numbers are at that revision.
-On acceptance, supersedes: [ADR 0002](0002-bounded-match-transcript.md), [ADR 0004](0004-durable-recovery-journal.md)
-On acceptance, amends: [ADR 0001](0001-active-match-publication.md), [ADR 0007](0007-server-owned-turn-sequence-presentation.md), [ADR 0008](0008-staged-placements.md), [ADR 0012](0012-versioned-browser-protocol.md). Extends [ADR 0013](0013-application-seams.md).
+Supersedes: [ADR 0002](0002-bounded-match-transcript.md), [ADR 0004](0004-durable-recovery-journal.md)
+Amends: [ADR 0001](0001-active-match-publication.md), [ADR 0007](0007-server-owned-turn-sequence-presentation.md), [ADR 0008](0008-staged-placements.md), [ADR 0012](0012-versioned-browser-protocol.md). Extends [ADR 0013](0013-application-seams.md).
 
 Today a match's whole history is part of its recovery document. Compaction, restore, full time and replay all read or write it, and a move that triggers compaction gets slower as the match goes on. Each browser also receives the full state on every move. This ADR stores a compact current state and one append-only record per accepted decision, in one transaction, and sends browsers the same record. **The cost of a move then doesn't grow with match length.**
 
-This is a draft. **D1–D30** mark the maintainer decisions recorded in #611. Everything else is proposed and becomes a decision only when this ADR is accepted.
+**D1–D30** mark the maintainer decisions recorded in #611. Everything else was accepted with this ADR.
+
+**It isn't built yet.** Until the cutover below, running matches are stored and restored as ADRs 0002 and 0004 describe, and their rules hold for the old storage until it is removed.
 
 ## Decision and boundaries
 
@@ -253,7 +256,7 @@ ADR 0006 is unchanged: p99 ≤ 100 ms per healthy worker task, and 2,000 ms per 
 
 ## Effect on other records
 
-Applied only on acceptance, in the accepting revision:
+Applied in the accepting revision, except where a ticket is named:
 
 | Record | Change |
 | --- | --- |
@@ -266,7 +269,7 @@ Applied only on acceptance, in the accepting revision:
 | Architecture map | Update the invariants on the durable boundary, recovery, stored formats and format 3. Ticket 11c updates `RecoveryJournal, MatchTranscript` on the live request path when they retire |
 | `CONTEXT.md` | Apply the glossary below |
 
-### Glossary on acceptance
+### Glossary (`CONTEXT.md`, applied 2026-11-25)
 
 > **Match checkpoint**:
 > The durable state from which an unfinished match can resume at its last accepted decision. It carries no history. Staged placements are not part of it.
@@ -319,7 +322,7 @@ Applied only on acceptance, in the accepting revision:
 - The public view is not yet defined field by field (D27, ticket 20). Today's views send every role the actions, prompts and forecasts.
 - Old history is checked when it is read or audited, not at restore.
 - Records of finished, abandoned and expired matches accumulate (D21, D23), so storage grows with the number of matches activated. Today activation stops when `ffb_match_recovery` holds 1,024 matches (`JdbcRecoveryRepository.java:31`), the server never deletes those rows, and a finished match is kept inside its prepared match.
-- `docs/specs/match-state-sync-tickets.md` lists the twenty-six tickets. #652, #653 and #654 are filed. The rest are filed on acceptance.
+- `docs/specs/match-state-sync-tickets.md` lists the twenty-six tickets. #652, #653 and #654 are done. The other twenty-three are filed once this ADR is merged.
 
 ## Settled on 2026-11-25
 
@@ -335,7 +338,7 @@ Applied only on acceptance, in the accepting revision:
 | Budgets, keyframe cadence, tail size | #650's proposals (D29) |
 | Whether the cutover waits for live coach and spectator updates | Yes (D30) |
 
-Nothing is left open. The ADR itself isn't accepted yet.
+Nothing is left open.
 
 ## Revisit conditions
 

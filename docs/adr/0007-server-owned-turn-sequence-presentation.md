@@ -1,6 +1,7 @@
 # Let the server describe turn phases and clients order their presentation
 
 Status: accepted by the maintainer on 2026-11-21 for [PR #551](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/551).
+Amended: 2026-11-25, stored format, phase cursor and decision gates ([amendments](#amendments)).
 Issue: [#549](https://github.com/the-grognard-codes/fumbbl-rebuild/issues/549)
 Request: [turn-sequence contract](../specs/turn-sequence-contract-adr.md)
 Evidence: [phase inventory](../specs/turn-sequence-phase-inventory.md), reviewed
@@ -218,3 +219,11 @@ clock accounting.
 Revisit if the native matrix exposes an unassignable decision, format
 requirements change, or phase metadata causes execution to exceed ADR 0006's
 worker budget.
+
+## Amendments
+
+- 2026-11-25. [ADR 0014](0014-match-state-records-and-live-sync.md) ([approval](../specs/match-state-sync-adr.md#maintainer-acceptance)) replaces the storage that this record builds on:
+  - Format 3, which was never built, becomes format 4. The ordered `presentation` markers are part of each match record.
+  - The current phase cursor is restored from the snapshot instead of rebuilt during a restore pass.
+  - A gate in a record is a public marker reference. The prompt and action identity that binds it goes only to the deciding coach.
+  - Where this record relies on ADRs 0002 and 0004 for durability, ordering, digest, admission and format limits, read ADR 0014's transaction, history integrity and per-record limits. The phase model, the ordering rules, presentation that never gates the engine, and the worker budget are unchanged.

@@ -52,7 +52,8 @@ canonical art synced into the browser by `npm run assets:sync`.
   or turnover before raising dependent cleanup decisions. Live clients present
   the splash before those decisions, independently of engine progression.
   [ADR 0007](../adr/0007-server-owned-turn-sequence-presentation.md) defines
-  the format-3 transcript policy and the remaining implementation work.
+  the markers and the remaining implementation work. They are stored in match
+  records, in format 4 ([ADR 0014](../adr/0014-match-state-records-and-live-sync.md)).
 
 - **Server is authoritative.** Browser input selects among server-offered
   decisions. Presentation and projection code observes state and never decides
@@ -60,22 +61,32 @@ canonical art synced into the browser by `npm run assets:sync`.
 - **One engine worker, bounded dependencies.** Preserve worker ownership, the
   2,000 ms whole-request ceiling, and the narrow local-logging allowance
   ([ADR 0006](../adr/0006-single-engine-worker.md)); implementation gaps remain tracked there.
-- **One durable boundary per action.** A successful checkpoint commits an action
-  and its outcomes together; exact retries read the checkpoint and append
+- **One durable boundary per action.** One transaction commits an action, its
+  outcomes and the new match state together, and the action is accepted and
+  published only after it. Exact retries return the recorded outcome and append
   nothing; storage admission rejects an action before native execution when it
   cannot reserve room. Staged placements (setup and kick-off-event positioning)
   have no durable boundary; only their confirming action does
-  ([ADR 0002](../adr/0002-bounded-match-transcript.md),
-  [ADR 0004](../adr/0004-durable-recovery-journal.md),
+  ([ADR 0014](../adr/0014-match-state-records-and-live-sync.md),
   [ADR 0008](../adr/0008-staged-placements.md)).
-- **Recovery never reruns game commands.** It assembles a base checkpoint plus
-  bounded continuations and restores through the native restore path; it does
-  not rerun commands, dice, clocks or optional-skill decisions (`RecoveryJournal`,
-  [ADR 0004](../adr/0004-durable-recovery-journal.md)).
+- **ADR 0014 isn't built yet.** It supersedes ADRs 0002 and 0004. Until its
+  cutover ([#651](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651)),
+  running matches use the checkpoint, journal and format-2 transcript
+  ([ADR 0004](../adr/0004-durable-recovery-journal.md)), and a change to that
+  storage must keep their rules. The new storage is used only in tests until then,
+  and nothing is written in both formats.
+- **Recovery never reruns game commands.** It restores through the native restore
+  path and does not rerun commands, dice, clocks or optional-skill decisions. In
+  the new storage, a match is rebuilt from its compact snapshot alone, after a
+  check of its newest 32 records
+  ([ADR 0014](../adr/0014-match-state-records-and-live-sync.md)). The old storage
+  assembles a base checkpoint plus bounded continuations (`RecoveryJournal`).
 - **Stored formats stay compatible.** Transcript, recovery, saved-team and
   catalog formats are versioned; V2 replay and recovery must read what earlier
   builds wrote unless an ADR retires a format ([ADR 0008](../adr/0008-staged-placements.md)
-  retires the per-placement recovery format).
+  retires the per-placement recovery format, and
+  [ADR 0014](../adr/0014-match-state-records-and-live-sync.md) retires the old
+  recovery and transcript formats at its cutover, which clears existing matches).
 - **BB2025 only.** Rules code sits in `bb2025` packages, shared infrastructure
   in `common`; unsupported ruleset input is rejected explicitly.
 - **Identity and scope are server-owned.** Every operation checks token expiry

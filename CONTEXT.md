@@ -38,13 +38,25 @@ A player position change during setup or a kick-off event that every viewer sees
 _Avoid_: Provisional move (which names client-side movement forecasts)
 
 **Match checkpoint**:
-The durable state from which an unfinished match can resume at its last accepted decision. Staged placements are not part of it.
+The durable state from which an unfinished match can resume at its last accepted decision. It carries no history. Staged placements are not part of it.
+
+**Match record**:
+One accepted decision with its revealed outcomes, phase markers and public changes, or the match's starting state at revision zero. Live play, catch-up and replay all use it.
+
+**Keyframe**:
+The complete recorded part of the public view at one point in a match, from which a reader can start instead of at the beginning.
 
 **Match transcript**:
-The ordered, durable record of accepted decisions, revealed outcomes, board checkpoints, and chat for one match. A confirmed setup or kick-off event appears as its final positions.
+The ordered, durable match records and keyframes of one match, with its chat. A confirmed setup or kick-off event appears as its final positions.
 
 **Match replay**:
-A read-only view reconstructed from stored transcript records and board checkpoints after a match finishes.
+A read-only view reconstructed from stored match records and keyframes after a match finishes.
+
+**Public view**:
+What every viewer of a match may know at one point in it.
+
+**Coach's offer**:
+The choices the server currently offers one coach, private to that coach.
 
 **Turn play (`turnPlay`)**:
 The playable part of a numbered team turn, including its player activations and pending decisions that determine how play ends.

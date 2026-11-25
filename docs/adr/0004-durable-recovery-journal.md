@@ -1,5 +1,9 @@
 # Journal native continuations without reexecuting accepted actions
 
+Status: superseded on 2026-11-25 by [ADR 0014](0014-match-state-records-and-live-sync.md) ([approval](../specs/match-state-sync-adr.md#maintainer-acceptance)).
+ADR 0014 lists [what happens to each rule](0014-match-state-records-and-live-sync.md#what-happens-to-each-rule-of-adrs-0002-and-0004) of this record. Running matches still work as described
+here until its cutover, and these rules hold for the old storage until it is removed.
+
 Accepted for [#336](https://github.com/the-grognard-codes/fumbbl-rebuild/issues/336)
 on 2026-10-22; supersedes the single-blob storage choice in
 [ADR 0002](0002-bounded-match-transcript.md), preserving its public transcript and

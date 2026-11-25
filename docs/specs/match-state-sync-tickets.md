@@ -4,7 +4,7 @@ Issue: [#651](https://github.com/the-grognard-codes/moles-under-the-pitch/issues
 
 Parent: [#611](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611) ([ADR request](match-state-sync-adr.md)). Measurement: [#650](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/650) ([spec](match-state-sync-measurement.md)).
 
-Status: revised again on 2026-11-25 after [Codex's review of the ADR draft](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/655). First revised on 2026-11-24 after [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290). The maintainer accepted the recommended answers to its questions, recorded as decisions 14–20 in #611. Decision 21 was added later that day, and decisions 22–30 on 2026-11-25. Tickets 1–3 are filed (#652, #653 and #654). The other 23 are candidates, filed when the ADR is accepted. Line numbers are at `main` `eb5057d02`.
+Status: the ADR was accepted on 2026-11-25 as ADR 0014. The plan was revised again on 2026-11-25 after [Codex's review of the ADR draft](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/655). First revised on 2026-11-24 after [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290). The maintainer accepted the recommended answers to its questions, recorded as decisions 14–20 in #611. Decision 21 was added later that day, and decisions 22–30 on 2026-11-25. Tickets 1–3 are done (#652, #653 and #654). The other 23 are filed once PR #655 is merged. Line numbers are at `main` `eb5057d02`.
 
 ## Goal
 
@@ -50,7 +50,7 @@ Live messages need their own order for changes at one gameplay revision, so that
 
 ## Numbers from #650
 
-Keyframe cadence, the size of the in-memory tail and the numeric targets are the budgets in the ADR draft (PR #655, decision 29).
+Keyframe cadence, the size of the in-memory tail and the numeric targets are the budgets in ADR 0014 (decision 29).
 
 ## Dependencies
 

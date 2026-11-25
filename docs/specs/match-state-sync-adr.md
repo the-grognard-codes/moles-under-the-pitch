@@ -2,7 +2,7 @@
 
 Issue: [#611](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611)
 
-Status: requested; resulting ADR not yet accepted.
+Status: accepted on 2026-11-25 as [ADR 0014](../adr/0014-match-state-records-and-live-sync.md) ([maintainer acceptance](#maintainer-acceptance)).
 Source: [#550](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/550), [Codex's recovery, live sync and replay notes](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/550#issuecomment-7086931992), and the maintainer decisions of 2026-11-22 to 2026-11-24 recorded below. The decisions move here from #550 so that #550 stays on engine structure and ruleset separation. The remaining work of [#548](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/548) is folded in (decision 13).
 Reviewed: 2026-11-22, `main` at `5f6779969b644a406de379a36fbfe05f590ef037`. The evidence was rechecked against the same revision on 2026-11-24, and several statements below were corrected.
 Template: [ADR request template](../agents/adr-template.md).
@@ -140,7 +140,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decis
    - that ADR 0006 is unchanged.
 4. **Implementation plan**, in [#651](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651) (`docs/specs/match-state-sync-tickets.md`): twenty-six tickets, revised after Codex's review of 2026-11-24. Tickets 1–3 don't depend on the ADR and are filed as #652, #653 and #654. The rest are filed when the ADR is accepted. They carry every item from #548.
 
-**Sequencing:** #610 has merged (PR #612), and the measurement (#650) is done (PR #656). The ADR draft is PR #655.
+**Sequencing:** #610 has merged (PR #612), and the measurement (#650) is done (PR #656). The ADR is PR #655.
 
 **Excluded:**
 - Production code changes. Measurement scripts are allowed.
@@ -281,6 +281,10 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decis
 - No accepted ADR gains a forward pointer to this decision before acceptance.
 - The follow-up tickets are filed.
 - #548, #593, #594 and #596 are closed as *not planned*, each with a link to the ADR.
+
+## Maintainer acceptance
+
+On 2026-11-25 the maintainer accepted the ADR at `401dad454`, in the conversation where it was prepared: "ADR looks good. Go ahead and assign it a number, I'll merge once CI clears." It took the number 0014. Accepting it changed its status and tense, and the records it supersedes, amends and extends, in PR #655. The follow-up tickets are filed, and the four superseded issues closed, once that PR is merged.
 
 ## Validation and handoff
 
