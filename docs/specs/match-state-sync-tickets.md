@@ -4,7 +4,7 @@ Issue: [#651](https://github.com/the-grognard-codes/moles-under-the-pitch/issues
 
 Parent: [#611](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611) ([ADR request](match-state-sync-adr.md)). Measurement: [#650](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/650) ([spec](match-state-sync-measurement.md)).
 
-Status: revised again on 2026-11-25 after [Codex's review of the ADR draft](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/655). First revised on 2026-11-24 after [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290). The maintainer accepted the recommended answers to its questions, recorded as decisions 14–20 in #611. Decision 21 was added later that day, and decisions 22–29 on 2026-11-25. Tickets 1–3 are filed (#652, #653 and #654). The other 23 are candidates, filed when the ADR is accepted. Line numbers are at `main` `eb5057d02`.
+Status: revised again on 2026-11-25 after [Codex's review of the ADR draft](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/655). First revised on 2026-11-24 after [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290). The maintainer accepted the recommended answers to its questions, recorded as decisions 14–20 in #611. Decision 21 was added later that day, and decisions 22–30 on 2026-11-25. Tickets 1–3 are filed (#652, #653 and #654). The other 23 are candidates, filed when the ADR is accepted. Line numbers are at `main` `eb5057d02`.
 
 ## Goal
 
@@ -25,7 +25,7 @@ Tickets 7, 9, 11 and 19 are split. The old numbers keep their letters, so the re
 
 ## What the tickets assume
 
-Decisions 14–29 in #611 govern. The review kept these working assumptions, and the maintainer accepted the first four (decision 28):
+Decisions 14–30 in #611 govern. The review kept these working assumptions, and the maintainer accepted the first four (decision 28):
 
 - **Patches** replace whole players and whole top-level public sections. Keyed players support insertion, removal and a stable order. A section that ends is removed explicitly, which is different from unchanged and from `null`.
 - **One writer per match.** Each match's storage version is chosen at activation and stored with the unpublished activation seed and the revision-zero record, so a crash or a changed setting reopens the same seed. The new storage is test-only until chat, replay, expiry and full time work. Nothing is written in both formats.
@@ -106,7 +106,7 @@ flowchart LR
   T17 --> T19b
 ```
 
-The longest chain is 20, 5, 7a, 9a, 10, 19a, 11b, 11c and 19b. The gate (19a) also needs tickets 13 and 14, because it measures the real coach and spectator path. Ticket 13 needs ticket 5 and works for matches in either storage, so coaches can see smaller updates before the cutover.
+The longest chain is 20, 5, 7a, 9a, 10, 19a, 11b, 11c and 19b. The gate (19a) also needs tickets 13 and 14, because it measures the real coach and spectator path (decision 30). Ticket 13 needs ticket 5 and works for matches in either storage, so coaches can see smaller updates before the cutover.
 
 ## Filed now
 

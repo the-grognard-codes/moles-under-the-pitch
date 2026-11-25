@@ -11,7 +11,7 @@ On acceptance, amends: [ADR 0001](0001-active-match-publication.md), [ADR 0007](
 
 Today a match's whole history is part of its recovery document. Compaction, restore, full time and replay all read or write it, and a move that triggers compaction gets slower as the match goes on. Each browser also receives the full state on every move. This ADR stores a compact current state and one append-only record per accepted decision, in one transaction, and sends browsers the same record. **The cost of a move then doesn't grow with match length.**
 
-This is a draft. **D1–D29** mark the maintainer decisions recorded in #611. Everything else is proposed and becomes a decision only when this ADR is accepted.
+This is a draft. **D1–D30** mark the maintainer decisions recorded in #611. Everything else is proposed and becomes a decision only when this ADR is accepted.
 
 ## Decision and boundaries
 
@@ -201,7 +201,7 @@ ADR 0006 is unchanged: p99 ≤ 100 ms per healthy worker task, and 2,000 ms per 
 - The storage and the replay reader are built together (D7).
 - Each match has one storage version (D28), chosen at activation and stored with its unpublished seed. Nothing is written in both formats.
 - The new storage is used only in tests until replay, chat, expiry and full time work on it.
-- ADR 0007's markers are emitted before any match is cleared (D16). A complete correctness, latency and memory gate and a rehearsal of the schema change, restore and rollback also come first. The gate measures the real coach and spectator path, so tickets 13 and 14 come before it.
+- ADR 0007's markers are emitted before any match is cleared (D16). A complete correctness, latency and memory gate and a rehearsal of the schema change, restore and rollback also come first. The gate measures the real coach and spectator path, so that the delivery target is tested at the right time. Tickets 13 and 14 therefore come before it (D30).
 - At the cutover, all existing matches are cleared: active, saved and completed (D5). Older data is refused with `RECOVERY_UNSUPPORTED`.
 - The journal, compaction, `events`, the request history, the game-log freezing and the completed-result size limits are then deleted.
 
@@ -328,6 +328,7 @@ Applied only on acceptance, in the accepting revision:
 | The public view | The outline above. Ticket 20's exact list needs the maintainer's approval (D27) |
 | Patch shape, one storage version per match, row summary, tests in batches | Accepted (D28) |
 | Budgets, keyframe cadence, tail size | #650's proposals (D29) |
+| Whether the cutover waits for live coach and spectator updates | Yes (D30) |
 
 Nothing is left open. The ADR itself isn't accepted yet.
 

@@ -66,7 +66,7 @@ This sets the server-to-client model for the rest of the project. The target is 
 
 ## Maintainer decisions
 
-Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decisions 22–29 are from 2026-11-25 and settle the questions the ADR draft (PR #655) left open. Decisions 14–20 accept the recommended answers to [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290) of the implementation plan.
+Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decisions 22–30 are from 2026-11-25. Decisions 22–29 settle the questions the ADR draft (PR #655) left open, and decision 30 follows Codex's review of it. Decisions 14–20 accept the recommended answers to [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290) of the implementation plan.
 
 1. **Scope.** This issue owns the storage and sync decision and its ADR. #550 keeps engine structure and the ruleset-boundary review, and treats this ADR as an input: it settles the persistence and presentation seams that #550's review maps.
 2. **One record serves live play, catch-up and replay.** The transcript record evolves to format 4:
@@ -101,6 +101,7 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decis
 27. **The public view's outline is accepted.** Ticket 20 of #651 proposes the exact field list, with tests that private data stays out, for the maintainer's approval.
 28. **The four working assumptions in #651 are accepted:** whole-player and whole-section patches, one storage version per match, the row summary, and tests in batches.
 29. **The targets are #650's proposals**, as in the ADR draft's budgets. The proof (ticket 19b) sets the p99 for restore.
+30. **The cutover waits for live coach and spectator updates** (tickets 13 and 14 of #651), so that the delivery target is tested on the real path at the right time. Losing existing matches and replays isn't a concern, as in decision 5.
 
 ## Scope and deliverables
 
