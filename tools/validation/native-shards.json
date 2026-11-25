@@ -136,6 +136,8 @@
       "com.fumbbl.ffb.server.match.SetupSessionMovementTest",
       "com.fumbbl.ffb.server.match.SkillMarkerProjectionTest",
       "com.fumbbl.ffb.server.match.SpecialBlockActionsTest",
+      "com.fumbbl.ffb.server.match.StateSyncFullTimeTest",
+      "com.fumbbl.ffb.server.match.StateSyncProjectionTest",
       "com.fumbbl.ffb.server.match.TrainingEngineHostTest",
       "com.fumbbl.ffb.server.match.Utf8SizeTest",
       "com.fumbbl.ffb.server.match.V2PreparationJdbcTest",
@@ -255,6 +257,9 @@
     "com.fumbbl.ffb.server.match.SessionRetentionMemoryTest": {
       "lateSessionFitsItsRetainedBudgetAndIsCollectableAfterCompletionAndIdleEviction": "Environment variable [SESSION_RETENTION_MEMORY_RUN] does not exist",
       "measureNearLimitCheckpointAndResultWithOtherResidents": "Environment variable [SESSION_RETENTION_MEMORY_RUN] does not exist"
+    },
+    "com.fumbbl.ffb.server.match.StateSyncFullTimeTest": {
+      "captureFullTimeAndCompletedLoad": "org.opentest4j.TestAbortedException: Assumption failed: Set STATE_SYNC_FULL_TIME to opt in"
     },
     "com.fumbbl.ffb.server.match.V2PreparationJdbcTest": {
       "createsJoinsRetriesReleasesAndExpiresInvitationsOnIsolatedMarker6Target": "org.opentest4j.TestAbortedException: Assumption failed: Set isolated M6_TEST_JDBC_URL and M6_TEST_PASSWORD_FILE to run MariaDB acceptance"

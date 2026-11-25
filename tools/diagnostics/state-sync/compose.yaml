@@ -1,0 +1,22 @@
+name: ffb-state-sync-measurement
+services:
+  database:
+    image: mariadb:11.8.9@sha256:2439dcd7d14010ecd1ff7a4e1c5abe8e208c34fe35290744deeeaac3569043c3
+    environment:
+      MARIADB_ROOT_PASSWORD: ${STATE_SYNC_DB_PASSWORD:?set a fresh local measurement password}
+      MARIADB_DATABASE: ffb_state_sync_test
+    ports:
+      - "127.0.0.1::3306"
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 5s
+      retries: 45
+    volumes:
+      - scratch:/var/lib/mysql
+      - ./schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ../../../ffb-server/src/main/resources/local-schema/005-match-recovery.sql:/docker-entrypoint-initdb.d/02-recovery.sql:ro
+      - ../../../ffb-server/src/main/resources/local-schema/009-recovery-journal.sql:/docker-entrypoint-initdb.d/03-journal.sql:ro
+      - ../../../ffb-server/src/main/resources/local-schema/010-computer-job-availability.sql:/docker-entrypoint-initdb.d/04-availability.sql:ro
+volumes:
+  scratch:
