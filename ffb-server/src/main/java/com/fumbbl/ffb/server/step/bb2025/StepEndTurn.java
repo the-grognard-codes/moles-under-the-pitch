@@ -142,8 +142,9 @@ public class StepEndTurn extends AbstractStep {
 		return StepId.END_TURN;
 	}
 
-	public boolean isAwaitingStarOfTheShowAfterTouchdown() {
-		return touchdownTurnEndingHome != null && useStarOfTheShow == null;
+	/** The ending team while a settled touchdown is waiting for the Star of the Show response. */
+	public Boolean getHomeTurnEndingBeforeStarOfTheShow() {
+		return useStarOfTheShow == null ? touchdownTurnEndingHome : null;
 	}
 
 	@Override
@@ -1082,7 +1083,7 @@ public class StepEndTurn extends AbstractStep {
 		IServerJsonOption.PLAYER_IDS_ARGUED.addTo(jsonObject, playerIdsArgued);
 		IServerJsonOption.USE_STAR_OF_THE_SHOW.addTo(jsonObject, useStarOfTheShow);
 		IServerJsonOption.PLAYER_ID_TOUCHDOWN.addTo(jsonObject, touchdownPlayerId);
-		if (touchdownTurnEndingHome != null) jsonObject.add("touchdownTurnEndingHome", touchdownTurnEndingHome);
+		IServerJsonOption.TOUCHDOWN_TURN_ENDING_HOME.addTo(jsonObject, touchdownTurnEndingHome);
 		return jsonObject;
 	}
 
@@ -1121,8 +1122,7 @@ public class StepEndTurn extends AbstractStep {
 		}
 		useStarOfTheShow = IServerJsonOption.USE_STAR_OF_THE_SHOW.getFrom(source, jsonObject);
 		touchdownPlayerId = IServerJsonOption.PLAYER_ID_TOUCHDOWN.getFrom(source, jsonObject);
-		touchdownTurnEndingHome = jsonObject.get("touchdownTurnEndingHome") == null
-			? null : jsonObject.get("touchdownTurnEndingHome").asBoolean();
+		touchdownTurnEndingHome = IServerJsonOption.TOUCHDOWN_TURN_ENDING_HOME.getFrom(source, jsonObject);
 		return this;
 	}
 
