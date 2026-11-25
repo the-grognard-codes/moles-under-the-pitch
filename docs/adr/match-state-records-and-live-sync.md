@@ -22,8 +22,8 @@ For each match, under one match ID:
 | Part | Content | Grows with the match |
 | --- | --- | --- |
 | Current-state row | Restore snapshot, storage generation, row summary, terminal state, sealed digest | No |
-| Records | One per gameplay revision, in format 4, append-only (D2) | Rows only |
-| Keyframes | The complete public view at chosen revisions, stored with their record, with one at revision zero (D2) | Rows only |
+| Records | One per gameplay revision, in format 4, append-only (D2). The revision-zero record is a patch from an empty view, so the records alone rebuild every state | Rows only |
+| Keyframes | The complete recorded view at chosen revisions, stored with their record, with one at revision zero (D2) | Rows only |
 | Receipts | One small private entry per accepted gameplay request (D15) | Rows only |
 | Chat | One row per message (D8), with the 512-message limit (D20) | Rows only, up to the limit |
 
@@ -34,7 +34,7 @@ The native engine log is never persisted. Only commands that haven't been captur
 Three counters stay separate:
 - The **storage generation** is the compare-and-swap value for the current-state row. Every durable write to the match state advances it.
 - The **gameplay revision** identifies a record. One accepted decision makes one revision and one record.
-- The **chat index** orders chat messages within the match. Each message also names the gameplay revision it was sent at, which places it among the records.
+- The **chat index** orders chat messages within the match. The chat rows own it: the next index and the 512 limit come from the last stored row, under the match row's lock. A count in the snapshot or the summary is only a watermark. Each message also names the gameplay revision it was sent at, which places it among the records.
 
 The table below is D24 and D26. A staged placement's sequence stays transient (ADR 0008). Live changes at one gameplay revision carry the storage generation, so that a browser orders them and doesn't discard a valid save update.
 
@@ -44,7 +44,7 @@ The table below is D24 and D26. A staged placement's sequence stays transient (A
 | Accepted decision, confirmed stage, declined or timed-out reaction, concession, full time | Yes | Advances | Receipt, except for a timed reaction |
 | Refused setup outside staging | No | Advances | Receipt with the errors |
 | Save and resume steps, proposal expiry, abandonment, decision-clock maintenance | No | Advances | Save/resume keeps its own request limit of 256, which is a hard limit |
-| Chat message | No | No | A chat row, checked against the match's terminal state in the same transaction |
+| Chat message | No | No | A chat row. The transaction locks the match row that gameplay and full time write, so a message commits wholly before or after a decision |
 | Staged placement, staged refusal, load, exact retry | No | No | In-memory deduplication of staged requests, as in ADR 0008 |
 
 ### Restore snapshot
@@ -57,7 +57,7 @@ The snapshot holds everything needed to continue, and no history:
 - decision-limit and drive-tracker counters, the unfinished movement narrative, and the phase, announcement and block cursors;
 - counters for records and chat, and the running history digest.
 
-Restore validates the native state through the existing native restore path, and reads no event, record, receipt, chat or log history. It never reruns commands, dice, clocks or optional decisions.
+Restore rebuilds the match from the snapshot alone, through the existing native restore path. It uses no event, record, receipt, chat or log to do so, and never reruns commands, dice, clocks or optional decisions. Before that, the repository admits the snapshot with the bounded tail check under "History integrity".
 
 A command leaves memory only after the write that captured it is known to be durable. Captured outcomes are frozen as JSON at capture, because native commands can hold references to mutable engine values. A failed or unknown write releases the session.
 
@@ -72,7 +72,7 @@ A format-4 record holds domain facts only:
 
 It never holds browser commands, rendered views, private data or BB2025-specific types in the shared record shape.
 
-A **public patch** carries each changed player and each changed top-level public section whole (D28). Players are keyed by ID, can be added and removed, and keep a stable order. A section that ends is removed explicitly, which is different from unchanged and from `null`. A keyframe is the complete public view at its record's revision.
+A **public patch** carries each changed player and each changed top-level public section whole (D28). Players are keyed by ID, can be added and removed, and keep a stable order. A section that ends is removed explicitly, which is different from unchanged and from `null`. A keyframe is the complete recorded view at its record's revision.
 
 The public projection is built once per revision, on the engine worker, after native resolution and capture and before the transaction. It computes no actions, forecasts or previews. The patch is the difference from the previous committed projection, and a keyframe revision reuses the same projection.
 
@@ -80,7 +80,9 @@ Decoding is strict and versioned, and refuses unknown versions.
 
 ### Public view and coach offers
 
-There is one public view (D14). Its outline here is accepted, and ticket 20 proposes the exact field list for the maintainer's approval (D27). It holds player, team and ball facts, score, phase, weather, revealed outcomes, phase gates, save status, who must decide and what kind of decision it is, and the pass range and Kick options shown on the pitch. Every viewer gets it: both coaches, spectators and replay.
+There is one public view (D14), in two parts. The **recorded view** is everything that records can reproduce. Replay, the audit, keyframes and drift checks use only that. The **current status** is the save status, and the anchors for clocks and reaction deadlines. It can change without a revision, so it travels beside the recorded view with its storage generation, and never enters a record or keyframe. Applying a keyframe or an old page keeps the latest authorized status.
+
+Its outline here is accepted, and ticket 20 proposes the exact field list for the maintainer's approval (D27). The view holds player, team and ball facts, score, phase, weather, revealed outcomes, phase gates, save status, who must decide and what kind of decision it is, and the pass range and Kick options shown on the pitch. Every viewer gets it: both coaches, spectators and replay.
 
 A **coach's offer** is private to that coach: legal actions, prompt identity and options, movement forecast, player action menu, block preview, threats and saved formations. The computer player's data stays on its authenticated channel. Offers never enter a record, keyframe or public message.
 
@@ -97,18 +99,19 @@ One database transaction per accepted decision (D3):
 4. advances the running digest.
 
 - **Acceptance** waits for the durable commit. An action is accepted and published only after it (D4).
-- **Admission.** An action is refused before native execution when the store can't reserve room for its record, snapshot and receipt.
-- **Unknown commit.** The session is released, and the next load reconciles from the stored generation and the receipt.
+- **Admission.** An action is refused before native execution when the store can't reserve room for its record, keyframe, snapshot and receipt at their largest. Ticket 7a defines those limits, with evidence that every legal outcome fits, before the store depends on them. They are separate from the live frame limit: an update too large to send is still committed, and repaired.
+- **Unknown commit.** The session is released. Today nothing is published, and nothing follows up until a request or timer loads the match (`SetupApplication.java:1024-1025`), so a connected opponent could wait forever if the acting coach leaves. Instead, a bounded reconciliation on the engine worker reads the stored generation, revision and receipt, without waiting for another request, and repairs the connected, still authorized viewers from what is stored. It retries with backoff until it has an answer. A losing candidate is never published.
 - **Crash before commit.** Nothing happened. **Crash after commit and before publication.** Viewers repair themselves, as below.
 - **No worker.** There is no background replay worker (D3). The maintainer kept D3 after #650's results, and can revisit a worker thread for the SQL writes if performance on the GCP hosting is significantly worse ([2026-11-25](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/656#issuecomment-7153291066)).
 
 ### Retries
 
 A receipt holds the match, actor and request ID, the canonical fingerprint, the accepted revision, the code and any setup errors. It is found by an indexed lookup, at any age (D15).
-- The same ID and content returns the recorded outcome and appends nothing.
+- The receipt is checked before a request is refused as stale or because the match has ended.
+- The same ID and content returns the recorded outcome, separately from the current state, and appends nothing.
 - The same ID with different content is refused with `REQUEST_ID_REUSED`.
 - An unknown ID with an old expected revision is refused as stale, so a request can't run twice even without its receipt.
-- Chat has its own uniqueness by author and request ID, including after the match ends.
+- Chat has its own uniqueness by author and request ID. After the match ends, a retry of a stored message returns it, changed content is refused, and a new message is refused.
 
 ### Live delivery, gaps and repair
 
@@ -117,9 +120,11 @@ A receipt holds the match, actor and request ID, the canonical fingerprint, the 
 - Every request keeps its own correlated reply, even when the record is over the live frame limit or can't be queued.
 - The browser checks the match and the base revision, ignores duplicates and detects gaps. A snapshot or a page states the revision it starts from, so nothing is applied twice.
 - **A missed update always leads to a repair.** Today a newer state replaces a deferred one (`PublicationDelivery.java:50-57`), which is safe only for complete states. A replaced, dropped or oversized update makes the recipient due a bounded, authorized snapshot, including when no further move follows and when a repair read fails.
+- The browser keeps two cursors: the state it has applied, and the last record it has presented. A repair moves the first and not the second. A connected viewer in ordinary forward playback gets the records in between from authorized, bounded stored ranges, so no move is skipped, and overlapping replies, pushes and pages are deduplicated. Reconnect, hidden-tab recovery and seek keep ADR 0007's rule of starting from a baseline.
+- A snapshot or repair carries the chat watermark, so that a lost last message is found although no revision or generation moved.
 - Joining and reloading get a snapshot and the latest page. Short gaps can be filled from a tail that is bounded in records and bytes (see Budgets), or from stored records. The oldest records leave the tail at either limit, and a browser whose base has left it gets an authorized snapshot. Offers never enter the tail. Neither source restores the match.
 - Staged placements are delivered as in ADR 0008.
-- The computer player keeps receiving full snapshots, and a parked one is told when nothing changed since a named revision (D18).
+- The computer player keeps receiving full snapshots, and a parked one is told when nothing changed (D18).
 
 ### Match log, chat and replay
 
@@ -133,23 +138,32 @@ Full time and concession store the final state, seal the digest and record the r
 
 **Expiry and abandonment aren't full time.** The match stays activated, the lobby derives its status from deadlines, and dismissal stays per account (#639, #643, #644).
 
-A finished match keeps all its records (D21), and so does an abandoned or expired one, with no automatic deletion (D23). The limit on matches held for recovery, which today counts every match ever activated, counts only matches that can still be played (D22). Expiry is recorded only when a request or timer touches the match, so the count applies the lobby's expiry rule to the row summary's absolute deadlines. A deadline that moves later can take the count slightly over the limit.
+A finished match keeps all its records (D21), and so does an abandoned or expired one, with no automatic deletion (D23). The limit on matches held for recovery, which today counts every match ever activated, counts only matches that can still be played (D22). Expiry is recorded only when a request or timer touches the match, so the count can't depend on that record.
+
+Each state write stores one indexed value, `playable_until`, derived from the lobby's rule (`SetupSession.java:2108-2116`):
+- none, for a match that is finished, abandoned or failed;
+- open-ended, for a match with no retention deadline, and for a computer match whose proposal or unsuspended reaction times out strictly before its retention deadline, because that must be applied first;
+- otherwise the retention deadline. A match expires at that moment, not after it.
+
+Activation counts rows above one sampled time, stops at 1,024, and runs under today's serialized admission. For a stored state, the rule gives the same answer at every later time, and requests and timers apply expiry before anything that could extend it (`SetupApplication.java:945-950`, `SetupSession.java:685-695`). A match that has left the count therefore can't return to it, and the limit isn't exceeded. That order has to be kept, and tests hold it. An open-ended match that nobody touches again still counts, as it is still listed as playable today.
 
 The out-of-memory quarantine journal, its cooldown and the admission guard are separate and stay.
 
 ### History integrity
 
-- **On restore:** the snapshot carries a checksum that is verified, as today's checkpoint does (`RecoveryCheckpoint.java:24`). One consistent read checks the storage generation, the newest record and the recent records. All records missing, the last one missing, or a mismatch is `RECOVERY_CORRUPT`. Missing records never silently roll a match back.
+- **On restore:** the snapshot carries a checksum that is verified, as today's checkpoint does (`RecoveryCheckpoint.java:24`). One consistent read checks the storage generation and the newest 32 records, or all of them if there are fewer, against the snapshot's gameplay revision and for gaps. The generation can be ahead of the records, because some writes make none. All records missing, the last one missing, or a mismatch is `RECOVERY_CORRUPT`. Missing records never silently roll a match back.
 - **On a page read:** a gap fails.
 - **On audit:** a separate check verifies every record against the running digest (D17). It detects a deleted, changed or reordered record.
 
-The digest is an ordered commitment that starts at revision zero, advances with each record, and is sealed with its count at full time. It covers record bytes in their stored canonical form, and nothing else (D25). Keyframes can be rebuilt from records, so they aren't covered, and the audit checks them by rebuilding. Chat isn't covered. It is archival integrity, not a live-state digest, which stays ruled out (D12).
+The digest is an ordered commitment that starts at revision zero, advances with each record, and is sealed with its count at full time. It covers record bytes in their stored canonical form, and nothing else (D25). Keyframes aren't covered. The audit rebuilds each one, including revision zero's, by reducing the records from an empty view, and never starts from a stored keyframe. Chat isn't covered. It is archival integrity, not a live-state digest, which stays ruled out (D12).
 
 ADR 0002 requires a terminal digest, but none was built: the completed result has no digest today (`SetupSession.java:1608-1619`). Decision 17 therefore adds one.
 
 ### Row summary, lobby and computer coach
 
-Each durable write stores a small summary (D28) with the storage generation: gameplay revision, actor, prompt actor, phase, half, turn, score, save/resume status, absolute expiry times and maintenance inputs. The lobby reads it, and it answers an unchanged computer probe. The snapshot stays authoritative. When the summary can't answer safely, the full restore path does.
+Each durable write stores a small summary (D28) with the storage generation: gameplay revision, actor, prompt actor, phase, half, turn, score, save/resume status, absolute expiry times and maintenance inputs. The lobby reads it, and it answers an unchanged computer probe. The snapshot stays authoritative.
+
+"Nothing changed" needs more than the same revision, because a save proposal, a suspension or due maintenance can change what a computer owes without one. The reply names the revision (D18), and is given only when the computer's last seen storage generation also matches and nothing is due now. Otherwise every condition that `RecoveryCheckpoint.computerReply` checks today (`RecoveryCheckpoint.java:45-74`) is evaluated again: match and role, failed and terminal state, abandonment, suspension, a proposal, inactivity, the human decision clock, a pending reaction, and the actor and prompt owner, with due maintenance. When that can't be certified, the full current reply is sent.
 
 ### Drift checks
 
@@ -174,10 +188,12 @@ ADR 0006 is unchanged: p99 ≤ 100 ms per healthy worker task, and 2,000 ms per 
 | Keyframe cadence | Every 32 revisions | A keyframe is 13,511–13,616 bytes |
 | Catch-up tail, per match | 32 records or 64 KiB of encoded public data, whichever comes first. The bytes include the keyframe and the record envelopes | A keyframe and 32 ordinary patches: 17,127–29,872 bytes before envelopes. A late rare patch alone: 11,664 bytes |
 
-- **What was measured.** One machine, an isolated MariaDB, and a prototype that leaves out rules execution, authorization and sockets. The measurements weren't run on the GCP hosting.
+- **What was measured.** One machine, an isolated MariaDB, and a prototype. It starts from decoded state, and has no production snapshot decoder or complete cursors. It leaves out rules execution, authorization, full private offers, complete report and animation coverage, browser rendering, sockets and backpressure. Repeated writes at one revision and synthetic receipts don't test contention or a real match's history. The measurements weren't run on the GCP hosting.
+- **The five rounds differ.** The first two rewrote one identical terminal blob, with other tests running at the same time. The three quiet rounds started from the real penultimate state. In those, ordinary full-time tasks took 30.5–96.0 ms at p99.
+- **The current late full time wasn't measured.** The size limit and the request deadline stopped it before its update, commit, release and delivery. Its latency, and the cause of the historical queue stalls, are unknown.
 - **The write p99 didn't converge.** Late ordinary writes missed 60 ms in two of five rounds, and five full rounds didn't explain why.
 - **Restore has a p90 target, not a p99,** because nine samples can't support a p99. D6 asks for p99, so the final proof (ticket 19b) takes at least 100 samples and sets it. ADR 0006's 100 ms still applies to the whole load task. A finished match's restore had a p90 of 73.9 ms, and the target covers active matches only.
-- **The role view has no target.** Building the acting coach's view after a late restore took 245.8 ms at p50 (nine samples), which is over 100 ms alone. The other coach's took 4.7 ms. The acting coach's view allocated 114 MB, about twice one log-inclusive preview copy (56.6 MB), so two preview copies probably explain most of it. #652 takes the log out of those copies. The view is measured again after #652, and before the restore work is accepted.
+- **The role view has no target.** Building the acting coach's view after a late restore took 245.8 ms at p50 (nine samples), which is over 100 ms alone. The other coach's took 4.7 ms. The acting coach's view allocated 114 MB, about twice one log-inclusive preview copy (56.6 MB), and the preview makes one copy for each player who can declare a block with a target. Codex's review counted two in that match, so two preview copies probably explain most of it. Nothing timed those copies inside the view. #652 takes the log out of the copies. After it, the same acting coach's reply is timed with the number of copies and the time inside them, before the restore work is accepted (ticket 6).
 - **The snapshot threshold** is the one #650 was asked to test against. #650 proposed no other size target.
 
 ### Formats, compatibility and cutover
@@ -185,7 +201,7 @@ ADR 0006 is unchanged: p99 ≤ 100 ms per healthy worker task, and 2,000 ms per 
 - The storage and the replay reader are built together (D7).
 - Each match has one storage version (D28), chosen at activation and stored with its unpublished seed. Nothing is written in both formats.
 - The new storage is used only in tests until replay, chat, expiry and full time work on it.
-- ADR 0007's markers are emitted before any match is cleared (D16). A complete correctness, latency and memory gate and a rehearsal of the schema change, restore and rollback also come first.
+- ADR 0007's markers are emitted before any match is cleared (D16). A complete correctness, latency and memory gate and a rehearsal of the schema change, restore and rollback also come first. The gate measures the real coach and spectator path, so tickets 13 and 14 come before it.
 - At the cutover, all existing matches are cleared: active, saved and completed (D5). Older data is refused with `RECOVERY_UNSUPPORTED`.
 - The journal, compaction, `events`, the request history, the game-log freezing and the completed-result size limits are then deleted.
 
@@ -238,11 +254,11 @@ Applied only on acceptance, in the accepting revision:
 | --- | --- |
 | ADR 0001 | Amend. Publication sends a record and a per-role offer, and a missed update always leads to a repair. Enrollment, access and best-effort delivery of each message stand |
 | ADR 0006 | Unchanged |
-| ADR 0007 | Amend. Format 3, which was never built, becomes format 4. `presentation` is part of the record. Its durability, ordering and cursor rules stand, read against the transaction here |
-| ADR 0008 | Amend. A confirm makes one record, one current-state write and a receipt, instead of a state snapshot, a checkpoint and a request-history entry. Its rules on staging, delivery and limits stand |
+| ADR 0007 | Amend. Format 3, which was never built, becomes format 4. `presentation` is part of the record. The phase cursor is restored from the snapshot instead of rebuilt. A gate in a record is a public marker reference, and the prompt and action identity that binds it goes only to the deciding coach. Its durability and ordering rules stand, read against the transaction here |
+| ADR 0008 | Amend. A confirm makes one record, one current-state write and a receipt, instead of a state snapshot, a checkpoint and a request-history entry. This ADR takes over the per-event snapshots that its alternatives leave to #548. Its rules on staging, delivery and limits stand |
 | ADR 0012 | Amend. Full-snapshot recovery and full resync for slow clients become a snapshot plus revisioned changes, with snapshot repair. Versioned JSON over WebSockets stands |
 | ADR 0013 | Add a history entry. Storage stays behind the repository interface, and the records are the "future canonical event log" it anticipated, holding domain facts and not recorded UI commands |
-| Architecture map | Update the invariants on the durable boundary, recovery, stored formats and format 3 |
+| Architecture map | Update the invariants on the durable boundary, recovery, stored formats and format 3. Ticket 11c updates `RecoveryJournal, MatchTranscript` on the live request path when they retire |
 | `CONTEXT.md` | Apply the glossary below |
 
 ### Glossary on acceptance
@@ -251,10 +267,10 @@ Applied only on acceptance, in the accepting revision:
 > The durable state from which an unfinished match can resume at its last accepted decision. It carries no history. Staged placements are not part of it.
 
 > **Match record**:
-> One accepted decision with its revealed outcomes, phase markers and public changes. Live play, catch-up and replay all use it.
+> One accepted decision with its revealed outcomes, phase markers and public changes, or the match's starting state at revision zero. Live play, catch-up and replay all use it.
 
 > **Keyframe**:
-> The complete public view at one point in a match, from which a reader can start instead of at the beginning.
+> The complete recorded part of the public view at one point in a match, from which a reader can start instead of at the beginning.
 
 > **Match transcript**:
 > The ordered, durable match records and keyframes of one match, with its chat. A confirmed setup or kick-off event appears as its final positions.
