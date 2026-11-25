@@ -421,6 +421,18 @@ public class GameState implements IModelChangeObserver, IJsonSerializable {
 		return jsonObject;
 	}
 
+	/** Native continuation omitted from the shared game model and legacy checkpoint format. */
+	public JsonObject continuationJson() {
+		return new JsonObject().add("actingPlayer", getGame().getActingPlayer().continuationJson())
+			.add("modelChanges", fChangeList.toJsonValue());
+	}
+
+	public void restoreContinuation(JsonObject saved) {
+		if (saved.size() != 2) throw new IllegalArgumentException("Invalid native continuation");
+		getGame().getActingPlayer().restoreContinuation(saved.get("actingPlayer").asObject());
+		fChangeList = new ModelChangeList().initFrom(getGame().getRules(), saved.get("modelChanges"));
+	}
+
 	public GameState initFrom(IFactorySource emptySource, JsonValue jsonValue) {
 		JsonObject jsonObject = UtilJson.toJsonObject(jsonValue);
 

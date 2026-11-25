@@ -160,7 +160,7 @@ final class BogrukEngineFixture implements AutoCloseable {
 		return (GameState) field.get(session);
 	}
 
-	private void seedRecoveryDice(long seed) throws ReflectiveOperationException {
+	void seedRecoveryDice(long seed) throws ReflectiveOperationException {
 		gameState = nativeState();
 		Field diceField = SetupSession.class.getDeclaredField("recoveryDice");
 		diceField.setAccessible(true);

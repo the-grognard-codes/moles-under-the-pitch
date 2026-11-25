@@ -554,6 +554,22 @@ public class ActingPlayer implements IJsonSerializable {
 		getGame().notifyObservers(new ModelChange(pChangeId, null, pValue));
 	}
 
+	/** Engine continuation fields outside the shared game-model format. */
+	public JsonObject continuationJson() {
+		return new JsonObject().add("strength", fStrength).add("dodging", fDodging).add("jumping", jumping)
+			.add("hasJumped", hasJumped).add("wasProne", wasProne).add("forgone", forgone);
+	}
+
+	public void restoreContinuation(JsonObject saved) {
+		if (saved.size() != 6) throw new IllegalArgumentException("Invalid acting player continuation");
+		fStrength = saved.get("strength").asInt();
+		fDodging = saved.get("dodging").asBoolean();
+		jumping = saved.get("jumping").asBoolean();
+		hasJumped = saved.get("hasJumped").asBoolean();
+		wasProne = saved.get("wasProne").asBoolean();
+		forgone = saved.get("forgone").asBoolean();
+	}
+
 	// JSON serialization
 
 	public JsonObject toJsonValue() {

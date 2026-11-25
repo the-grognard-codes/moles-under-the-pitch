@@ -64,7 +64,9 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 import com.eclipsesource.json.JsonArray;
@@ -83,7 +85,16 @@ public final class SetupSession {
 	public static final String CHAT_RUNTIME = "ffb-3.4.0-bb2025-r5.3";
 	public static final String STAGED_RUNTIME = "ffb-3.4.0-bb2025-r5.4";
 	public static final int STAGED_RECOVERY_VERSION = 7;
+	private static final int COMPACT_SNAPSHOT_VERSION = 1;
+	private static final int COMPACT_SNAPSHOT_DEPTH = 96;
 	private final SetupStaging staging;
+	private final boolean compact;
+	private int lastCapturedCommand;
+	private CompactMatchWrite.Capture compactCapture;
+	private CompactMatchWrite.History compactHistory;
+	private JsonObject unfinishedMovement;
+	private boolean compactWriting;
+	private boolean released;
 	private boolean defaultSetup;
 	private boolean saveResume;
 	private boolean transcriptV2;
@@ -160,6 +171,12 @@ public final class SetupSession {
 
 	/** Compatibility overload for callers that selected chat support explicitly. */
 	public SetupSession(FantasyFootballServer server, MatchDocument document, long engineId, boolean recoverable, boolean defaultSetup, boolean saveResume, boolean transcriptV2, boolean routeV2, boolean chatV1) {
+		this(server, document, engineId, recoverable, defaultSetup, saveResume, transcriptV2, routeV2, chatV1, false);
+	}
+
+	private SetupSession(FantasyFootballServer server, MatchDocument document, long engineId, boolean recoverable,
+		boolean defaultSetup, boolean saveResume, boolean transcriptV2, boolean routeV2, boolean chatV1, boolean compact) {
+		this.compact = compact;
 		if (defaultSetup && !recoverable) throw new IllegalArgumentException("Default setup requires a versioned recovery lifetime");
 		if (saveResume && !recoverable) throw new IllegalArgumentException("Save/resume requires a versioned recovery lifetime");
 		if (transcriptV2 && !recoverable) throw new IllegalArgumentException("Transcript requires a versioned recovery lifetime");
@@ -170,7 +187,7 @@ public final class SetupSession {
 		this.transcriptV2 = recoverable;
 		this.routeV2 = recoverable;
 		this.chatV1 = recoverable;
-		if (recoverable) {
+		if (recoverable && !compact) {
 			transcript = new MatchTranscript();
 			chat = new MatchChat();
 		}
@@ -223,6 +240,12 @@ public final class SetupSession {
 		return new SetupSession(server, document, engineId, true, defaultSetup, saveResume);
 	}
 
+	/** Entry point for isolated compact storage tests. The live application still uses recoverable checkpoints. */
+	static SetupSession startCompact(FantasyFootballServer server, MatchDocument document, long engineId,
+		boolean defaultSetup, boolean saveResume) {
+		return new SetupSession(server, document, engineId, true, defaultSetup, saveResume, true, true, true, true);
+	}
+
 	private GameState newGameState(FantasyFootballServer server) {
 		return new GameState(server) {
 			@Override public boolean consumesDeclaredActions() { return SetupSession.this.routeV2; }
@@ -243,12 +266,31 @@ public final class SetupSession {
 	}
 
 	SetupSession(FantasyFootballServer server, MatchDocument document, RecoveryCheckpoint.Validated checkpoint) {
+		this(server, document, new JsonObject(checkpoint.payload()), false);
+	}
+
+	static SetupSession restoreCompactSnapshot(FantasyFootballServer server, String snapshot) {
+		JsonObject payload = new MatchJson().parse(snapshot, MAX_MATCH_ARTIFACT_BYTES, COMPACT_SNAPSHOT_DEPTH);
+		if (payload.getInt("snapshotVersion", -1) != COMPACT_SNAPSHOT_VERSION)
+			throw new IllegalArgumentException("Unsupported compact snapshot version");
+		MatchDocument document = new MatchJson().readFrozenMatch(payload.get("matchId").asString(), payload.get("frozen").asObject());
+		return new SetupSession(server, document, payload, true);
+	}
+
+	private static JsonValue takeSnapshotField(JsonObject snapshot, String field) {
+		JsonValue value = snapshot.get(field);
+		if (value == null) throw new IllegalArgumentException("Missing compact snapshot field " + field);
+		snapshot.remove(field);
+		return value;
+	}
+
+	private SetupSession(FantasyFootballServer server, MatchDocument document, JsonObject payload, boolean compact) {
+		this.compact = compact;
 		this.document = document;
 		computerMember = new ComputerOpponentService(null).member(document);
 		matchId = document.matchId;
 		state = newGameState(server);
 		try {
-			JsonObject payload = new JsonObject(checkpoint.payload());
 			JsonValue savedAnnouncements = payload.get("matchAnnouncements");
 			if (savedAnnouncements != null) payload.remove("matchAnnouncements");
 			JsonValue savedBlockPresentation = payload.get("blockPresentation");
@@ -292,11 +334,27 @@ public final class SetupSession {
                     if (!ids.add(id.asString())) throw new IllegalArgumentException("Duplicate kickoff participant");
                 payload.remove("confirmedKickoff");
             }
-			String[] base = { "recoveryVersion", "runtimeVersion", "engineVersion", "replayVersion", "matchId", "frozen",
+			JsonValue savedMovement = null, savedSkillPolicy = null, savedDrive = null, savedDecisionLimit = null;
+			if (compact) {
+				payload.remove("snapshotVersion");
+				lastCapturedCommand = takeSnapshotField(payload, "lastCapturedCommand").asInt();
+				compactHistory = new CompactMatchWrite.History(takeSnapshotField(payload, "historyBoundary").asObject());
+				savedMovement = takeSnapshotField(payload, "unfinishedMovement");
+				savedSkillPolicy = takeSnapshotField(payload, "skillPolicy");
+				savedDrive = takeSnapshotField(payload, "driveTracker");
+				savedDecisionLimit = takeSnapshotField(payload, "decisionLimit");
+				if (payload.get("native").asObject().get("gameLog") != null || savedAnnouncements == null
+					|| savedBlockPresentation == null || reactionVersion == null || activationVersion == null)
+					throw new IllegalArgumentException("Invalid compact continuation");
+			}
+			String[] base = compact
+				? new String[] { "matchId", "frozen", "revision", "drive", "failed", "native", "dice", "testRolls",
+					"turnTimeStarted", "lastCommandNr", "kickoffSelection", "saveResumeEnabled", "saveResume", "pendingRoute", "clock" }
+				: new String[] { "recoveryVersion", "runtimeVersion", "engineVersion", "replayVersion", "matchId", "frozen",
 				"revision", "drive", "failed", "native", "dice", "testRolls", "turnTimeStarted", "lastCommandNr", "history",
 				"kickoffSelection", "eventsJson", "pendingTerminal", "homeView", "awayView", "saveResumeEnabled", "transcript",
 				"saveResume", "pendingRoute", "chat" };
-			if (payload.get("clock") == null) exactRecovery(payload, base);
+			if (compact || payload.get("clock") == null) exactRecovery(payload, base);
 			else {
 				String[] withClock = java.util.Arrays.copyOf(base, base.length + 1);
 				withClock[base.length] = "clock";
@@ -304,20 +362,25 @@ public final class SetupSession {
 			}
 			if (!saveResume && !payload.get("saveResume").isNull())
 				throw new IllegalArgumentException("Unexpected save/resume state");
-			if (!matchId.equals(payload.getString("matchId", null)) || !ordered(frozen()).equals(payload.get("frozen")))
+			if (!matchId.equals(payload.getString("matchId", null)) || !ordered(frozen()).equals(compact ? ordered(payload.get("frozen")) : payload.get("frozen")))
 				throw new IllegalArgumentException("Recovery frozen inputs differ");
 			revision = payload.get("revision").asInt();
 			drive = payload.get("drive").asInt();
 			failed = payload.get("failed").asBoolean();
-			if (revision < 0 || drive < 1) throw new IllegalArgumentException("Invalid recovery counters");
+			if (revision < 0 || drive < 1 || compact && failed)
+				throw new IllegalArgumentException("Invalid recovery counters or status");
 			recoveryDice = new RecoveryDice(payload.get("dice").asObject());
 			state.getDiceRoller().setRecoveryRoll(recoveryDice::roll);
 			// Existing checkpoints may retain either iteration order for native sets.
 			JsonObject nativeSnapshot = new RecoveryNativeJson().normalize(payload.get("native").asObject());
 			state.initFrom(server.getFactorySource(), nativeSnapshot);
+			if (compact) state.restoreContinuation(nativeSnapshot.get("continuation").asObject());
 			if (savedBlockPresentation != null) blockPresentation.restore(savedBlockPresentation.asObject(), state.getGame());
 			if (savedAnnouncements != null) announcements.restore(savedAnnouncements.asObject());
-			if (savedReaction != null && !savedReaction.isNull()) reactiveDecision.restore(savedReaction.asObject());
+			if (savedReaction != null && !savedReaction.isNull()) {
+				if (compact) reactiveDecision.restoreSnapshot(savedReaction.asObject(), state);
+				else reactiveDecision.restore(savedReaction.asObject());
+			}
 			UtilSkillBehaviours.registerBehaviours(state.getGame(), server.getDebugLog());
 			state.setTurnTimeStarted(payload.get("turnTimeStarted").asLong());
 			if (payload.get("clock") != null) {
@@ -328,7 +391,11 @@ public final class SetupSession {
 				if (homeReserveUsedMs < 0 || awayReserveUsedMs < 0 || homeReserveUsedMs > RESERVE_ALLOWANCE_MS
 					|| awayReserveUsedMs > RESERVE_ALLOWANCE_MS) throw new IllegalArgumentException("Invalid clock bank");
 			}
-			state.initCommandNrGenerator(payload.get("lastCommandNr").asLong());
+			long lastCommand = payload.get("lastCommandNr").asLong();
+			if (compact && (lastCommand < lastCapturedCommand || lastCommand > Integer.MAX_VALUE
+				|| lastCapturedCommand < 0 || compactHistory.recordCount() != revision + 1))
+				throw new IllegalArgumentException("Invalid compact command or record boundary");
+			state.initCommandNrGenerator(lastCommand);
 			for (JsonObject.Member queue : payload.get("testRolls").asObject()) {
 				java.util.ArrayList<com.fumbbl.ffb.DiceCategory> rolls = new java.util.ArrayList<>();
 				for (JsonValue roll : queue.getValue().asArray()) {
@@ -338,41 +405,21 @@ public final class SetupSession {
 				}
 				state.getDiceRoller().getTestRolls().put(queue.getName(), rolls);
 			}
-			for (JsonValue item : payload.get("history").asArray()) {
-				JsonObject entry = item.asObject();
-				if (entry.get("setupErrors") == null) exactRecovery(entry, "key", "fingerprint", "code");
-				else exactRecovery(entry, "key", "fingerprint", "code", "setupErrors");
-				if (!(entry.get("key").asString().matches("(home|away)\\n[A-Za-z0-9_-]{1,100}")
-					|| entry.get("key").asString().matches("system\\nserver-size-limit-[0-9]+-[0-9]+")
-						&& entry.getString("fingerprint", "").equals(canonical(new JsonObject().add("operation", "sizeLimit").add("reason", MatchStopReason.MATCH_SIZE_LIMIT.name()))))
-					|| !("ACCEPTED".equals(entry.getString("code", null)) || "ILLEGAL_SETUP".equals(entry.getString("code", null))))
-					throw new IllegalArgumentException("Invalid recovery request history");
-				JsonArray setupErrors = entry.get("setupErrors") == null ? null : entry.get("setupErrors").asArray();
-				if (setupErrors != null && (!"ILLEGAL_SETUP".equals(entry.getString("code", null)) || setupErrors.size() > 16))
-					throw new IllegalArgumentException("Invalid setup diagnostics");
-				if (setupErrors != null) for (JsonValue error : setupErrors) if (!error.isString() || error.asString().length() > 500)
-					throw new IllegalArgumentException("Invalid setup diagnostic");
-				if (history.put(entry.get("key").asString(), new Record(entry.get("fingerprint").asString(), entry.get("code").asString(), setupErrors)) != null)
-					throw new IllegalArgumentException("Duplicate recovery history");
-			}
-			endedForSizeLimit = isComplete() && history.values().stream().anyMatch(record -> record.fingerprint.equals(
-				canonical(new JsonObject().add("operation", "sizeLimit").add("reason", MatchStopReason.MATCH_SIZE_LIMIT.name()))));
-			if (history.size() > 8192) throw new IllegalArgumentException("Recovery history limit");
 			for (JsonValue selection : payload.get("kickoffSelection").asArray()) kickoffSelection.add(selection.asString());
-			JsonArray replayEvents = JsonArray.readFrom(payload.get("eventsJson").asString());
-			for (JsonValue event : replayEvents) freezeEvent(event);
-			restoreDecisionLimit(replayEvents);
-			if (replayBytes > MAX_MATCH_ARTIFACT_BYTES || events.size() != revision + 1
-				|| payload.get("pendingTerminal").asBoolean() != isComplete()) throw new IllegalArgumentException("Recovery event boundary");
 			if (saveResume) saveResumeState = new SaveResumeState(payload.get("saveResume").asObject());
-			JsonObject savedTranscript = payload.get("transcript").asObject();
-			transcript = new MatchTranscript(savedTranscript);
-			if (transcript.size() != revision + 1 || transcript.nativeCursor() > state.getLastCommandNr())
-				throw new IllegalArgumentException("Transcript checkpoint boundary");
-			new DriveTrackerTranscriptRestore().restore(driveTracker, savedTranscript.get("records").asArray());
-			chat = new MatchChat(payload.get("chat").asObject());
-			if (artifactBytes() > MAX_MATCH_ARTIFACT_BYTES - MATCH_ARTIFACT_RESERVE_BYTES)
-				throw new IllegalArgumentException("Recovery match artifact limit");
+			if (compact) {
+				decisionLimit.restoreSnapshot(savedDecisionLimit.asObject());
+				DriveTrackerPresentation.Summary summary = new DriveTrackerPresentation.Summary(savedDrive.asObject());
+				if (summary.drive() != drive) throw new IllegalArgumentException("Invalid compact drive");
+				driveTracker.restoreSummary(summary);
+				state.getOptionalSkillUse().restore(savedSkillPolicy);
+				if (!savedMovement.isNull()) {
+					unfinishedMovement = savedMovement.asObject();
+					if (unfinishedMovement.get("complete").asBoolean()
+						|| state.getGame().getPlayerById(unfinishedMovement.get("playerId").asString()) == null)
+						throw new IllegalArgumentException("Invalid unfinished movement");
+				}
+			} else restoreLegacyHistory(payload);
 			if (!payload.get("pendingRoute").isNull())
 				pendingRoute = new PendingRoute(payload.get("pendingRoute").asObject());
 			if (savedActivation != null) pendingActivation = new PendingActivation(savedActivation.asObject(), state.getGame());
@@ -388,6 +435,11 @@ public final class SetupSession {
 					throw new IllegalArgumentException("Pending route does not match native state");
 			}
 			assertSupported();
+			if (compact) {
+				if (!ordered(compactNative()).equals(payload.get("native")))
+					throw new IllegalArgumentException("Compact native state did not round-trip");
+				return;
+			}
 			if (!ordered(recoveryNative()).equals(payload.get("native"))) throw new IllegalArgumentException("Native state did not round-trip");
 			state.getGameLog().restoreRecoveryJson(payload.get("native").asObject().get("gameLog").asObject());
 			// Validate old checkpoints using their original action projection before offering the new flow.
@@ -400,7 +452,113 @@ public final class SetupSession {
 			reactiveSequencing = true;
 			refreshReaction(System.currentTimeMillis());
 		} catch (MatchService.Failure failure) { throw failure; }
-		catch (RuntimeException invalid) { throw new MatchService.Failure("RECOVERY_CORRUPT"); }
+		catch (RuntimeException invalid) {
+			if (compact) throw new IllegalArgumentException("Invalid compact match snapshot", invalid);
+			throw new MatchService.Failure("RECOVERY_CORRUPT");
+		}
+	}
+
+	private void restoreLegacyHistory(JsonObject payload) {
+		for (JsonValue item : payload.get("history").asArray()) {
+			JsonObject entry = item.asObject();
+			if (entry.get("setupErrors") == null) exactRecovery(entry, "key", "fingerprint", "code");
+			else exactRecovery(entry, "key", "fingerprint", "code", "setupErrors");
+			if (!(entry.get("key").asString().matches("(home|away)\\n[A-Za-z0-9_-]{1,100}")
+				|| entry.get("key").asString().matches("system\\nserver-size-limit-[0-9]+-[0-9]+")
+					&& entry.getString("fingerprint", "").equals(canonical(new JsonObject().add("operation", "sizeLimit").add("reason", MatchStopReason.MATCH_SIZE_LIMIT.name()))))
+				|| !("ACCEPTED".equals(entry.getString("code", null)) || "ILLEGAL_SETUP".equals(entry.getString("code", null))))
+				throw new IllegalArgumentException("Invalid recovery request history");
+			JsonArray setupErrors = entry.get("setupErrors") == null ? null : entry.get("setupErrors").asArray();
+			if (setupErrors != null && (!"ILLEGAL_SETUP".equals(entry.getString("code", null)) || setupErrors.size() > 16))
+				throw new IllegalArgumentException("Invalid setup diagnostics");
+			if (setupErrors != null) for (JsonValue error : setupErrors) if (!error.isString() || error.asString().length() > 500)
+				throw new IllegalArgumentException("Invalid setup diagnostic");
+			if (history.put(entry.get("key").asString(), new Record(entry.get("fingerprint").asString(), entry.get("code").asString(), setupErrors)) != null)
+				throw new IllegalArgumentException("Duplicate recovery history");
+		}
+		endedForSizeLimit = isComplete() && history.values().stream().anyMatch(record -> record.fingerprint.equals(
+			canonical(new JsonObject().add("operation", "sizeLimit").add("reason", MatchStopReason.MATCH_SIZE_LIMIT.name()))));
+		if (history.size() > 8192) throw new IllegalArgumentException("Recovery history limit");
+		JsonArray replayEvents = JsonArray.readFrom(payload.get("eventsJson").asString());
+		for (JsonValue event : replayEvents) freezeEvent(event);
+		restoreDecisionLimit(replayEvents);
+		if (replayBytes > MAX_MATCH_ARTIFACT_BYTES || events.size() != revision + 1
+			|| payload.get("pendingTerminal").asBoolean() != isComplete()) throw new IllegalArgumentException("Recovery event boundary");
+		JsonObject savedTranscript = payload.get("transcript").asObject();
+		transcript = new MatchTranscript(savedTranscript);
+		if (transcript.size() != revision + 1 || transcript.nativeCursor() > state.getLastCommandNr())
+			throw new IllegalArgumentException("Transcript checkpoint boundary");
+		new DriveTrackerTranscriptRestore().restore(driveTracker, savedTranscript.get("records").asArray());
+		chat = new MatchChat(payload.get("chat").asObject());
+		if (artifactBytes() > MAX_MATCH_ARTIFACT_BYTES - MATCH_ARTIFACT_RESERVE_BYTES)
+			throw new IllegalArgumentException("Recovery match artifact limit");
+	}
+
+	CompactMatchWrite.Capture compactCapture() {
+		requireCompactSession();
+		return compactCapture;
+	}
+
+	CompactMatchWrite.History compactHistory() {
+		requireCompactSession();
+		return compactHistory;
+	}
+
+	/** The owner must evict this session if the writer cannot confirm the commit. */
+	CompactMatchWrite.Result writeCompactSnapshot(CompactMatchWrite.History boundary,
+		Function<CompactMatchWrite, CompactMatchWrite.Result> write, Runnable release) {
+		requireCompactSession();
+		Objects.requireNonNull(write);
+		Objects.requireNonNull(release);
+		if (compactWriting || failed || boundary.recordCount() != revision + 1
+			|| compactHistory != null && (boundary.chatCount() < compactHistory.chatCount()
+				|| compactCapture == null && !compactHistory.digest().equals(boundary.digest()))
+			|| state.getGameLog().findMaxCommandNr() > lastCapturedCommand)
+			throw new IllegalStateException("Invalid compact snapshot write boundary");
+		compactWriting = true;
+		boolean durable = false;
+		try {
+			CompactMatchWrite candidate = new CompactMatchWrite(compactSnapshot(boundary), compactCapture);
+			CompactMatchWrite.Result result = Objects.requireNonNull(write.apply(candidate));
+			if (result == CompactMatchWrite.Result.DURABLE) {
+				state.getGameLog().discardCapturedCommands(lastCapturedCommand);
+				compactHistory = boundary;
+				compactCapture = null;
+				durable = true;
+			}
+			return result;
+		} finally {
+			compactWriting = false;
+			if (!durable) {
+				released = true;
+				release.run();
+			}
+		}
+	}
+
+	private void requireCompactSession() {
+		if (!compact || released) throw new IllegalStateException("Compact session unavailable");
+	}
+
+	private void requireCommittedCompactState() {
+		if (compact && (released || compactWriting || compactCapture != null))
+			throw new IllegalStateException("Compact session must commit before accepting another decision");
+	}
+
+	private String compactSnapshot(CompactMatchWrite.History boundary) {
+		JsonArray selections = new JsonArray();
+		kickoffSelection.forEach(selections::add);
+		JsonObject payload = new JsonObject().add("snapshotVersion", COMPACT_SNAPSHOT_VERSION)
+			.add("matchId", matchId).add("frozen", frozen()).add("revision", revision).add("drive", drive).add("failed", failed)
+			.add("native", compactNative()).add("dice", recoveryDice.snapshot()).add("testRolls", testRolls())
+			.add("turnTimeStarted", state.getTurnTimeStarted()).add("lastCommandNr", state.getLastCommandNr())
+			.add("lastCapturedCommand", lastCapturedCommand).add("kickoffSelection", selections)
+			.add("decisionLimit", decisionLimit.snapshot()).add("driveTracker", driveTracker.exportSummary().json())
+			.add("unfinishedMovement", unfinishedMovement == null ? JsonValue.NULL : unfinishedMovement)
+			.add("skillPolicy", state.getOptionalSkillUse().snapshot()).add("historyBoundary", boundary.json());
+		addContinuationFields(payload, null);
+		return new CanonicalJson().encode(payload, MAX_MATCH_ARTIFACT_BYTES, COMPACT_SNAPSHOT_DEPTH,
+			() -> new IllegalArgumentException("Compact snapshot exceeds encoding limits"));
 	}
 
 	public String recoveryArtifact() {
@@ -410,6 +568,7 @@ public final class SetupSession {
 
 	/** End an exhibition at its current score, without attributing a concession to either coach. */
 	void endForSizeLimit(long now) {
+		if (compact) throw new IllegalStateException("Legacy size limit is unavailable to compact sessions");
 		if (isComplete()) return;
 		if (staging != null) staging.finish(SetupStaging.StageEnd.DISCARD);
 		String role = "system";
@@ -486,7 +645,7 @@ public final class SetupSession {
 	}
 
 	private JsonObject recoveryPayload(int[] from) {
-		if (recoveryDice == null) throw new IllegalStateException("Legacy lifetime cannot be upgraded");
+		if (recoveryDice == null || compact) throw new IllegalStateException("Session has no legacy checkpoint");
 		JsonArray requests = new JsonArray(), selections = new JsonArray();
 		int requestIndex = 0;
 		for (Map.Entry<String, Record> item : history.entrySet()) {
@@ -494,32 +653,44 @@ public final class SetupSession {
 			requests.add(recoveryRequest(item.getKey(), item.getValue()));
 		}
 		kickoffSelection.forEach(selections::add);
+		JsonObject payload = new JsonObject().add("recoveryVersion", STAGED_RECOVERY_VERSION)
+			.add("runtimeVersion", STAGED_RUNTIME).add("engineVersion", "ffb-3.4.0-bb2025-m3d.1").add("replayVersion", 2).add("matchId", matchId)
+			.add("frozen", frozen()).add("revision", revision).add("drive", drive).add("failed", failed)
+			.add("native", recoveryNative(from == null ? -1 : from[2])).add("dice", recoveryDice.snapshot()).add("testRolls", testRolls())
+			.add("turnTimeStarted", state.getTurnTimeStarted()).add("lastCommandNr", state.getLastCommandNr()).add("history", requests).add("kickoffSelection", selections)
+			.add("eventsJson", recoveryEvents(from == null ? 0 : from[1])).add("pendingTerminal", isComplete()).add("homeView", view("home")).add("awayView", view("away"));
+		addContinuationFields(payload, from);
+		return payload;
+	}
+
+	private JsonObject testRolls() {
 		JsonObject rolls = new JsonObject();
 		state.getDiceRoller().getTestRolls().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
 			JsonArray queue = new JsonArray(); entry.getValue().forEach(roll -> queue.add(roll.testRoll())); rolls.add(entry.getKey(), queue);
 		});
-		JsonObject payload = new JsonObject().add("recoveryVersion", STAGED_RECOVERY_VERSION)
-			.add("runtimeVersion", STAGED_RUNTIME).add("engineVersion", "ffb-3.4.0-bb2025-m3d.1").add("replayVersion", 2).add("matchId", matchId)
-			.add("frozen", frozen()).add("revision", revision).add("drive", drive).add("failed", failed)
-			.add("native", recoveryNative(from == null ? -1 : from[2])).add("dice", recoveryDice.snapshot()).add("testRolls", rolls)
-			.add("turnTimeStarted", state.getTurnTimeStarted()).add("lastCommandNr", state.getLastCommandNr()).add("history", requests).add("kickoffSelection", selections)
-			.add("eventsJson", recoveryEvents(from == null ? 0 : from[1])).add("pendingTerminal", isComplete()).add("homeView", view("home")).add("awayView", view("away"));
+		return rolls;
+	}
+
+	private void addContinuationFields(JsonObject payload, int[] from) {
 		if (staging != null && !defaultSetup) payload.add("defaultSetupEnabled", false);
 		if (confirmedKickoff != null) payload.add("confirmedKickoff", confirmedKickoff);
 		if (reactiveDecision.pending()) payload.add("reactiveDecision", reactiveDecision.checkpoint());
 		payload.add("reactionVersion", 1);
 		payload.add("blockPresentation", blockPresentation.checkpoint());
 		payload.add("matchAnnouncements", announcements.checkpoint());
-		if (transcriptV2) payload.add("saveResumeEnabled", saveResume).add("transcript", transcript.jsonFrom(from == null ? 0 : from[3]))
-			.add("saveResume", saveResume ? saveResumeState.json() : JsonValue.NULL);
-		else if (saveResume) payload.add("saveResume", saveResumeState.json());
+		if (transcriptV2) {
+			payload.add("saveResumeEnabled", saveResume);
+			if (!compact) payload.add("transcript", transcript.jsonFrom(from == null ? 0 : from[3]));
+			payload.add("saveResume", saveResume ? saveResumeState.json() : JsonValue.NULL);
+		} else if (saveResume) payload.add("saveResume", saveResumeState.json());
 		if (routeV2) payload.add("pendingRoute", pendingRoute == null ? JsonValue.NULL : pendingRoute.json());
 		if (routeV2) payload.add("activationVersion", 1);
 		if (pendingActivation != null) payload.add("pendingActivation", pendingActivation.json());
-		if (chatV1) payload.add("chat", chat.json()).add("clock", new JsonObject()
-			.add("homeUsedMs", homeReserveUsedMs).add("awayUsedMs", awayReserveUsedMs));
+		if (chatV1) {
+			if (!compact) payload.add("chat", chat.json());
+			payload.add("clock", new JsonObject().add("homeUsedMs", homeReserveUsedMs).add("awayUsedMs", awayReserveUsedMs));
+		}
 		if (computerPolicy != null) payload.add("computerMemory", computerPolicy.json());
-		return payload;
 	}
 
 	private String recoveryEvents(int from) {
@@ -570,8 +741,15 @@ public final class SetupSession {
 	}
 
 	private JsonObject recoveryNative(int commandFrom) {
+		return nativeWithoutLog().add("gameLog", state.getGameLog().recoveryJsonFrom(Math.max(0, commandFrom)));
+	}
+
+	private JsonObject compactNative() {
+		return nativeWithoutLog().add("continuation", state.continuationJson());
+	}
+
+	private JsonObject nativeWithoutLog() {
 		JsonObject snapshot = state.toJsonValue(false, 0);
-		snapshot.add("gameLog", state.getGameLog().recoveryJsonFrom(Math.max(0, commandFrom)));
 		// Native initFrom maps absent distance to zero. Before kickoff execution this value
 		// is always overwritten by the scatter roll; normalize only this versioned boundary.
 		for (JsonValue step : snapshot.get("stepStack").asObject().get("steps").asArray()) normalizeRecoveryStep(step.asObject());
@@ -700,6 +878,7 @@ public final class SetupSession {
 
 	/** The save protocol performs no engine command and consumes no dice. */
 	public JsonObject saveResume(String role, JsonObject request, long now) {
+		requireCommittedCompactState();
 		if (!saveResume) throw new MatchService.Failure("SAVE_RESUME_UNAVAILABLE");
 		String id = request.getString("requestId", null);
 		String key = role + "\n" + id;
@@ -818,7 +997,12 @@ public final class SetupSession {
 	}
 
 	JsonObject apply(String role, JsonObject request, long decisionTime) {
-		if (!expiringReaction) expireReactiveDecision(decisionTime);
+		requireCommittedCompactState();
+		if (!expiringReaction) {
+			// An expired compact reaction has its own revision and must be written before new coach input.
+			if (compact && reactiveDecisionDue(decisionTime)) throw new MatchService.Failure("STALE_REVISION");
+			if (!compact) expireReactiveDecision(decisionTime);
+		}
 		String id = request.getString("requestId", null);
 		String key = role + "\n" + id;
 		String fingerprint = canonical(request);
@@ -855,7 +1039,7 @@ public final class SetupSession {
         JsonObject logPresentation = new JsonObject().add("version", 1).add("action", JsonValue.NULL).add("movement", JsonValue.NULL);
         JsonObject acceptedDecision = JsonObject.readFrom(request.toString()).add("logPresentation", logPresentation);
         acceptedDecision.remove("computerDecision"); // Keep private plans out of public transcripts; fingerprint retains them.
-        JsonObject movement = transcriptV2 ? transcript.pendingMovement() : null;
+        JsonObject movement = compact ? unfinishedMovement : transcriptV2 ? transcript.pendingMovement() : null;
         if (movement == null && pendingRoute != null)
             movement = narrative.movement(pendingRoute.declaredRevision, pendingRoute.playerId, pendingRoute.origin);
 		if ("concede".equals(operation)) {
@@ -913,7 +1097,7 @@ public final class SetupSession {
                 String player = selected.id.substring("event-pick:".length());
                 if (!kickoffSelection.remove(player)) kickoffSelection.add(player);
                 revision++;
-                history.put(key, new Record(fingerprint, "ACCEPTED"));
+                if (!compact) history.put(key, new Record(fingerprint, "ACCEPTED"));
 				endRunawayPeriod(decisionTime);
                 recordEvent(DecisionLimit.SELECTION, role, acceptedDecision, rollPresentation);
                 return reply(id, "ACCEPTED", false, role);
@@ -1019,7 +1203,7 @@ public final class SetupSession {
 			assertSupported();
 			revision++;
 			refreshReaction(decisionTime);
-			history.put(key, new Record(fingerprint, "ACCEPTED"));
+			if (!compact) history.put(key, new Record(fingerprint, "ACCEPTED"));
 			boolean newHalf = oldHalf > 0 && game.getHalf() != oldHalf;
 			boolean touchdown = homeScore() + awayScore() != oldScore;
 			if (!isComplete() && (newHalf || touchdown)) drive++;
@@ -1070,7 +1254,7 @@ public final class SetupSession {
 		if (mechanic().checkSetup(state, game.isHomePlaying(), swarmers)) return null;
 		JsonArray errors = setupErrors(game.getDialogParameter());
 		game.setDialogParameter(previous);
-		history.put(key, new Record(fingerprint, "ILLEGAL_SETUP", errors));
+		if (!compact) history.put(key, new Record(fingerprint, "ILLEGAL_SETUP", errors));
 		return reply(id, "ILLEGAL_SETUP", false, role, errors);
 	}
 
@@ -1182,6 +1366,7 @@ public final class SetupSession {
 	}
 
 	private JsonObject view(String role, boolean live, Supplier<List<JsonObject>> pendingOutcomes) {
+		if (released) throw new IllegalStateException("Compact session unavailable");
 		Game game = state.getGame();
         KickoffAdjustmentBudget budget = new KickoffBudgetLookup().find(state);
 		JsonArray players = new JsonArray();
@@ -1509,6 +1694,7 @@ public final class SetupSession {
 
 	/** Executed only on the communication worker, using the same command and checkpoint path as coach input. */
 	public boolean expireReactiveDecision(long now) {
+		requireCommittedCompactState();
 		if (failed || isComplete() || saveResume && (saveResumeState.suspended() || saveResumeState.abandoned)) return false;
 		refreshReaction(isComputerMatch() && reactiveDecision.due(now) ? reactiveDecision.expiresAt() : now);
 		if (!reactiveDecision.due(now)) return false;
@@ -1587,6 +1773,7 @@ public final class SetupSession {
     private void recordEvent(String kind, String role, JsonValue decision) { recordEvent(kind, role, decision, null); }
 
     private NativeOutcomeCapture.Capture captureNativeOutcomes(NativeRollPresentation rollPresentation) {
+        if (compact) return new NativeOutcomeCapture().since(state.getGameLog(), lastCapturedCommand, rollPresentation);
         return transcript == null ? new NativeOutcomeCapture.Capture(0, List.of())
             : new NativeOutcomeCapture().since(state.getGameLog(), transcript.nativeCursor(), rollPresentation);
     }
@@ -1600,28 +1787,34 @@ public final class SetupSession {
             reactiveDecision.pending() ? reactiveDecision.normalHome() : state.getGame().isHomePlaying());
         snapshot.remove("movementForecast"); // Available actions are absent from frozen replay snapshots.
         snapshot.remove("blockPreview"); // Proposals are never part of recorded replay presentation.
-        JsonObject event = new JsonObject().add("revision", revision).add("kind", kind).add("state", snapshot);
-        freezeEvent(event);
+        if (!compact) freezeEvent(new JsonObject().add("revision", revision).add("kind", kind).add("state", snapshot));
         decisionLimit.recorded(kind, snapshot);
-        if (transcript != null) {
+        if (compact || transcript != null) {
             announcements.decorate(capture.modelSyncs);
             JsonArray nativeOutcomes = new JsonArray();
             capture.modelSyncs.forEach(sync -> { blockPresentation.decorate(sync); nativeOutcomes.add(sync); });
-            JsonValue accepted = JsonValue.NULL;
-            if (decision.isObject()) {
-                JsonObject publicDecision = JsonObject.readFrom(decision.toString());
-                publicDecision.remove("computerDecision");
-                accepted = JsonObject.readFrom(canonical(publicDecision));
+            if (compact) {
+                if (compactCapture != null) throw new IllegalStateException("Previous compact decision is uncommitted");
+                unfinishedMovement = new AcceptedActionPresentation().unfinishedMovement(decision);
+                lastCapturedCommand = capture.lastCommandNr;
+                compactCapture = new CompactMatchWrite.Capture(revision, lastCapturedCommand, ordered(nativeOutcomes).toString());
+            } else {
+                JsonValue accepted = JsonValue.NULL;
+                if (decision.isObject()) {
+                    JsonObject publicDecision = JsonObject.readFrom(decision.toString());
+                    publicDecision.remove("computerDecision");
+                    accepted = JsonObject.readFrom(canonical(publicDecision));
+                }
+                transcript.append(revision, kind, role, Math.max(System.currentTimeMillis(), transcript.lastTime()), accepted,
+                    nativeOutcomes, snapshot, capture.lastCommandNr);
             }
-            transcript.append(revision, kind, role, Math.max(System.currentTimeMillis(), transcript.lastTime()), accepted,
-                nativeOutcomes, snapshot, capture.lastCommandNr);
             driveTracker.recorded(drive, snapshot.getString("phase", null), snapshot.getString("actor", null), capture.modelSyncs);
         }
         blockPresentation.recorded();
         announcements.recorded();
     }
 	public CompletedMatch completedMatch() {
-        if (!isComplete() || failed) throw new MatchService.Failure("NOT_COMPLETED");
+        if (compact || !isComplete() || failed) throw new MatchService.Failure("NOT_COMPLETED");
 		JsonObject result = new JsonObject().add("formatVersion", chatV1 ? 3 : transcriptV2 ? 2 : 1)
             .add("engineVersion", "ffb-3.4.0-bb2025-m3d.1").add("ruleset", document.home.team.ruleset)
             .add("catalogVersion", document.home.team.catalogVersion).add("presetId", document.home.team.presetId)
@@ -1633,21 +1826,22 @@ public final class SetupSession {
         return new CompletedMatch(result, document);
     }
 	public JsonObject transcriptPage(int from, int limit) {
-		if (!transcriptV2) throw new MatchService.Failure("REPLAY_UNSUPPORTED");
+		if (compact || !transcriptV2) throw new MatchService.Failure("REPLAY_UNSUPPORTED");
 		return transcript.page(from, limit);
 	}
 	public JsonObject chatPage(int from, int limit) {
-		if (!chatV1) throw new MatchService.Failure("CHAT_UNAVAILABLE");
+		if (compact || !chatV1) throw new MatchService.Failure("CHAT_UNAVAILABLE");
 		return chat.page(from, limit);
 	}
 	public MatchChat.Outcome sendChat(String accountId, String role, String requestId, String content, long now) {
-		if (!chatV1) throw new MatchService.Failure("CHAT_UNAVAILABLE");
+		if (compact || !chatV1) throw new MatchService.Failure("CHAT_UNAVAILABLE");
 		if (isComplete()) return chat.duplicate(accountId, requestId, content);
 		if (artifactBytes() > MAX_MATCH_ARTIFACT_BYTES - MATCH_ARTIFACT_RESERVE_BYTES)
 			throw new MatchService.Failure("REPLAY_LIMIT");
 		return chat.append(accountId, role, requestId, content, revision, now);
 	}
 	private long artifactBytes() {
+		if (compact) return 0;
 		long total = replayBytes;
 		if (transcriptV2) total += transcript.bytes();
 		if (chatV1) total += chat.json().toString().getBytes(StandardCharsets.UTF_8).length;

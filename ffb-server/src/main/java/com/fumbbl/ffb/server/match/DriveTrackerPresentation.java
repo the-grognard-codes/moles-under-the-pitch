@@ -20,6 +20,24 @@ final class DriveTrackerPresentation {
     record Summary(int drive, boolean setupSeen, String firstSetupActor, boolean secretWeapons, boolean knockouts,
         String event) {
         Summary(int drive) { this(drive, false, null, false, false, null); }
+
+        Summary(JsonObject saved) {
+            this(saved.get("drive").asInt(), saved.get("setupSeen").asBoolean(), nullable(saved, "firstSetupActor"),
+                saved.get("secretWeapons").asBoolean(), saved.get("knockouts").asBoolean(), nullable(saved, "event"));
+            if (saved.size() != 6 || drive < 1 || setupSeen != ("home".equals(firstSetupActor) || "away".equals(firstSetupActor))
+                || !setupSeen && firstSetupActor != null || event != null && !List.of("HIGH_KICK", "SOLID_DEFENCE", "QUICK_SNAP", "CHARGE").contains(event))
+                throw new IllegalArgumentException("Invalid drive tracker summary");
+        }
+
+        JsonObject json() {
+            return new JsonObject().add("drive", drive).add("setupSeen", setupSeen).add("firstSetupActor", firstSetupActor)
+                .add("secretWeapons", secretWeapons).add("knockouts", knockouts).add("event", event);
+        }
+
+        private static String nullable(JsonObject saved, String key) {
+            JsonValue value = saved.get(key);
+            return value.isNull() ? null : value.asString();
+        }
     }
 
     private Summary summary = new Summary(-1);

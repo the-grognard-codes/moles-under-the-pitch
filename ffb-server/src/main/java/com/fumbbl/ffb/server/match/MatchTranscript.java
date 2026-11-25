@@ -109,14 +109,6 @@ final class MatchTranscript {
         return unfinishedMovement == null ? null : JsonObject.readFrom(unfinishedMovement.toString());
     }
 
-    private JsonObject unfinishedMovement(JsonObject last) {
-        JsonValue decision = last.get("decision");
-        if (!decision.isObject() || decision.asObject().get("logPresentation") == null) return null;
-        JsonValue movement = decision.asObject().get("logPresentation").asObject().get("movement");
-        return movement.isObject() && !movement.asObject().getBoolean("complete", true)
-            ? JsonObject.readFrom(movement.toString()) : null;
-    }
-
     private void validateBlock(JsonObject sync, JsonObject state) {
         JsonValue context = sync.get("blockContext");
         if (context != null && !context.isNull()) new BlockHighlightJson().context(context.asObject(), state.get("players").asArray());
@@ -171,7 +163,7 @@ final class MatchTranscript {
         bytes += length;
         frozenBytes += new FrozenJsonSize().retainedBytes(json);
         lastRecordedAt = record.get("at").asLong();
-        unfinishedMovement = unfinishedMovement(record);
+        unfinishedMovement = new AcceptedActionPresentation().unfinishedMovement(record.get("decision"));
     }
 
     private static void exact(JsonObject object, String... fields) {
