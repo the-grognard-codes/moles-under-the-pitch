@@ -49,6 +49,7 @@ import com.fumbbl.ffb.server.net.ReceivedCommand;
 import com.fumbbl.ffb.server.skilluse.SkillUsePreferences;
 import com.fumbbl.ffb.server.step.KickoffAdjustmentBudget;
 import com.fumbbl.ffb.server.step.StepId;
+import com.fumbbl.ffb.server.step.bb2025.StepEndTurn;
 import com.fumbbl.ffb.server.step.generator.EndGame;
 import com.fumbbl.ffb.server.step.generator.SequenceGenerator;
 import com.fumbbl.ffb.server.step.generator.StartGame;
@@ -952,6 +953,7 @@ public final class SetupSession {
 		boolean normalHomePlaying = reactiveDecision.pending() ? reactiveDecision.normalHome() : oldHomePlaying;
 		long oldElapsed = oldTurnStarted > 0 ? Math.max(0L, System.currentTimeMillis() - oldTurnStarted) : game.getTurnTime();
 		int oldScore = homeScore() + awayScore();
+		boolean resumingScoringCleanup = awaitingStarOfTheShowAfterTouchdown();
 		StepId oldStep = step();
 		String oldActor = actor();
 		try {
@@ -1022,12 +1024,14 @@ public final class SetupSession {
 			history.put(key, new Record(fingerprint, "ACCEPTED"));
 			boolean newHalf = oldHalf > 0 && game.getHalf() != oldHalf;
 			boolean touchdown = homeScore() + awayScore() != oldScore;
-			if (!isComplete() && (newHalf || touchdown)) drive++;
+			// A scoring update can pause for Star of the Show before the drive transition.
+			boolean startsNextDrive = (newHalf || touchdown || resumingScoringCleanup) && !awaitingStarOfTheShowAfterTouchdown();
+			if (!isComplete() && startsNextDrive) drive++;
 			if (defaultSetup && step() == StepId.SETUP && (oldStep != StepId.SETUP || !oldActor.equals(actor())))
 				deployDefaultSetup();
             JsonObject progress = narrative.finishMovement(game, movement, pendingRoute != null);
             logPresentation.set("movement", progress == null ? JsonValue.NULL : progress);
-            if (!isComplete() && !newHalf && !touchdown) endRunawayPeriod(decisionTime);
+			if (!isComplete() && !startsNextDrive && !touchdown) endRunawayPeriod(decisionTime);
 			recordEvent(isComplete() ? "FULL_TIME" : newHalf ? "HALFTIME" : touchdown ? "TOUCHDOWN" : DecisionLimit.ACTION, role, acceptedDecision, rollPresentation);
 			return reply(id, "ACCEPTED", false, role);
 		} catch (RuntimeException failure) {
@@ -1532,6 +1536,10 @@ public final class SetupSession {
 	}
 
     public boolean isComplete() { return state.getGame().getFinished() != null; }
+    private boolean awaitingStarOfTheShowAfterTouchdown() {
+        return state.getCurrentStep() instanceof StepEndTurn endTurn
+            && endTurn.isAwaitingStarOfTheShowAfterTouchdown();
+    }
     private int homeScore() { return state.getGame().getGameResult().getTeamResultHome().getScore(); }
     private int awayScore() { return state.getGame().getGameResult().getTeamResultAway().getScore(); }
     /** One source for the guard and the period fields frozen in every public snapshot. */
@@ -1575,7 +1583,8 @@ public final class SetupSession {
         int halfBefore = game.getHalf(), scoreBefore = homeScore() + awayScore();
         new DecisionPeriodEnd().finish(state,
             reactiveDecision.pending() ? reactiveDecision.normalHome() : game.isHomePlaying(), periodMode);
-        if (!isComplete() && (halfBefore != game.getHalf() || scoreBefore != homeScore() + awayScore())) drive++;
+        if (!isComplete() && !awaitingStarOfTheShowAfterTouchdown()
+            && (halfBefore != game.getHalf() || scoreBefore != homeScore() + awayScore())) drive++;
         confirmedKickoff = null;
         if (defaultSetup && step() == StepId.SETUP) deployDefaultSetup();
         refreshReaction(decisionTime);

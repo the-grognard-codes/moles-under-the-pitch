@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Record and announce touchdowns before offering Star of the Show.
+
 - Keep block, blitz, pass and hand-off previews responsive late in matches by skipping the native game log when copying the engine for a preview.
 
 - Keep players, their shadows, selection squares and the ball aligned with the pitch while moving, panning and zooming in live matches and replays.
