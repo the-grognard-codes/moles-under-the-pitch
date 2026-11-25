@@ -65,6 +65,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
 import com.eclipsesource.json.JsonArray;
 import com.eclipsesource.json.JsonObject;
@@ -123,6 +124,7 @@ public final class SetupSession {
 	private final ReactiveDecision reactiveDecision = new ReactiveDecision();
 	private final CommittedBlockPresentation blockPresentation = new CommittedBlockPresentation();
 	private final MatchAnnouncementPresentation announcements = new MatchAnnouncementPresentation();
+	private final DriveTrackerPresentation driveTracker = new DriveTrackerPresentation();
 	private boolean expiringReaction;
 	private boolean reactiveSequencing = true;
 	private static final long TURN_ALLOWANCE_MS = 120_000L;
@@ -363,9 +365,11 @@ public final class SetupSession {
 			if (replayBytes > MAX_MATCH_ARTIFACT_BYTES || events.size() != revision + 1
 				|| payload.get("pendingTerminal").asBoolean() != isComplete()) throw new IllegalArgumentException("Recovery event boundary");
 			if (saveResume) saveResumeState = new SaveResumeState(payload.get("saveResume").asObject());
-			transcript = new MatchTranscript(payload.get("transcript").asObject());
+			JsonObject savedTranscript = payload.get("transcript").asObject();
+			transcript = new MatchTranscript(savedTranscript);
 			if (transcript.size() != revision + 1 || transcript.nativeCursor() > state.getLastCommandNr())
 				throw new IllegalArgumentException("Transcript checkpoint boundary");
+			new DriveTrackerTranscriptRestore().restore(driveTracker, savedTranscript.get("records").asArray());
 			chat = new MatchChat(payload.get("chat").asObject());
 			if (artifactBytes() > MAX_MATCH_ARTIFACT_BYTES - MATCH_ARTIFACT_RESERVE_BYTES)
 				throw new IllegalArgumentException("Recovery match artifact limit");
@@ -1174,6 +1178,10 @@ public final class SetupSession {
 	private JsonObject view(String role) { return view(role, false); }
 
 	private JsonObject view(String role, boolean live) {
+		return view(role, live, () -> captureNativeOutcomes(null).modelSyncs);
+	}
+
+	private JsonObject view(String role, boolean live, Supplier<List<JsonObject>> pendingOutcomes) {
 		Game game = state.getGame();
         KickoffAdjustmentBudget budget = new KickoffBudgetLookup().find(state);
 		JsonArray players = new JsonArray();
@@ -1286,8 +1294,8 @@ public final class SetupSession {
 		}
         JsonValue kickoff = period.get("kickoff");
 		if (kickoff != null && "PLAY".equals(projected.getString("phase", null))) projected.add("kickoff", kickoff);
-		JsonObject driveTracker = new DriveTrackerPresentation().project(state, transcript, drive, browsePhase());
-		if (driveTracker != null) projected.add("driveTracker", driveTracker);
+		JsonObject tracker = driveTracker.project(state, drive, browsePhase(), pendingOutcomes);
+		if (tracker != null) projected.add("driveTracker", tracker);
 		if (step() == StepId.SETUP && game.getTurnMode() == TurnMode.SETUP && role.equals(viewActor) && !savedFormations().isEmpty()) {
 			JsonArray formations = new JsonArray();
 			List<TeamFormations.Formation> group = savedFormations();
@@ -1578,8 +1586,15 @@ public final class SetupSession {
 
     private void recordEvent(String kind, String role, JsonValue decision) { recordEvent(kind, role, decision, null); }
 
+    private NativeOutcomeCapture.Capture captureNativeOutcomes(NativeRollPresentation rollPresentation) {
+        return transcript == null ? new NativeOutcomeCapture.Capture(0, List.of())
+            : new NativeOutcomeCapture().since(state.getGameLog(), transcript.nativeCursor(), rollPresentation);
+    }
+
     private void recordEvent(String kind, String role, JsonValue decision, NativeRollPresentation rollPresentation) {
-        JsonObject snapshot = view("home").set("actions", new JsonArray()).set("prompt", JsonValue.NULL);
+        NativeOutcomeCapture.Capture capture = captureNativeOutcomes(rollPresentation);
+        JsonObject snapshot = view("home", false, () -> capture.modelSyncs)
+            .set("actions", new JsonArray()).set("prompt", JsonValue.NULL);
         snapshot.remove("savedFormations");
         if (computerPolicy != null) computerPolicy.observe(snapshot,
             reactiveDecision.pending() ? reactiveDecision.normalHome() : state.getGame().isHomePlaying());
@@ -1588,8 +1603,7 @@ public final class SetupSession {
         JsonObject event = new JsonObject().add("revision", revision).add("kind", kind).add("state", snapshot);
         freezeEvent(event);
         decisionLimit.recorded(kind, snapshot);
-        if (transcriptV2) {
-            NativeOutcomeCapture.Capture capture = new NativeOutcomeCapture().since(state.getGameLog(), transcript.nativeCursor(), rollPresentation);
+        if (transcript != null) {
             announcements.decorate(capture.modelSyncs);
             JsonArray nativeOutcomes = new JsonArray();
             capture.modelSyncs.forEach(sync -> { blockPresentation.decorate(sync); nativeOutcomes.add(sync); });
@@ -1601,6 +1615,7 @@ public final class SetupSession {
             }
             transcript.append(revision, kind, role, Math.max(System.currentTimeMillis(), transcript.lastTime()), accepted,
                 nativeOutcomes, snapshot, capture.lastCommandNr);
+            driveTracker.recorded(drive, snapshot.getString("phase", null), snapshot.getString("actor", null), capture.modelSyncs);
         }
         blockPresentation.recorded();
         announcements.recorded();
