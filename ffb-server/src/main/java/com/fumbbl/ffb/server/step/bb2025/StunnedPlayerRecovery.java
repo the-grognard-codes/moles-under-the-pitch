@@ -4,6 +4,7 @@ import com.fumbbl.ffb.PlayerState;
 import com.fumbbl.ffb.model.FieldModel;
 import com.fumbbl.ffb.model.Game;
 import com.fumbbl.ffb.model.Player;
+import com.fumbbl.ffb.model.Team;
 
 /** BB2025 recovery at the end of the owning team's missed turn. */
 public class StunnedPlayerRecovery {
@@ -17,9 +18,9 @@ public class StunnedPlayerRecovery {
 		}
 	}
 
-	public void endTurn(Game game) {
+	public void endTurn(Game game, Team endingTeam) {
 		FieldModel field = game.getFieldModel();
-		for (Player<?> player : game.getActingTeam().getPlayers()) {
+		for (Player<?> player : endingTeam.getPlayers()) {
 			PlayerState state = field.getPlayerState(player);
 			if (state.getBase() == PlayerState.STUNNED && state.isStunRecoveryPending()) {
 				field.setPlayerState(player, state.changeBase(PlayerState.PRONE).changeActive(false));

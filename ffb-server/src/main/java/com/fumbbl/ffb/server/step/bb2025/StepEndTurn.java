@@ -38,6 +38,7 @@ import com.fumbbl.ffb.model.InducementSet;
 import com.fumbbl.ffb.model.Player;
 import com.fumbbl.ffb.model.PlayerResult;
 import com.fumbbl.ffb.model.Team;
+import com.fumbbl.ffb.model.TeamResult;
 import com.fumbbl.ffb.model.TurnData;
 import com.fumbbl.ffb.model.ZappedPlayer;
 import com.fumbbl.ffb.model.property.NamedProperties;
@@ -116,6 +117,8 @@ public class StepEndTurn extends AbstractStep {
 	private Boolean fArgueTheCallChoiceHome;
 	private Boolean fArgueTheCallChoiceAway;
 	private Boolean useStarOfTheShow;
+	// Present only between scoring and the drive transition. Off-turn scores have already switched the acting team.
+	private Boolean touchdownTurnEndingHome;
 	private boolean fNextSequencePushed;
 	private boolean fRemoveUsedSecretWeapons;
 	private boolean fNewHalf;
@@ -137,6 +140,14 @@ public class StepEndTurn extends AbstractStep {
 
 	public StepId getId() {
 		return StepId.END_TURN;
+	}
+
+	/**
+	 * @return whether the ending team is home while a settled touchdown awaits the
+	 * Star of the Show response, or null when there is no such pending offer
+	 */
+	public Boolean getHomeTurnEndingBeforeStarOfTheShow() {
+		return useStarOfTheShow == null ? touchdownTurnEndingHome : null;
 	}
 
 	@Override
@@ -260,21 +271,23 @@ public class StepEndTurn extends AbstractStep {
 	private void executeStep() {
 
 		Game game = getGameState().getGame();
+		boolean isHomeTurnEnding = touchdownTurnEndingHome == null ? game.isHomePlaying() : touchdownTurnEndingHome;
+		Team endingTeam = isHomeTurnEnding ? game.getTeamHome() : game.getTeamAway();
+		TurnData endingTurnData = isHomeTurnEnding ? game.getTurnDataHome() : game.getTurnDataAway();
 		game.getFieldModel().clearMultiBlockTargets();
 		UtilServerDialog.hideDialog(getGameState());
 		getGameState().getPassState().reset();
 		if (game.getTurnMode() == TurnMode.REGULAR || game.getTurnMode() == TurnMode.BLITZ) {
-			getGameState().removeAdditionalAssist(game.getActingTeam().getId());
-			game.getTurnData().setCheeringFansBlockAssist(getGameState().getAdditionalAssist(game.getActingTeam().getId()));
+			getGameState().removeAdditionalAssist(endingTeam.getId());
+			endingTurnData.setCheeringFansBlockAssist(getGameState().getAdditionalAssist(endingTeam.getId()));
 			getGameState().resetStalling();
 		}
 
 		getGameState().resetShadowers();
 
-		boolean isHomeTurnEnding = game.isHomePlaying();
 		if (turnNr == 0) {
 			// work around as UtilServer#startHalf is currently called before weapons are removed, and we need these values for sendToBoxReason
-			turnNr = game.getTurnData().getTurnNr();
+			turnNr = endingTurnData.getTurnNr();
 			half = game.getHalf();
 		}
 
@@ -283,8 +296,6 @@ public class StepEndTurn extends AbstractStep {
 		EndGame endGenerator = (EndGame) factory.forName(SequenceGenerator.Type.EndGame.name());
 		MechanicsFactory mechanicsFactory = game.getFactory(FactoryType.Factory.MECHANIC);
 		StateMechanic stateMechanic = (StateMechanic) mechanicsFactory.forName(Mechanic.Type.STATE.name());
-
-		Player<?> touchdownPlayer = null;
 
 		if (!fWithinSecretWeaponHandling) {
 
@@ -300,71 +311,48 @@ public class StepEndTurn extends AbstractStep {
 				fTouchdown = UtilServerSteps.checkTouchdown(getGameState());
 			}
 
-			if (fTouchdown) {
-				touchdownPlayer = game.getFieldModel().getPlayer(game.getFieldModel().getBallCoordinate());
+			if (fTouchdown && !fNextSequencePushed) {
+				Player<?> touchdownPlayer;
+				if (touchdownTurnEndingHome == null) {
+					touchdownPlayer = game.getFieldModel().getPlayer(game.getFieldModel().getBallCoordinate());
+					applyTouchdown(game, touchdownPlayer);
+				} else {
+					touchdownPlayer = game.getPlayerById(touchdownPlayerId);
+				}
 				if (useStarOfTheShow == null) {
-					if (!UtilCards.hasUnusedSkillWithProperty(touchdownPlayer, NamedProperties.canGrantReRollAfterTouchdown)) {
-						useStarOfTheShow = false;
-					}
-					if (useStarOfTheShow == null) {
+					Optional<Skill> skill =
+						UtilCards.getUnusedSkillWithProperty(touchdownPlayer, NamedProperties.canGrantReRollAfterTouchdown);
+					if (skill.isPresent()) {
 						UtilServerDialog.showDialog(getGameState(),
-							new DialogSkillUseParameter(touchdownPlayer.getId(),
-								touchdownPlayer.getSkillWithProperty(NamedProperties.canGrantReRollAfterTouchdown),
-								0), false);
+							new DialogSkillUseParameter(touchdownPlayerId, skill.get(), 0), false);
 						getResult().setNextAction(StepAction.CONTINUE);
 						return;
 					}
+					useStarOfTheShow = false;
 				}
-			} else {
+			} else if (!fTouchdown) {
 				useStarOfTheShow = false;
 			}
 
-			markPlayedAndSecretWeapons();
+			markPlayedAndSecretWeapons(endingTeam);
 
 			fEndGame = false;
-			fNewHalf = UtilServerSteps.checkEndOfHalf(getGameState());
 
 			if (!fNextSequencePushed) {
 				if (game.getTurnMode() == TurnMode.REGULAR) {
-					new StunnedPlayerRecovery().endTurn(game);
+					new StunnedPlayerRecovery().endTurn(game, endingTeam);
 				}
 
 				fNextSequencePushed = true;
-				if (!fTouchdown) getGameState().observeTurnEnd(null, fNewHalf);
+				touchdownTurnEndingHome = null;
 
 				if (fTouchdown) {
-
-					boolean offTurnTouchDown;
-					if (touchdownPlayer != null) {
-
-						touchdownPlayerId = touchdownPlayer.getId();
-						GameResult gameResult = game.getGameResult();
-						PlayerResult touchdownPlayerResult = gameResult.getPlayerResult(touchdownPlayer);
-						touchdownPlayerResult.setTouchdowns(touchdownPlayerResult.getTouchdowns() + 1);
-
-						if (game.getTeamHome().hasPlayer(touchdownPlayer)) {
-							gameResult.getTeamResultHome().setScore(gameResult.getTeamResultHome().getScore() + 1);
-							offTurnTouchDown = !game.isHomePlaying();
-
-						} else {
-							gameResult.getTeamResultAway().setScore(gameResult.getTeamResultAway().getScore() + 1);
-							offTurnTouchDown = game.isHomePlaying();
-						}
-
-						game.setHomePlaying(game.getTeamHome().hasPlayer(touchdownPlayer));
-
-						if (offTurnTouchDown) {
-							game.getTurnData().setTurnNr(game.getTurnData().getTurnNr() + 1);
-							fNewHalf = UtilServerSteps.checkEndOfHalf(getGameState());
-						}
-
-					}
-
-					getGameState().observeTurnEnd(touchdownPlayer, fNewHalf);
 					game.setTurnMode(TurnMode.SETUP);
 					game.setSetupOffense(false);
 
 				} else {
+					fNewHalf = UtilServerSteps.checkEndOfHalf(getGameState());
+					getGameState().observeTurnEnd(null, fNewHalf);
 
 					switch (game.getTurnMode()) {
 						case KICKOFF:
@@ -558,9 +546,8 @@ public class StepEndTurn extends AbstractStep {
 			}
 
 			if ((fNewHalf || fTouchdown) && useStarOfTheShow) {
-				TurnData turnData = isHomeTurnEnding ? game.getTurnDataHome() : game.getTurnDataAway();
-				turnData.setReRolls(turnData.getReRolls() + 1);
-				turnData.setReRollShowStarOneDrive(turnData.getReRollShowStarOneDrive() + 1);
+				endingTurnData.setReRolls(endingTurnData.getReRolls() + 1);
+				endingTurnData.setReRollShowStarOneDrive(endingTurnData.getReRollShowStarOneDrive() + 1);
 				getResult().addReport(new ReportShowStarReRoll(touchdownPlayerId));
 			}
 
@@ -581,6 +568,23 @@ public class StepEndTurn extends AbstractStep {
 
 	}
 
+	private void applyTouchdown(Game game, Player<?> scorer) {
+		touchdownPlayerId = scorer.getId();
+		touchdownTurnEndingHome = game.isHomePlaying();
+		GameResult gameResult = game.getGameResult();
+		PlayerResult scorerResult = gameResult.getPlayerResult(scorer);
+		scorerResult.setTouchdowns(scorerResult.getTouchdowns() + 1);
+
+		boolean scorerHome = game.getTeamHome().hasPlayer(scorer);
+		TeamResult scoringTeam = scorerHome ? gameResult.getTeamResultHome() : gameResult.getTeamResultAway();
+		scoringTeam.setScore(scoringTeam.getScore() + 1);
+		game.setHomePlaying(scorerHome);
+		if (scorerHome != touchdownTurnEndingHome) {
+			game.getTurnData().setTurnNr(game.getTurnData().getTurnNr() + 1);
+		}
+		fNewHalf = UtilServerSteps.checkEndOfHalf(getGameState());
+		getGameState().observeTurnEnd(scorer, fNewHalf);
+	}
 
     private boolean resolveSendOffs(Game game) {
         if (reRollArgueFailures(game)) return true;
@@ -745,7 +749,7 @@ public class StepEndTurn extends AbstractStep {
 
 	}
 
-	private void markPlayedAndSecretWeapons() {
+	private void markPlayedAndSecretWeapons(Team endingTeam) {
 		Game game = getGameState().getGame();
 		if (game.getTurnMode() == TurnMode.REGULAR || game.getTurnMode() == TurnMode.KICKOFF) {
 			for (Player<?> player : game.getPlayers()) {
@@ -760,11 +764,8 @@ public class StepEndTurn extends AbstractStep {
 					if (hasSecretWeapon) {
 						playerResult.setHasUsedSecretWeapon(true);
 					}
-					if (game.getTurnMode() == TurnMode.REGULAR) {
-						if ((game.isHomePlaying() && game.getTeamHome().hasPlayer(player))
-							|| (!game.isHomePlaying() && game.getTeamAway().hasPlayer(player))) {
-							playerResult.setTurnsPlayed(playerResult.getTurnsPlayed() + 1);
-						}
+					if (game.getTurnMode() == TurnMode.REGULAR && endingTeam.hasPlayer(player)) {
+						playerResult.setTurnsPlayed(playerResult.getTurnsPlayed() + 1);
 					}
 				}
 			}
@@ -1085,6 +1086,7 @@ public class StepEndTurn extends AbstractStep {
 		IServerJsonOption.PLAYER_IDS_ARGUED.addTo(jsonObject, playerIdsArgued);
 		IServerJsonOption.USE_STAR_OF_THE_SHOW.addTo(jsonObject, useStarOfTheShow);
 		IServerJsonOption.PLAYER_ID_TOUCHDOWN.addTo(jsonObject, touchdownPlayerId);
+		IServerJsonOption.TOUCHDOWN_TURN_ENDING_HOME.addTo(jsonObject, touchdownTurnEndingHome);
 		return jsonObject;
 	}
 
@@ -1123,6 +1125,7 @@ public class StepEndTurn extends AbstractStep {
 		}
 		useStarOfTheShow = IServerJsonOption.USE_STAR_OF_THE_SHOW.getFrom(source, jsonObject);
 		touchdownPlayerId = IServerJsonOption.PLAYER_ID_TOUCHDOWN.getFrom(source, jsonObject);
+		touchdownTurnEndingHome = IServerJsonOption.TOUCHDOWN_TURN_ENDING_HOME.getFrom(source, jsonObject);
 		return this;
 	}
 
