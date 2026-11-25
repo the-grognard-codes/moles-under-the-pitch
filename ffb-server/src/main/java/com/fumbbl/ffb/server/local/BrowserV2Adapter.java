@@ -751,7 +751,7 @@ public final class BrowserV2Adapter implements BrowserProtocol {
 		Long completedAt = preparationCompletedAt.get(connection);
 		if (completedAt == null) {
 			completedAt = clock.millis();
-			completedAt = document.history().completedAt().orElse(completedAt);
+			completedAt = matches.openHistory(document).completedAt().orElse(completedAt);
 			preparationCompletedAt.put(connection, completedAt);
 		}
 		if (clock.millis() - completedAt < 15 * 60 * 1000L) return false;

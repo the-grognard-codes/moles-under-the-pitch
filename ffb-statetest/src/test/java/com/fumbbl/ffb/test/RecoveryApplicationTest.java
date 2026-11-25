@@ -295,6 +295,7 @@ class RecoveryApplicationTest {
 			MatchHistory away = fixture.matches.resultHistory("away", fixture.id);
 			assertEquals(home.resultMetadata(), away.resultMetadata());
 			assertEquals(home.finalState(), away.finalState());
+			assertEquals(storedCompletion(fixture.matches, "home", fixture.id), storedCompletion(fixture.matches, "away", fixture.id));
 			assertEquals(checkpoint, fixture.recovery.rows.get(fixture.id));
 			assertEquals(0, application.lifecycleMetrics().getInt("residentSessions", -1));
 			reads = fixture.repository.reads;

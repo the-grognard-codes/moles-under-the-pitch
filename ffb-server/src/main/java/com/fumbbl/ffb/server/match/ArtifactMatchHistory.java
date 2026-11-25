@@ -22,8 +22,11 @@ final class ArtifactMatchHistory implements MatchHistory {
     ArtifactMatchHistory(CompletedMatch completed) {
         // json() also performs full validation when setup deferred it until after recovery reads.
         artifact = JsonObject.readFrom(completed.json());
-        JsonValue savedTranscript = artifact.get("transcript");
-        transcript = savedTranscript == null ? null : savedTranscript.asObject();
+        transcript = switch (artifact.getInt("formatVersion", -1)) {
+            case 1 -> null;
+            case 2, 3 -> artifact.get("transcript").asObject();
+            default -> throw new MatchService.Failure("REPLAY_UNSUPPORTED");
+        };
         // Formats 2 and 3 validate the duplicate events against these records before any read.
         frames = transcript == null ? artifact.get("events").asArray() : transcript.get("records").asArray();
     }
@@ -49,19 +52,15 @@ final class ArtifactMatchHistory implements MatchHistory {
     public MatchStopReason stopReason() {
         if (transcript == null) return null;
         JsonValue decision = frames.get(frames.size() - 1).asObject().get("decision");
-        if (decision.isObject() && "sizeLimit".equals(decision.asObject().getString("operation", null))
-            && MatchStopReason.MATCH_SIZE_LIMIT.name().equals(decision.asObject().getString("reason", null))) {
-            return MatchStopReason.MATCH_SIZE_LIMIT;
-        }
-        return null;
+        return MatchTranscript.isSizeLimitDecision(decision) ? MatchStopReason.MATCH_SIZE_LIMIT : null;
     }
 
     @Override
-    public List<TurnStart> turnIndex() {
+    public List<TurnIndexEntry> turnIndex() {
         if (transcript == null) return List.of();
         // Same first occurrence per half/coach/turn as the current result page. The
         // validated match state has two halves and turns 0–8, so at most 36 stops.
-        List<TurnStart> starts = new ArrayList<>();
+        List<TurnIndexEntry> entries = new ArrayList<>();
         Set<Turn> seen = new HashSet<>();
         for (int revision = 1; revision < frames.size(); revision++) {
             JsonObject record = frames.get(revision).asObject();
@@ -70,9 +69,9 @@ final class ArtifactMatchHistory implements MatchHistory {
             if ("system".equals(actor) || !"PLAY".equals(board.get("phase").asString())) continue;
             int turn = board.get("home".equals(actor) ? "homeTurn" : "awayTurn").asInt();
             Turn key = new Turn(board.get("half").asInt(), actor, turn);
-            if (seen.add(key)) starts.add(new TurnStart(revision, key));
+            if (seen.add(key)) entries.add(new TurnIndexEntry(revision, key));
         }
-        return List.copyOf(starts);
+        return List.copyOf(entries);
     }
 
     @Override
@@ -95,23 +94,9 @@ final class ArtifactMatchHistory implements MatchHistory {
         return new MatchTranscript(transcript).page(from, limit);
     }
 
-    @Override
-    public JsonObject chatPage(int from, int limit) {
-        return chat().page(from, limit);
-    }
-
-    @Override
-    public MatchChat.Outcome chatDuplicate(String accountId, String requestId, String content) {
-        return chat().duplicate(accountId, requestId, content);
-    }
-
     private JsonObject frame(int revision) {
         if (revision < 0 || revision >= frames.size()) throw new IllegalArgumentException("Invalid replay revision");
         return frames.get(revision).asObject();
     }
 
-    private MatchChat chat() {
-        if (artifact.getInt("formatVersion", -1) != 3) throw new MatchService.Failure("CHAT_UNAVAILABLE");
-        return new MatchChat(artifact.get("chat").asObject());
-    }
 }

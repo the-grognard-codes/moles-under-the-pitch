@@ -1114,13 +1114,13 @@ public final class SetupApplication {
 		return setupReplies.create(requestId, "ACCEPTED", duplicate, retained.view(role));
 	}
 
-	private HandleOutcome completedArtifactReply(MatchDocument document, String role, String requestId) {
+	private HandleOutcome completedArtifactReply(MatchDocument document, String role, String requestId) throws SQLException {
 		return outcome(setupReplies.create(requestId, "ACCEPTED", false, completedState(document, role)), false);
 	}
 
 	/** Adds a live-only explanation without changing frozen replay or recovery schemas. */
-	private JsonObject completedState(MatchDocument document, String role) {
-		MatchHistory history = document.history();
+	private JsonObject completedState(MatchDocument document, String role) throws SQLException {
+		MatchHistory history = matches.openHistory(document);
 		JsonObject terminal = history.finalState().set("callerRole", role);
 		MatchStopReason stopReason = history.stopReason();
 		if (stopReason != null) terminal.add("stopReason", stopReason.name());
@@ -1128,7 +1128,7 @@ public final class SetupApplication {
 	}
 
 	private HandleOutcome completedReplyWithOutcome(MatchDocument document, String role, JsonObject request,
-		RecoveryRepository.Record record) {
+		RecoveryRepository.Record record) throws SQLException {
 		if (record == null) {
 			if (!"load".equals(request.getString("operation", null)) && !"concessionStatus".equals(request.getString("operation", null))) throw new MatchService.Failure("MATCH_COMPLETED");
 			return completedArtifactReply(document, role, request.getString("requestId", null));
@@ -1286,7 +1286,7 @@ public final class SetupApplication {
 	private JsonObject transcriptPage(String matchId, int from, int limit, boolean restoreMissing) throws SQLException {
 		MatchDocument document = matches.load("home", matchId).document;
 		if (document.lifecycle == MatchDocument.Lifecycle.COMPLETED) {
-			return document.history().recordPage(from, limit);
+			return matches.openHistory(document).recordPage(from, limit);
 		}
 		if (document.lifecycle != MatchDocument.Lifecycle.ACTIVATED) throw new MatchService.Failure("NOT_FOUND");
 		if (!restoreMissing && recovery == null) throw new MatchService.Failure("SESSION_UNAVAILABLE");
@@ -1304,7 +1304,7 @@ public final class SetupApplication {
 	public JsonObject chatPage(String matchId, int from, int limit) throws SQLException {
 		MatchDocument document = matches.load("home", matchId).document;
 		if (document.lifecycle == MatchDocument.Lifecycle.COMPLETED) {
-			return document.history().chatPage(from, limit);
+			return new CompletedMatchChat(document.completion).page(from, limit);
 		}
 		if (document.lifecycle != MatchDocument.Lifecycle.ACTIVATED) throw new MatchService.Failure("NOT_FOUND");
 		releaseIdle();
@@ -1329,7 +1329,7 @@ public final class SetupApplication {
 	private MatchChat.Outcome persistChat(String matchId, String accountId, String role, String requestId, String content) throws SQLException {
 		MatchDocument document = matches.load("home", matchId).document;
 		if (document.lifecycle == MatchDocument.Lifecycle.COMPLETED) {
-			return document.history().chatDuplicate(accountId, requestId, content);
+			return new CompletedMatchChat(document.completion).duplicate(accountId, requestId, content);
 		}
 		if (document.lifecycle != MatchDocument.Lifecycle.ACTIVATED) throw new MatchService.Failure("NOT_FOUND");
 		releaseIdle();

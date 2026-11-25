@@ -146,7 +146,8 @@ class R5CompletedFixtureGeneratorTest {
 		}
 
 		MatchDocument completed = matches.load("home", fixtureId).document;
-		assertCompletedFixture(completed, recovery.find(fixtureId));
+		MatchHistory history = matches.openHistory(completed);
+		assertCompletedFixture(completed, history, recovery.find(fixtureId));
 		assertMemberships(connections, fixtureId, accounts);
 		if (lastRequest != null) {
 			RecoveryRepository.Record beforeRetry = recovery.find(fixtureId);
@@ -160,7 +161,7 @@ class R5CompletedFixtureGeneratorTest {
 
 		PausedSnapshot after = loadPausedSnapshot(connections, paused.matchId);
 		assertTrue(paused.same(after), "Completed fixture generation changed the retained paused fixture");
-		JsonObject replay = completed.history().resultMetadata();
+		JsonObject replay = history.resultMetadata();
 		System.out.println("R5 completed fixture PASS: runtime=" + RUNTIME + ", engine=" + CompletedMatch.ENGINE_VERSION
 			+ ", finalRevision=" + replay.getInt("finalRevision", -1) + ", events=" + replay.getInt("eventCount", -1)
 			+ ", pausedUnchanged=true");
@@ -244,7 +245,7 @@ class R5CompletedFixtureGeneratorTest {
 		assertTrue(source.validation.isValid(), "Frozen source team is no longer valid under the carried-forward catalog");
 	}
 
-	private void assertCompletedFixture(MatchDocument document, RecoveryRepository.Record recovery) {
+	private void assertCompletedFixture(MatchDocument document, MatchHistory history, RecoveryRepository.Record recovery) throws SQLException {
 		assertEquals(4, document.documentVersion);
 		assertEquals(MatchDocument.Lifecycle.COMPLETED, document.lifecycle);
 		assertNotNull(recovery);
@@ -253,7 +254,6 @@ class R5CompletedFixtureGeneratorTest {
 		assertEquals(RUNTIME, payload.getString("runtimeVersion", null));
 		assertEquals(CompletedMatch.ENGINE_VERSION, payload.getString("engineVersion", null));
 		assertEquals(REPLAY_FORMAT, payload.getInt("replayVersion", -1));
-		MatchHistory history = document.history();
 		JsonObject replay = history.resultMetadata();
 		assertEquals(REPLAY_FORMAT, replay.getInt("formatVersion", -1));
 		assertEquals(CompletedMatch.ENGINE_VERSION, replay.getString("engineVersion", null));

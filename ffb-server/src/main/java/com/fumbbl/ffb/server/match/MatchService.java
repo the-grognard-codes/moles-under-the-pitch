@@ -144,10 +144,24 @@ public final class MatchService {
 		} catch (MatchRepository.OutcomeUnknown failure) { throw new OutcomeUnknown(matchId); }
 	}
 
-	/** Opens a participant's completed history after the preparation and full artifact validate. */
+	/**
+	 * Opens a participant's completed history after the preparation and full artifact validate.
+	 * @throws Failure if authorization, identity, match ID or stored data is invalid, or the match is unfinished
+	 * @throws SQLException if persistence is unavailable
+	 */
 	public MatchHistory resultHistory(String owner, String matchId) throws SQLException {
 		identity(owner); selection(matchId, 1);
-		return required(owner, matchId).history();
+		return openHistory(required(owner, matchId));
+	}
+
+	/**
+	 * Opens history for a prepared match the caller already authorized and loaded.
+	 * @throws Failure with NOT_COMPLETED if unfinished or REPLAY_UNSUPPORTED if deferred validation rejects the artifact
+	 * @throws SQLException if the history store cannot be opened
+	 */
+	public MatchHistory openHistory(MatchDocument document) throws SQLException {
+		if (document.lifecycle != MatchDocument.Lifecycle.COMPLETED || document.completion == null) throw new Failure("NOT_COMPLETED");
+		return new ArtifactMatchHistory(document.completion);
 	}
 
 	private Result repeated(MatchDocument document, String owner, String requestId, String fingerprint) {

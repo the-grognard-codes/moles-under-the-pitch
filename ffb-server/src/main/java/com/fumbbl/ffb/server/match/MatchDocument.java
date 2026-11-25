@@ -31,11 +31,6 @@ public final class MatchDocument {
 		if (lifecycle != Lifecycle.ACTIVATED || documentVersion != 3) throw new IllegalStateException("Match is not activated");
 		return new MatchDocument(matchId, 4, intendedOpponent, Lifecycle.COMPLETED, home, away, requests, result, computer);
 	}
-	/** Opens history from a document the caller has already authorized. */
-	public MatchHistory history() {
-		if (lifecycle != Lifecycle.COMPLETED || completion == null) throw new MatchService.Failure("NOT_COMPLETED");
-		return new ArtifactMatchHistory(completion);
-	}
 	public MatchDocument joined(Member opponent, String requestKey, String fingerprint) {
 		if (away != null) throw new IllegalStateException("Seat occupied");
 		java.util.Map<String,Request> next=new java.util.LinkedHashMap<String,Request>(requests); next.put(requestKey,new Request(fingerprint));

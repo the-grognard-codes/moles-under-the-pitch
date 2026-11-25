@@ -90,7 +90,11 @@ final class MatchTranscript {
     }
 
     private boolean systemSizeLimit(String kind, String actor, JsonValue decision) {
-        return "system".equals(actor) && "FULL_TIME".equals(kind) && decision != null && decision.isObject()
+        return "system".equals(actor) && "FULL_TIME".equals(kind) && isSizeLimitDecision(decision);
+    }
+
+    static boolean isSizeLimitDecision(JsonValue decision) {
+        return decision != null && decision.isObject()
             && "sizeLimit".equals(decision.asObject().getString("operation", null))
             && MatchStopReason.MATCH_SIZE_LIMIT.name().equals(decision.asObject().getString("reason", null));
     }

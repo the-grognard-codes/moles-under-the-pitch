@@ -2,28 +2,39 @@ package com.fumbbl.ffb.server.match;
 
 import com.eclipsesource.json.JsonObject;
 
+import java.sql.SQLException;
 import java.util.List;
 import java.util.OptionalLong;
 
-/** Bounded reads from one completed match, opened after the caller's access check. */
+/**
+ * Bounded reads from one completed match, opened after the caller's access check.
+ * Each read may throw {@link SQLException} if the underlying storage is unavailable.
+ */
 public interface MatchHistory {
-    JsonObject resultMetadata();
+    JsonObject resultMetadata() throws SQLException;
 
-    JsonObject finalState();
+    JsonObject finalState() throws SQLException;
 
-    OptionalLong completedAt();
+    OptionalLong completedAt() throws SQLException;
 
     /** Returns the recorded terminal stop reason, if present. */
-    MatchStopReason stopReason();
+    MatchStopReason stopReason() throws SQLException;
 
     /** First recorded play for each half, acting coach and turn, in revision order. */
-    List<TurnStart> turnIndex();
+    List<TurnIndexEntry> turnIndex() throws SQLException;
 
-    /** Returns the closest keyframe at or before a valid target revision. */
-    Keyframe keyframeAtOrBefore(int revision);
+    /**
+     * Returns the closest keyframe at or before a valid target revision.
+     * @throws IllegalArgumentException if the revision is outside the history
+     */
+    Keyframe keyframeAtOrBefore(int revision) throws SQLException;
 
-    /** Single event in the existing result protocol. */
-    JsonObject replayEvent(int revision);
+    /**
+     * Legacy wire adapter for the result protocol's single-event reply. Range replay
+     * uses keyframes and record pages to rebuild boards in the browser.
+     * @throws IllegalArgumentException if the revision is outside the history
+     */
+    JsonObject replayEvent(int revision) throws SQLException;
 
     /**
      * Contiguous record page starting at {@code from}, capped at 8 records and 512 KiB of record payload.
@@ -31,15 +42,11 @@ public interface MatchHistory {
      * @throws MatchService.Failure with REPLAY_UNSUPPORTED for event-only artifacts
      * @throws IllegalArgumentException if the cursor or limit is invalid
      */
-    JsonObject recordPage(int from, int limit);
-
-    JsonObject chatPage(int from, int limit);
-
-    MatchChat.Outcome chatDuplicate(String accountId, String requestId, String content);
+    JsonObject recordPage(int from, int limit) throws SQLException;
 
     record Turn(int half, String actor, int number) { }
 
-    record TurnStart(int revision, Turn turn) { }
+    record TurnIndexEntry(int revision, Turn turn) { }
 
     record Keyframe(int revision, JsonObject state) { }
 }

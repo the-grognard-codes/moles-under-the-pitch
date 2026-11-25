@@ -144,7 +144,9 @@ class BrowserV2AdapterTest {
 		assertEquals(0, connection.closeStatusCode);
 		CompletedMatch completion = new CompletedMatch(new JsonObject().add("formatVersion", 2).add("transcript", new JsonObject()
 			.add("records", new JsonArray().add(new JsonObject().add("at", finished)))).toString());
-		when(setup.browseDocument(MATCH)).thenReturn(active.completed(completion));
+		MatchDocument completed = active.completed(completion);
+		when(setup.browseDocument(MATCH)).thenReturn(completed);
+		when(matches.openHistory(completed)).thenCallRealMethod();
 		when(clock.millis()).thenReturn(finished + 899999L);
 		adapter.receive(connection, request("currentMatches", "retained").add("after", JsonValue.NULL).toString());
 		assertEquals(0, connection.closeStatusCode);
