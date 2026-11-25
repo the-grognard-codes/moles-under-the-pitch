@@ -1,5 +1,6 @@
 package com.fumbbl.ffb.server.step.bb2025.block;
 
+import com.eclipsesource.json.JsonArray;
 import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonValue;
 import com.fumbbl.ffb.ApothecaryMode;
@@ -255,6 +256,11 @@ public class StepPushback extends AbstractStep {
 		IServerJsonOption.USING_GRAB.addTo(jsonObject, state.grabbing);
 		IServerJsonOption.USING_SIDE_STEP.addTo(jsonObject, state.sideStepping);
 		IServerJsonOption.USING_STAND_FIRM.addTo(jsonObject, state.standingFirm);
+		if (getGameState().usesCompactSnapshot()) {
+			JsonArray stack = new JsonArray();
+			for (Pushback pushback : state.pushbackStack) stack.add(pushback.toJsonValue());
+			jsonObject.add("pushbackStack", stack);
+		}
 		return jsonObject;
 	}
 
@@ -273,6 +279,11 @@ public class StepPushback extends AbstractStep {
 		state.grabbing = IServerJsonOption.USING_GRAB.getFrom(source, jsonObject);
 		state.sideStepping = IServerJsonOption.USING_SIDE_STEP.getFrom(source, jsonObject);
 		state.standingFirm = IServerJsonOption.USING_STAND_FIRM.getFrom(source, jsonObject);
+		JsonValue stack = jsonObject.get("pushbackStack");
+		if (stack != null) {
+			state.pushbackStack.clear();
+			for (JsonValue pushback : stack.asArray()) state.pushbackStack.push(new Pushback().initFrom(source, pushback));
+		}
 
 		return this;
 	}

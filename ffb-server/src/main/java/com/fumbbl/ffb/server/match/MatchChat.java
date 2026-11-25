@@ -12,7 +12,7 @@ import java.util.Map;
 
 /** Public match conversation stored in the same recoverable checkpoint as native play. */
 public final class MatchChat {
-	private static final int MAX_MESSAGES = 512;
+	static final int MAX_MESSAGES = 512;
 	private final JsonArray messages = new JsonArray();
 	private final Map<String, Entry> requests = new LinkedHashMap<>();
 	private final Map<String, Integer> spectatorNumbers = new LinkedHashMap<>();

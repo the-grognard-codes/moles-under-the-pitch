@@ -32,6 +32,20 @@ final class DecisionLimit {
         }
     }
 
+    JsonObject snapshot() {
+        return new JsonObject().add("decisions", decisions)
+            .add("period", recordedPeriod == null ? JsonValue.NULL : recordedPeriod.json());
+    }
+
+    void restoreSnapshot(JsonObject saved) {
+        if (saved.size() != 2) throw new IllegalArgumentException("Invalid decision limit");
+        decisions = saved.get("decisions").asInt();
+        JsonValue period = saved.get("period");
+        if (decisions < 0 || decisions > MAX_DECISIONS || period.isNull() && decisions != 0)
+            throw new IllegalArgumentException("Invalid decision count");
+        recordedPeriod = period.isNull() ? null : new Period(period.asObject());
+    }
+
     /** Includes the accepted decision about to be recorded: fire on decision 1,024, never 1,023. */
     boolean reached(JsonObject current) {
         return recordedPeriod != null && recordedPeriod.equals(period(current)) && decisions + 1 >= MAX_DECISIONS;
@@ -45,5 +59,18 @@ final class DecisionLimit {
         return new Period(half, drive, null, view.getInt("homeTurn", 0), view.getInt("awayTurn", 0));
     }
 
-    private record Period(int half, int drive, String event, int homeTurn, int awayTurn) { }
+    private record Period(int half, int drive, String event, int homeTurn, int awayTurn) {
+        Period(JsonObject saved) {
+            this(saved.get("half").asInt(), saved.get("drive").asInt(),
+                saved.get("event").isNull() ? null : saved.get("event").asString(),
+                saved.get("homeTurn").asInt(), saved.get("awayTurn").asInt());
+            if (saved.size() != 5 || half < 1 || drive < 1 || homeTurn < 0 || awayTurn < 0)
+                throw new IllegalArgumentException("Invalid decision period");
+        }
+
+        JsonObject json() {
+            return new JsonObject().add("half", half).add("drive", drive).add("event", event)
+                .add("homeTurn", homeTurn).add("awayTurn", awayTurn);
+        }
+    }
 }

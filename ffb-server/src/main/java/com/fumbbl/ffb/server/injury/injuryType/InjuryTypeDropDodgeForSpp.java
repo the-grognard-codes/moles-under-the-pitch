@@ -13,24 +13,33 @@ import com.fumbbl.ffb.server.DiceInterpreter;
 import com.fumbbl.ffb.server.DiceRoller;
 import com.fumbbl.ffb.server.GameState;
 import com.fumbbl.ffb.util.UtilCards;
+
+import java.util.Objects;
 import java.util.Optional;
 
 
 public class InjuryTypeDropDodgeForSpp extends ModificationAwareInjuryTypeServer<DropDodgeForSpp> {
 
-	private final Player<?> armBarPlayer;
+	private final String armBarPlayerId;
 
 	public InjuryTypeDropDodgeForSpp(Player<?> armBarPlayer) {
-		super(new DropDodgeForSpp());
-		this.armBarPlayer = armBarPlayer;
+		this(armBarPlayer.getId());
 	}
+
+	public InjuryTypeDropDodgeForSpp(String armBarPlayerId) {
+		super(new DropDodgeForSpp());
+		this.armBarPlayerId = Objects.requireNonNull(armBarPlayerId, "Missing Arm Bar player");
+	}
+
+	@Override
+	public String continuationPlayerId() { return armBarPlayerId; }
 
 	@Override
 	protected void armourRoll(Game game, GameState gameState, DiceRoller diceRoller, Player<?> pAttacker,
 		Player<?> pDefender, FieldCoordinate pDefenderCoordinate, FieldCoordinate fromCoordinate,
 		DiceInterpreter diceInterpreter, InjuryContext injuryContext, boolean roll) {
 
-		injuryContext.setAttackerId(armBarPlayer.getId());
+		injuryContext.setAttackerId(armBarPlayerId);
 
 		if (!injuryContext.isArmorBroken()) {
 			if (roll) {
@@ -45,7 +54,7 @@ public class InjuryTypeDropDodgeForSpp extends ModificationAwareInjuryTypeServer
 			injuryContext.setArmorBroken(diceInterpreter.isArmourBroken(gameState, injuryContext));
 		}
 
-		Skill avOrInjModifierSkill = avOrInjModifierSkill(pDefender);
+		Skill avOrInjModifierSkill = avOrInjModifierSkill(game, pDefender);
 
 		if (!injuryContext.isArmorBroken() && avOrInjModifierSkill != null) {
 			avOrInjModifierSkill.getArmorModifiers().forEach(injuryContext::addArmorModifier);
@@ -58,9 +67,9 @@ public class InjuryTypeDropDodgeForSpp extends ModificationAwareInjuryTypeServer
 		Player<?> pDefender, FieldCoordinate pDefenderCoordinate, FieldCoordinate fromCoordinate,
 		InjuryContext injuryContext) {
 
-		injuryContext.setAttackerId(armBarPlayer.getId());
+		injuryContext.setAttackerId(armBarPlayerId);
 
-		Skill avOrInjModifierSkill = avOrInjModifierSkill(pDefender);
+		Skill avOrInjModifierSkill = avOrInjModifierSkill(game, pDefender);
 
 		if (avOrInjModifierSkill != null
 			&& avOrInjModifierSkill.getArmorModifiers().stream().anyMatch(injuryContext::hasArmorModifier)) {
@@ -78,9 +87,9 @@ public class InjuryTypeDropDodgeForSpp extends ModificationAwareInjuryTypeServer
 		setInjury(pDefender, gameState, diceRoller, injuryContext);
 	}
 
-	private Skill avOrInjModifierSkill(Player<?> pDefender) {
+	private Skill avOrInjModifierSkill(Game game, Player<?> pDefender) {
 		if (!UtilCards.hasUnusedSkillWithProperty(pDefender, NamedProperties.ignoresArmourModifiersFromSkills)) {
-			return armBarPlayer.getSkillWithProperty(NamedProperties.affectsEitherArmourOrInjuryOnDodge);
+			return game.getPlayerById(armBarPlayerId).getSkillWithProperty(NamedProperties.affectsEitherArmourOrInjuryOnDodge);
 		}
 
 		return null;

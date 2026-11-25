@@ -203,6 +203,11 @@ final class ReactiveDecision {
             throw new IllegalArgumentException("Invalid reactive checkpoint");
     }
 
+    void restoreSnapshot(JsonObject saved, GameState state) {
+        restore(saved);
+        step = state.getCurrentStep();
+    }
+
     private void clear(GameState state, long now) {
         if (paused) UtilServerTimer.startTurnTimer(state, now);
         key = null; step = null; paused = false;

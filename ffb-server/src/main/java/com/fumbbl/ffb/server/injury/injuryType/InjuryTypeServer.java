@@ -32,6 +32,9 @@ public abstract class InjuryTypeServer<T extends InjuryType> implements INamedOb
 		return injuryType.getName();
 	}
 
+	/** Player referenced by a pending injury, when the injury requires one. */
+	public String continuationPlayerId() { return null; }
+
 	public InjuryContext injuryContext() {
 		return injuryContext;
 	}

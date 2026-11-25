@@ -23,6 +23,11 @@ import com.fumbbl.ffb.server.step.StepAction;
 import com.fumbbl.ffb.server.step.StepId;
 import com.fumbbl.ffb.server.util.UtilServerDialog;
 
+import com.eclipsesource.json.JsonObject;
+import com.eclipsesource.json.JsonValue;
+
+import java.util.List;
+
 /** Browser-owned BB2025 policy. Native desktop games do not enable this service. */
 public final class OptionalSkillUse {
 
@@ -37,6 +42,22 @@ public final class OptionalSkillUse {
 	}
 
 	public boolean enabled() { return home != null && away != null; }
+
+	public JsonValue snapshot() {
+		return enabled() ? new JsonObject().add("home", home.toJson()).add("away", away.toJson()) : JsonValue.NULL;
+	}
+
+	public void restore(JsonValue saved) {
+		if (saved.isNull()) {
+			configure(null, null);
+			return;
+		}
+		JsonObject preferences = saved.asObject();
+		if (preferences.size() != 2 || !preferences.names().containsAll(List.of("home", "away")))
+			throw new IllegalArgumentException("Invalid skill policy state");
+		configure(SkillUsePreferences.fromJson(preferences.get("home").asObject()),
+			SkillUsePreferences.fromJson(preferences.get("away").asObject()));
+	}
 
 	/** Browser skill-first policy: declining an available built-in reroll accepts the original roll. */
 	public boolean declineEndsRerollChoice(ReRollSource source, ReRolledAction action) {
