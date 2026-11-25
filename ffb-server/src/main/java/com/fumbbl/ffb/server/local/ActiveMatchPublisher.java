@@ -2,6 +2,7 @@ package com.fumbbl.ffb.server.local;
 
 import com.fumbbl.ffb.server.match.AuthenticatedPrincipal;
 import com.fumbbl.ffb.server.match.MatchService;
+import com.fumbbl.ffb.server.match.PublicMatchView;
 import com.fumbbl.ffb.server.match.SetupApplication;
 import com.fumbbl.ffb.server.match.V2MatchAccess;
 import com.fumbbl.ffb.server.match.V2PublicationAuthorization;
@@ -186,8 +187,11 @@ final class ActiveMatchPublisher {
 
 	private void publish(String matchId, BrowserConnection source, JsonObject publicState, LiveMatchTranscript transcript,
 		String retainedAbandonedAwayState) {
-		String retainedState = publicState.toString();
 		List<Recipient> recipients = recipients(matchId, source, false);
+		boolean terminal = "FULL_TIME".equals(publicState.getString("phase", ""));
+		String retainedState = terminal || recipients.stream().anyMatch(recipient -> recipient.viewer.spectator)
+			? new PublicMatchView().live(publicState, "spectator").toString() : "";
+		String retainedAbandonedHomeState = retainedAbandonedAwayState == null ? "" : publicState.toString();
 		boolean liveTranscript = recipients.stream()
 			.anyMatch(recipient -> liveTranscriptConnections.contains(recipient.connection));
 		List<PublicationDelivery.Recipient> targets = new ArrayList<>();
@@ -196,15 +200,13 @@ final class ActiveMatchPublisher {
 			targets.add(new DeliveryRecipient(recipient) {
 				@Override public void send(V2PublicationAuthorization.Snapshot authorization, int slot) throws SQLException {
 					String role = access.publicationRole(authorization, target(), slot);
-					if (recipient.viewer.spectator || "FULL_TIME".equals(publicState.getString("phase", ""))) {
-						JsonObject state = JsonObject.readFrom(retainedState);
-						state.set("callerRole", recipient.viewer.spectator ? "spectator" : role);
-						state.remove("computer"); state.remove("threats");
-						state.remove("savedFormations"); state.remove("blockPreview");
+					if (recipient.viewer.spectator || terminal) {
+						JsonObject state = JsonObject.readFrom(retainedState)
+							.set("callerRole", recipient.viewer.spectator ? "spectator" : role);
 						sendState(recipient.connection, state(null, state), transcript, () -> access.publicationRole(authorization, target(), slot), transcriptReserved);
-						if ("FULL_TIME".equals(state.getString("phase", ""))) viewers.remove(recipient.connection);
+						if (terminal) viewers.remove(recipient.connection);
 					} else if (retainedAbandonedAwayState != null) {
-						JsonObject state = JsonObject.readFrom("away".equals(role) ? retainedAbandonedAwayState : retainedState);
+						JsonObject state = JsonObject.readFrom("away".equals(role) ? retainedAbandonedAwayState : retainedAbandonedHomeState);
 						sendState(recipient.connection, state(null, state), transcript,
 							() -> access.publicationRole(authorization, target(), slot), transcriptReserved);
 					} else {
@@ -219,7 +221,8 @@ final class ActiveMatchPublisher {
 				}
 			});
 		}
-		int retainedCharacters = retainedState.length() + (retainedAbandonedAwayState == null ? 0 : retainedAbandonedAwayState.length());
+		int retainedCharacters = retainedState.length() + retainedAbandonedHomeState.length()
+			+ (retainedAbandonedAwayState == null ? 0 : retainedAbandonedAwayState.length());
 		delivery.publish(matchId, V2PublicationAuthorization.Family.STATE, targets, retainedCharacters + Math.max(transcript.retainedCharacters(),
 			liveTranscript ? BrowserMatchTransport.MAX_LIVE_TRANSCRIPT_BYTES : 0));
 	}

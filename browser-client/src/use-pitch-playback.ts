@@ -23,7 +23,15 @@ type QueuedAnnouncement = {
   chained: boolean;
 };
 
+const publicResponseKinds = new Set(['coin', 'receive', 'blockDie', 'rerollDie', 'reroll', 'skill', 'kickSkill',
+  'pileDriver', 'push', 'followUp', 'apothecary', 'argueTheCall', 'bribe', 'interception', 'reaction', 'reactionMovement']);
 const responseKinds = new Set(['blockDie', 'rerollDie', 'proTestReroll', 'reroll', 'skill', 'kickSkill', 'pileDriver', 'push', 'followUp', 'apothecary', 'argueTheCall', 'bribe', 'interception', 'reactiveSkill', 'reactiveSquare', 'reactionMove', 'reactionEnd']);
+function hasResponseDecision(view: SetupState): boolean {
+  if (view.decisionKind === undefined)
+    return !!view.prompt || !!view.reaction || view.actions.some(action => responseKinds.has(action.kind));
+  return !!view.reaction || publicResponseKinds.has(view.decisionKind);
+}
+
 
 function sequenceKey(view: SetupState): string {
   return [view.matchId, view.half, view.actor, view.turn, view.turnMode, view.activePlayerId].join(':');
@@ -163,7 +171,7 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
     // Keep catch-up through the tail, even after the backlog drops below the entry threshold.
     if (mode !== 'live' || completed.current >= view.revision) catchingUp.current = false;
     else if (view.revision - completed.current >= LIVE_CATCHUP_THRESHOLD) catchingUp.current = true;
-    const requiresResponse = !!view.prompt || !!view.reaction || view.actions.some(action => responseKinds.has(action.kind));
+    const requiresResponse = hasResponseDecision(view);
     const deferScoringResponse = view.drive > presented.current.drive
       || view.homeScore > presented.current.homeScore || view.awayScore > presented.current.awayScore;
     const responseKey = `${view.matchId}:${view.revision}`;
@@ -181,7 +189,9 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
       diceRevision.current = view.revision;
       if (!dice) return;
       multipleReveals.current.remember(dice, view);
-      pinnedDice.current = view.actions.some(action => ['blockDie', 'reroll', 'skill', 'kickSkill'].includes(action.kind));
+      const pinnedKinds = ['blockDie', 'reroll', 'skill', 'kickSkill'];
+      pinnedDice.current = view.decisionKind === undefined ? view.actions.some(action => pinnedKinds.includes(action.kind))
+        : pinnedKinds.includes(view.decisionKind);
       // Recovery restores the result, never an old roll animation or backlog.
       diceStream.current!.enqueue({ ...dice, revision: view.revision }, sequenceKey(view), pinnedDice.current, true, nativeRate());
     };
@@ -251,7 +261,7 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
         return;
       }
       // A missing transcript cannot postpone a newly offered mandatory response.
-      if (!deferScoringResponse && (view.prompt || view.actions.some(action => responseKinds.has(action.kind)) || view.phase === 'FULL_TIME')) {
+      if (!deferScoringResponse && (requiresResponse || view.phase === 'FULL_TIME')) {
         snapshot();
         return;
       }
@@ -323,7 +333,7 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
       multipleReveals.current.remember(dice, record.state);
       diceRevision.current = record.revision;
       const response = mode === 'live' && record.revision === latest.current.revision
-        && (latest.current.prompt || latest.current.actions.some(action => responseKinds.has(action.kind)));
+        && hasResponseDecision(latest.current);
       const finalResponseRoll = response && index === finalDiceIndex;
       const keep = !!finalResponseRoll && latest.current.actions.some(action => ['blockDie', 'reroll', 'skill', 'kickSkill'].includes(action.kind));
       if (finalResponseRoll) {

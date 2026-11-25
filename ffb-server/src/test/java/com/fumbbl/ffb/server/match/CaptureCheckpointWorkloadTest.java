@@ -188,6 +188,7 @@ class CaptureCheckpointWorkloadTest {
 	}
 
 	private JsonObject next(SetupSessionMovementTest.Fixture fixture, JsonObject view, int index, boolean usePlayers) {
+		view = SetupSessionMovementTest.Fixture.actingView(fixture.session, view);
 		JsonObject request = fixture.request("action", "capture-" + index, view);
 		if ("SETUP".equals(view.getString("phase", null))) return request.set("operation", "confirm");
 		if (!view.get("prompt").isNull()) {

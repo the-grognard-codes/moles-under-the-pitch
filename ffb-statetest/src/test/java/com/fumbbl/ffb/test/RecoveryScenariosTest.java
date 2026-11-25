@@ -40,7 +40,7 @@ class RecoveryScenariosTest {
         }
         engine(session).getDiceRoller().clearTestRolls();
         TestRolls.on(engine(session)).general(1, 4, 3, 3, 3, 3, 3, 3);
-        JsonObject target = view(session, "home").get("actions").asArray().get(82).asObject();
+        JsonObject target = SetupSessionFixtureState.actingView(session).get("actions").asArray().get(82).asObject();
         submit(session, target, unique("kick-preview"));
         JsonObject projected = view(session, "home");
         assertTrue(hasAction(session, "kickSkill"), projected.toString());
@@ -61,7 +61,7 @@ class RecoveryScenariosTest {
 		SetupSession session = ready(recoverable());
 		engine(session).getDiceRoller().clearTestRolls();
 		TestRolls.on(engine(session)).general(1, 1, 4, 5, 1, 6, 6, 6, 6, 6, 6, 6);
-		submit(session, view(session, "home").get("actions").asArray().get(82).asObject(), unique("quick-kick"));
+		submit(session, SetupSessionFixtureState.actingView(session).get("actions").asArray().get(82).asObject(), unique("quick-kick"));
 		JsonObject initial = view(session, "home");
 		assertEquals("QUICK_SNAP", initial.getString("turnMode", null));
 		assertEquals(4, initial.get("kickoff").asObject().getInt("allowed", -1));
@@ -133,7 +133,7 @@ class RecoveryScenariosTest {
 		SetupSession highKick = ready(recoverable());
 		engine(highKick).getDiceRoller().clearTestRolls();
 		TestRolls.on(engine(highKick)).general(1, 1, 2, 3, 6, 6, 6);
-		submit(highKick, view(highKick, "home").get("actions").asArray().get(82).asObject(), unique("high-kick"));
+		submit(highKick, SetupSessionFixtureState.actingView(highKick).get("actions").asArray().get(82).asObject(), unique("high-kick"));
 		JsonObject highView = view(highKick, "home");
 		assertEquals("HIGH_KICK", highView.getString("turnMode", null));
 		assertEquals(1, highView.get("kickoff").asObject().getInt("allowed", -1));
@@ -148,7 +148,7 @@ class RecoveryScenariosTest {
 		SetupSession touchback = ready(recoverable());
 		engine(touchback).getDiceRoller().clearTestRolls();
 		TestRolls.on(engine(touchback)).general(1, 6, 1, 1, 6, 6, 6);
-		submit(touchback, view(touchback, "home").get("actions").asArray().get(0).asObject(), unique("out-kick"));
+		submit(touchback, SetupSessionFixtureState.actingView(touchback).get("actions").asArray().get(0).asObject(), unique("out-kick"));
 		assertEquals("TOUCHBACK", view(touchback, "home").getString("turnMode", null));
 		JsonObject recipient = action(touchback, "touchback");
 		String receiver = recipient.getString("actor", null);
@@ -199,7 +199,7 @@ class RecoveryScenariosTest {
 		game.getFieldModel().setBallInPlay(true); game.getFieldModel().setBallMoving(false);
 		game.getFieldModel().setWeather(Weather.SWELTERING_HEAT);
 		JsonObject select = null;
-		for (JsonValue item : view(session, "home").get("actions").asArray()) {
+		for (JsonValue item : SetupSessionFixtureState.actingView(session).get("actions").asArray()) {
 			JsonObject candidate = item.asObject();
 			if ("select".equals(candidate.getString("kind", null)) && candidate.getString("id", "").endsWith(scorer.getId())) select = candidate;
 		}
@@ -249,7 +249,7 @@ class RecoveryScenariosTest {
 	private SetupSession ready(SetupSession session) { choosePrematch(session); arrange(session); arrange(session); return session; }
 	private void choosePrematch(SetupSession session) {
 		for (int i = 0; i < 2; i++) {
-			JsonObject state = view(session, "home"), prompt = state.get("prompt").asObject();
+			JsonObject state = SetupSessionFixtureState.actingView(session), prompt = state.get("prompt").asObject();
 			JsonObject command = request(state, "choice", "prematch-" + i).add("promptId", prompt.get("id")).add("optionId", prompt.get("options").asArray().get(0));
 			assertEquals("ACCEPTED", session.apply(prompt.getString("actor", null), command).getString("code", null));
 		}
@@ -270,9 +270,9 @@ class RecoveryScenariosTest {
 	}
 	private void advanceKickoff(SetupSession session) {
 		TestRolls.on(engine(session)).general(1, 1, 3, 3, 3, 3, 3, 3);
-		submit(session, view(session, "home").get("actions").asArray().get(82).asObject(), "kickoff");
+		submit(session, SetupSessionFixtureState.actingView(session).get("actions").asArray().get(82).asObject(), "kickoff");
 		for (int i = 0; i < 20 && !"REGULAR".equals(view(session, "home").getString("turnMode", null)); i++)
-			submit(session, view(session, "home").get("actions").asArray().get(0).asObject(), "kickoff-next-" + i);
+			submit(session, SetupSessionFixtureState.actingView(session).get("actions").asArray().get(0).asObject(), "kickoff-next-" + i);
 		assertEquals("REGULAR", view(session, "home").getString("turnMode", null));
 	}
 	private void assertRestoresAndRetries(SetupSession original, String role, JsonObject prior) throws Exception {
@@ -325,9 +325,9 @@ class RecoveryScenariosTest {
 		return new String[] { attackerPlayer.getId(), target.getId() };
 	}
 	private JsonObject request(JsonObject state, String operation, String id) { return new JsonObject().add("operation", operation).add("requestId", id).add("expectedRevision", state.get("revision")); }
-	private JsonObject action(SetupSession session, String kind) { for (JsonValue value : view(session, "home").get("actions").asArray()) if (kind.equals(value.asObject().getString("kind", null))) return value.asObject(); throw new AssertionError("Missing " + kind); }
-	private JsonObject actionFor(SetupSession session, String kind, String player) { for (JsonValue value : view(session, "home").get("actions").asArray()) { JsonObject action = value.asObject(); if (kind.equals(action.getString("kind", null)) && action.getString("id", "").endsWith(player)) return action; } throw new AssertionError("Missing " + kind + " for " + player); }
-	private boolean hasAction(SetupSession session, String kind) { for (JsonValue value : view(session, "home").get("actions").asArray()) if (kind.equals(value.asObject().getString("kind", null))) return true; return false; }
-	private JsonObject ending(SetupSession session, String ending) { for (JsonValue value : view(session, "home").get("actions").asArray()) if (value.asObject().getString("id", "").endsWith(ending)) return value.asObject(); throw new AssertionError("Missing " + ending); }
+	private JsonObject action(SetupSession session, String kind) { for (JsonValue value : SetupSessionFixtureState.actingView(session).get("actions").asArray()) if (kind.equals(value.asObject().getString("kind", null))) return value.asObject(); throw new AssertionError("Missing " + kind); }
+	private JsonObject actionFor(SetupSession session, String kind, String player) { for (JsonValue value : SetupSessionFixtureState.actingView(session).get("actions").asArray()) { JsonObject action = value.asObject(); if (kind.equals(action.getString("kind", null)) && action.getString("id", "").endsWith(player)) return action; } throw new AssertionError("Missing " + kind + " for " + player); }
+	private boolean hasAction(SetupSession session, String kind) { for (JsonValue value : SetupSessionFixtureState.actingView(session).get("actions").asArray()) if (kind.equals(value.asObject().getString("kind", null))) return true; return false; }
+	private JsonObject ending(SetupSession session, String ending) { for (JsonValue value : SetupSessionFixtureState.actingView(session).get("actions").asArray()) if (value.asObject().getString("id", "").endsWith(ending)) return value.asObject(); throw new AssertionError("Missing " + ending); }
 	private void submit(SetupSession session, JsonObject action, String id) { assertEquals("ACCEPTED", session.apply(action.getString("actor", null), request(view(session, "home"), "action", id).add("actionId", action.get("id"))).getString("code", null)); }
 }

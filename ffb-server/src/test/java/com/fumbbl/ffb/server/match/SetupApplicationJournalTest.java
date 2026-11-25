@@ -262,6 +262,10 @@ class SetupApplicationJournalTest {
 		}
 
 		JsonObject endTurn(JsonObject ready) {
+			String actor = ready.getString("actor", null);
+			if (!actor.equals(ready.getString("callerRole", null)))
+				ready = application().handle(actor, new JsonObject().add("version", 1).add("type", "setup")
+					.add("operation", "load").add("requestId", "load-actor").add("matchId", id)).get("state").asObject();
 			for (JsonValue value : ready.get("actions").asArray()) {
 				JsonObject action = value.asObject();
 				if ("endTurn".equals(action.getString("kind", null)))

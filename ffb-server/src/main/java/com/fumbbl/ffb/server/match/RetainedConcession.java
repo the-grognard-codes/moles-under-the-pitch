@@ -41,9 +41,7 @@ final class RetainedConcession {
             JsonArray events = payload.get("concession").asObject().get("completion").asObject().get("events").asArray();
             view = JsonObject.readFrom(events.get(events.size() - 1).asObject().get("state").toString());
         } else view = JsonObject.readFrom(payload.get("homeView").toString());
-        view.set("callerRole", role).set("actions", new JsonArray()).set("prompt", JsonValue.NULL);
-        view.remove("movementForecast");
-        return view;
+        return new PublicMatchView().recorded(view, role);
     }
 
     boolean close(String role, JsonObject request, long now) {
@@ -66,6 +64,7 @@ final class RetainedConcession {
           terminal.set("phase", "FULL_TIME").set("revision", revision + 1)
             .set("activePlayerId", JsonValue.NULL).set("homeScore", "home".equals(role) ? 0 : Math.max(2, view("home").getInt("homeScore", 0)))
             .set("awayScore", "away".equals(role) ? 0 : Math.max(2, view("home").getInt("awayScore", 0)));
+          if (terminal.get("decisionKind") != null) terminal.set("decisionKind", "none");
           for (String field : Arrays.asList("passing", "blockPreview", "kickoff", "driveTracker", "playerActionMenu", "kickPreview", "activePlayerAction")) terminal.remove(field);
           for (JsonValue player : terminal.get("players").asArray()) player.asObject().remove("limitedAction");
           events.add(new JsonObject().add("revision", revision + 1).add("kind", "FULL_TIME").add("state", terminal));

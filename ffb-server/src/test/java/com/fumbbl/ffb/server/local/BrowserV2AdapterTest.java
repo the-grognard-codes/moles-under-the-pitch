@@ -608,7 +608,8 @@ class BrowserV2AdapterTest {
 		when(access.require(spectator, ApplicationScope.PLAYER)).thenThrow(new MatchService.Failure("AUTHORIZATION"));
 		MatchService matches = mock(MatchService.class);
 		when(matches.result("home", MATCH)).thenReturn(new CompletedMatch(new JsonObject().add("matchId", MATCH)
-			.add("events", new com.eclipsesource.json.JsonArray().add(new JsonObject().add("revision", 0).add("kind", "FULL_TIME"))).toString()));
+			.add("events", new com.eclipsesource.json.JsonArray().add(new JsonObject().add("revision", 0).add("kind", "FULL_TIME")
+				.add("state", new JsonObject().add("revision", 0).add("phase", "FULL_TIME")))).toString()));
 		BrowserV2Adapter adapter = new BrowserV2Adapter(bearer -> "player".equals(bearer) ? player : "outsider".equals(bearer) ? outsider : spectator,
 			access, mock(SetupApplication.class), matches, mock(V2PreparationService.class), mock(BrowserSavedTeamJson.class));
 		Connection participant = new Connection(), viewer = new Connection();

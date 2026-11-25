@@ -1,0 +1,9 @@
+# Public match view outcome
+
+[#660](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/660) implements the [approved public-view field list](match-public-view-allowlist.md) under [ADR 0014](../adr/0014-match-state-records-and-live-sync.md#public-view-and-coach-offers).
+
+- The server builds the committed board independently of legal actions, movement forecasts and block previews. The native step, dialog, active side or receiving side identifies the decision owner and kind. The current actor keeps the private controls for that decision.
+- Waiting coaches, spectators and replay share the committed board, passing and Kick guidance, and revealed outcomes. Live save status, clocks and reaction deadlines sit beside those facts. Staged placements remain transient, and the waiting coach's movement-range inspection remains revision-bound and read-only.
+- Spectator publications, public history and result replay use allowlists. Legacy storage preserves its canonical inputs and native outcomes for existing recovery. The public readers omit transport IDs, private prompt data and unpublished native fields without rewriting stored history.
+- Browser tests exercise normal waiting messages with empty actions, authorized waiting-coach range inspection, and pass, block and replay presentation. Java fixtures compare the new projection with the pre-change Blitz and movement interruption fixtures and cover both coaches, spectators, transcript privacy, staged setup and recovery.
+- The browser and game server should be deployed together because the full snapshot adds the public decision kind. New readers still accept earlier snapshots. The patch adds no migration, storage generation, patch, keyframe or delta protocol. The worker's production p99 was not measured for this change.

@@ -2,10 +2,23 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { decodeSetupStateValue } from '../src/setup-protocol.ts';
-import { currentGameStep } from '../src/match-status.ts';
+import { currentGameStep, waitingMessage } from '../src/match-status.ts';
 const journey = JSON.parse(readFileSync(new URL('./fixtures/m5a-blitz-projections.json', import.meta.url), 'utf8'));
 const live = journey[0].actor;
 const kickoff = { version: 1, event: 'QUICK_SNAP', actor: 'away', stage: 'movement', allowed: 5, completed: 2, selected: 0 };
+test('waiting and kickoff status follow the public decision with empty coach offers', () => {
+  const state = { ...decodeSetupStateValue(live), prompt: null, actions: [], kickoff };
+  for (const callerRole of ['home', 'away', 'spectator'] as const) {
+    const view = { ...state, actor: 'away' as const, callerRole, decisionKind: 'blockDie' as const };
+    assert.equal(currentGameStep(view), null);
+    assert.doesNotMatch(waitingMessage(view), /Reconnect/);
+    assert.equal(waitingMessage(view), callerRole === 'home' ? 'Waiting for the other participant.'
+      : callerRole === 'away' ? 'Waiting for the next server decision.' : 'Watching match · coach decisions appear here when resolved.');
+    const touchback = { ...view, turnMode: 'TOUCHBACK', kickoff: undefined, decisionKind: 'touchback' as const };
+    assert.match(currentGameStep(touchback)!.instruction, /assign the ball/);
+    assert.equal(currentGameStep(touchback)!.instruction.includes('Waiting for the away coach.'), callerRole !== 'away');
+  }
+});
 test('kickoff progress remains public and bounded for either coach and spectators', () => {
   for (const callerRole of ['home', 'away', 'spectator']) {
     const state = decodeSetupStateValue({ ...live, callerRole, actions: callerRole === 'spectator' ? [] : live.actions, kickoff }, callerRole === 'spectator');

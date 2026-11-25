@@ -95,6 +95,15 @@ class Roundup5NativeActionsTest {
         step.setParameter(StepParameter.from(StepParameterKey.KICKOFF_START_COORDINATE, new FieldCoordinate(19, 7))); step.start();
         assertTrue(scenario.game.getDialogParameter() instanceof com.fumbbl.ffb.dialog.DialogKickSkillParameter);
         assertEquals(StepAction.CONTINUE, step.getResult().getNextAction());
+        SetupSession session = scenario.fixture.session;
+        JsonObject home = session.reply("home-kick", "ACCEPTED", false, "home").get("state").asObject();
+        JsonObject away = session.reply("away-kick", "ACCEPTED", false, "away").get("state").asObject();
+        assertEquals("home", home.getString("actor", null));
+        assertEquals("kickSkill", home.getString("decisionKind", null));
+        assertTrue(home.get("actions").asArray().size() > 0);
+        assertTrue(away.get("actions").asArray().isEmpty());
+        assertEquals(home.get("kickPreview"), away.get("kickPreview"));
+        assertEquals(home.get("kickPreview"), session.spectatorView().get("kickPreview"));
     }
     @Test void sameFaceBrawlerRerollReportsOnlyTheSelectedIndexAndRoundTrips() throws Exception {
         Scenario scenario = new Scenario(PlayerState.STANDING); scenario.skill(scenario.attacker, "Brawler");

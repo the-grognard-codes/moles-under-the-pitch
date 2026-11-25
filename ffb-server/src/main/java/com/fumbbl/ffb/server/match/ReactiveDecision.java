@@ -103,7 +103,7 @@ final class ReactiveDecision {
             nextTitle = onTheBall ? "On the Ball" : dumpOff ? "Dump-Off" : trickster ? "Trickster" : "Safe Pair of Hands";
         }
         if (nextKey == null || actions.isEmpty() || game.getFinished() != null) { clear(state, now); return; }
-        String nextActor = actions.get(0).role;
+        String nextActor = PublicMatchDecision.read(state).actor();
         if (onTheBall && interruptedMovement != null && nextActor.equals(interruptedMovement.getString("actor", null))) {
             JsonObject movement = interruptedMovement;
             long remaining = movementRemainingMs;

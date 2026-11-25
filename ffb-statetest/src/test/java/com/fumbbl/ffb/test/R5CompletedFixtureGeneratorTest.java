@@ -113,6 +113,9 @@ class R5CompletedFixtureGeneratorTest {
 
 			JsonObject state = state(accepted(setup.handle("home", setupRequest("r5_fixture_load", "load", fixtureId))));
 			for (int command = 0; command < 600 && !"FULL_TIME".equals(state.getString("phase", null)); command++) {
+				String actor = state.getString("actor", null);
+				if (!actor.equals(state.getString("callerRole", null)))
+					state = state(accepted(setup.handle(actor, setupRequest("r5_fixture_actor", "load", fixtureId))));
 				String requestId = String.format("r5_fixture_%03d", command);
 				JsonObject prompt = state.get("prompt").isNull() ? null : state.get("prompt").asObject();
 				if (prompt != null) {

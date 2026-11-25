@@ -29,7 +29,9 @@ public final class MatchResultJson {
             if (replay) {
                 int index = request.get("index").asInt();
                 if (index < 0 || index >= events.size()) throw new IllegalArgumentException();
-                event = events.get(index);
+                JsonObject entry = events.get(index).asObject();
+                event = PublicMatchFields.scalars(entry, "revision", "kind")
+                    .add("state", new PublicMatchView().recorded(entry.get("state").asObject(), "home"));
             }
             artifact.remove("events");
             artifact.remove("transcript");

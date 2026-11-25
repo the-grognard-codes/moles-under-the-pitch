@@ -281,7 +281,8 @@ class SetupApplicationReadOnlyLoadTest {
 		fixture.now.addAndGet(5 * 60_000);
 		assertEquals(started + HOUR, lobbyState(fixture, application).getLong("resumeUntil", -1));
 		JsonObject human = stateOf(application.handle("home", fixture.load()));
-		JsonObject computer = stateOf(application.handle("home", endTurn(fixture.engine, human, "lobby-human-end")));
+		stateOf(application.handle("home", endTurn(fixture.engine, human, "lobby-human-end")));
+		JsonObject computer = stateOf(application.handleComputerWithOutcome("away", fixture.load()).response());
 		fixture.now.addAndGet(HOUR);
 		assertNull(lobbyState(fixture, application).get("resumeUntil"));
 		assertFalse(lobbyState(fixture, application).getBoolean("expired", false));
@@ -495,6 +496,7 @@ class SetupApplicationReadOnlyLoadTest {
 	}
 
 	private static JsonObject endTurn(SetupSessionMovementTest.Fixture engine, JsonObject view, String requestId) {
+		view = SetupSessionMovementTest.Fixture.actingView(engine.session, view);
 		for (JsonValue value : view.get("actions").asArray()) {
 			JsonObject action = value.asObject();
 			if ("endTurn".equals(action.getString("kind", null))) return engine.request("action", requestId, view).add("actionId", action.get("id"));

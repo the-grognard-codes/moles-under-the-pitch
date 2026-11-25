@@ -1123,14 +1123,14 @@ public final class SetupApplication {
 	private JsonObject completedState(MatchDocument document, String role) {
 		JsonObject artifact = JsonObject.readFrom(document.completion.json());
 		JsonArray events = artifact.get("events").asArray();
-		JsonObject terminal = events.get(events.size() - 1).asObject().get("state").asObject().set("callerRole", role);
+		JsonObject terminal = new PublicMatchView().recorded(events.get(events.size() - 1).asObject().get("state").asObject(), role);
 		JsonValue transcript = artifact.get("transcript");
 		if (transcript != null) {
 			JsonArray records = transcript.asObject().get("records").asArray();
 			JsonValue decision = records.get(records.size() - 1).asObject().get("decision");
 			if (decision.isObject() && "sizeLimit".equals(decision.asObject().getString("operation", null))
 				&& MatchStopReason.MATCH_SIZE_LIMIT.name().equals(decision.asObject().getString("reason", null)))
-				terminal.add("stopReason", MatchStopReason.MATCH_SIZE_LIMIT.name());
+				terminal.set("stopReason", MatchStopReason.MATCH_SIZE_LIMIT.name());
 		}
 		return terminal;
 	}

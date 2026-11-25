@@ -1,6 +1,7 @@
 package com.fumbbl.ffb.test;
 
 import com.eclipsesource.json.JsonObject;
+import com.eclipsesource.json.JsonValue;
 import com.fumbbl.ffb.server.match.MatchDocument;
 import com.fumbbl.ffb.server.match.MatchService;
 import com.fumbbl.ffb.server.match.SetupSession;
@@ -14,6 +15,28 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RecoverySessionTest {
+	@Test void restoresCheckpointsWrittenWithSharedCoinPrompts() throws Exception {
+		SetupSession seed = new SetupSessionTest().session(11);
+		Field documentField = SetupSession.class.getDeclaredField("document");
+		documentField.setAccessible(true);
+		MatchDocument document = (MatchDocument) documentField.get(seed);
+		TestServer server = new TestServer();
+		SetupSession current = SetupSession.startRecoverable(server.getServer(), document, -8, false, false);
+		JsonObject acting = SetupSessionFixtureState.actingView(current);
+		JsonObject payload = JsonObject.readFrom(current.recoveryArtifact()).get("payload").asObject();
+		String actor = acting.getString("actor", null);
+		JsonValue prompt = payload.get(actor + "View").asObject().get("prompt");
+		for (String role : new String[] {"home", "away"}) {
+			JsonObject legacy = payload.get(role + "View").asObject();
+			legacy.remove("decisionKind");
+			legacy.set("prompt", prompt);
+		}
+		SetupSession restored = new SetupSession(server.getServer(), document, signed(payload));
+		assertEquals(acting, SetupSessionFixtureState.actingView(restored));
+		assertEquals("coin", restored.spectatorView().getString("decisionKind", null));
+		assertTrue(restored.spectatorView().get("prompt").isNull());
+	}
+
 	@Test void activeMovementForecastRestoresAndLegacyOmissionDoesNotAcceptTamperedChecks() throws Exception {
 		SetupSessionTest fixtures = new SetupSessionTest();
 		java.lang.reflect.Method ready = SetupSessionTest.class.getDeclaredMethod("readySession", boolean.class);
@@ -22,7 +45,7 @@ class RecoverySessionTest {
 		Field stateField = SetupSession.class.getDeclaredField("state"); stateField.setAccessible(true);
 		com.fumbbl.ffb.server.GameState nativeState = (com.fumbbl.ffb.server.GameState) stateField.get(current);
 		TestRolls.on(nativeState).general(1, 1, 4, 4, 3, 3, 3);
-		JsonObject initial = view(current, "home");
+		JsonObject initial = SetupSessionFixtureState.actingView(current);
 		JsonObject kick = null;
 		for (com.eclipsesource.json.JsonValue value : initial.get("actions").asArray())
 			if ("kickoff".equals(value.asObject().getString("kind", null)) && value.asObject().get("target").asObject().getInt("y", -1) == 7
@@ -31,27 +54,27 @@ class RecoverySessionTest {
 		submitAction(current, kick, "kick");
 		assertEquals("REGULAR", view(current, "home").getString("turnMode", null));
 		JsonObject select = null;
-		for (com.eclipsesource.json.JsonValue value : view(current, "home").get("actions").asArray())
+		for (com.eclipsesource.json.JsonValue value : SetupSessionFixtureState.actingView(current).get("actions").asArray())
 			if ("select".equals(value.asObject().getString("kind", null))) { select = value.asObject(); break; }
 		assertTrue(select != null);
 		submitAction(current, select, "select");
-		assertTrue(view(current, "home").get("movementForecast") != null);
+		JsonObject acting = SetupSessionFixtureState.actingView(current);
+		assertTrue(acting.get("movementForecast") != null);
+		String actor = acting.getString("actor", null);
 		Field documentField = SetupSession.class.getDeclaredField("document"); documentField.setAccessible(true);
 		MatchDocument document = (MatchDocument) documentField.get(current);
 		TestServer server = new TestServer();
 		restore(server, document, current);
 		JsonObject priorForecast = JsonObject.readFrom(current.recoveryArtifact()).get("payload").asObject();
-		for (String role : new String[] {"homeView", "awayView"}) {
-			JsonObject oldForecast = priorForecast.get(role).asObject().get("movementForecast").asObject();
-			oldForecast.set("version", 1);
-			for (com.eclipsesource.json.JsonValue value : oldForecast.get("steps").asArray()) value.asObject().remove("checks");
-		}
-		assertEquals(view(current, "home"), view(new SetupSession(server.getServer(), document, signed(priorForecast)), "home"));
+		JsonObject oldForecast = priorForecast.get(actor + "View").asObject().get("movementForecast").asObject();
+		oldForecast.set("version", 1);
+		for (com.eclipsesource.json.JsonValue value : oldForecast.get("steps").asArray()) value.asObject().remove("checks");
+		assertEquals(acting, view(new SetupSession(server.getServer(), document, signed(priorForecast)), actor));
 		JsonObject legacy = JsonObject.readFrom(current.recoveryArtifact()).get("payload").asObject();
 		legacy.get("homeView").asObject().remove("movementForecast"); legacy.get("awayView").asObject().remove("movementForecast");
-		assertEquals(view(current, "home"), view(new SetupSession(server.getServer(), document, signed(legacy)), "home"));
+		assertEquals(acting, view(new SetupSession(server.getServer(), document, signed(legacy)), actor));
 		JsonObject changed = JsonObject.readFrom(current.recoveryArtifact()).get("payload").asObject();
-		changed.get("homeView").asObject().get("movementForecast").asObject().get("steps").asArray().get(0).asObject().set("rush", 6);
+		changed.get(actor + "View").asObject().get("movementForecast").asObject().get("steps").asArray().get(0).asObject().set("rush", 6);
 		assertEquals("RECOVERY_CORRUPT", assertThrows(MatchService.Failure.class,
 			() -> new SetupSession(server.getServer(), document, signed(changed))).code);
 		JsonObject records = JsonObject.readFrom(current.recoveryArtifact()).get("payload").asObject().get("transcript").asObject();
@@ -144,7 +167,7 @@ class RecoverySessionTest {
 		SetupSession seed = new SetupSessionTest().session(11);
 		Field documentField = SetupSession.class.getDeclaredField("document"); documentField.setAccessible(true);
 		SetupSession session = SetupSession.startRecoverable(new TestServer().getServer(), (MatchDocument) documentField.get(seed), -8, false, false);
-		JsonObject before = view(session, "home"); String role = before.getString("actor", null);
+		JsonObject before = SetupSessionFixtureState.actingView(session); String role = before.getString("actor", null);
 		JsonObject request = new JsonObject().add("operation", "choice").add("requestId", "accepted")
 			.add("expectedRevision", before.get("revision")).add("promptId", before.get("prompt").asObject().get("id")).add("optionId", "heads");
 		assertEquals("ACCEPTED", session.apply(role, request).getString("code", null));
@@ -167,7 +190,7 @@ class RecoverySessionTest {
 		SetupSession original = SetupSession.startRecoverable(server.getServer(), document, -3, false, false);
 		for (int decision = 0; decision < 2; decision++) {
 			SetupSession restored = restore(server, document, original);
-			JsonObject view = view(original, "home");
+			JsonObject view = SetupSessionFixtureState.actingView(original);
 			JsonObject prompt = view.get("prompt").asObject();
 			JsonObject request = new JsonObject().add("operation", "choice").add("requestId", "choice" + decision)
 				.add("expectedRevision", view.get("revision")).add("promptId", prompt.get("id"))

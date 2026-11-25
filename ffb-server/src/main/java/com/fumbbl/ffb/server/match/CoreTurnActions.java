@@ -72,10 +72,7 @@ public final class CoreTurnActions {
             if (allowActivationSwitch) declarations(game, role, result, false);
             return result;
         }
-        boolean consumedKickoffChoice = game.getDialogParameter() instanceof DialogPlayerChoiceParameter
-            && (((DialogPlayerChoiceParameter) game.getDialogParameter()).getPlayerChoiceMode() == PlayerChoiceMode.CHARGE
-                || ((DialogPlayerChoiceParameter) game.getDialogParameter()).getPlayerChoiceMode() == PlayerChoiceMode.SOLID_DEFENCE);
-        if (!turnActionContext(game, consumedKickoffChoice)) return result;
+        if (!turnActionContext()) return result;
         result.add(new Action("end-turn", "endTurn", "End turn", role, new ClientCommandEndTurn(game.getTurnMode(), null)));
         if (acting.getPlayer() == null || allowActivationSwitch) declarations(game, role, result, false);
         if (acting.getPlayer() == null) return result;
@@ -127,10 +124,7 @@ public final class CoreTurnActions {
             }
             return result;
         }
-        boolean consumedKickoffChoice = game.getDialogParameter() instanceof DialogPlayerChoiceParameter
-            && (((DialogPlayerChoiceParameter) game.getDialogParameter()).getPlayerChoiceMode() == PlayerChoiceMode.CHARGE
-                || ((DialogPlayerChoiceParameter) game.getDialogParameter()).getPlayerChoiceMode() == PlayerChoiceMode.SOLID_DEFENCE);
-        if (!turnActionContext(game, consumedKickoffChoice)) return result;
+        if (!turnActionContext()) return result;
         declarations(game, role, result, true);
         markReservedActions(result);
         return result;
@@ -147,7 +141,10 @@ public final class CoreTurnActions {
                     declaration.role, declaration.command, declaration.targetPlayerId, true));
         }
     }
-    private boolean turnActionContext(Game game, boolean consumedKickoffChoice) {
+    boolean turnActionContext() {
+        Game game = state.getGame();
+        boolean consumedKickoffChoice = game.getDialogParameter() instanceof DialogPlayerChoiceParameter choice
+            && (choice.getPlayerChoiceMode() == PlayerChoiceMode.CHARGE || choice.getPlayerChoiceMode() == PlayerChoiceMode.SOLID_DEFENCE);
         return (state.getCurrentStep().getId() == StepId.INIT_SELECTING || state.getCurrentStep().getId() == StepId.INIT_MOVING
             || state.getCurrentStep().getId() == StepId.INIT_BLOCKING || state.getCurrentStep().getId() == StepId.INIT_PASSING
             || state.getCurrentStep().getId() == StepId.INIT_THROW_TEAM_MATE || state.getCurrentStep().getId() == StepId.INIT_FOULING

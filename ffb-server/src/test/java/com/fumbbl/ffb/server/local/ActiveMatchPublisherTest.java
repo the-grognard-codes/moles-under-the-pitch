@@ -20,6 +20,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -195,6 +196,10 @@ class ActiveMatchPublisherTest {
 		publisher.watch(spectator, mock(AuthenticatedPrincipal.class), "match", "watch");
 		JsonObject coach = new JsonObject().add("callerRole", "away").add("phase", "PLAY")
 			.add("revision", 51).add("computer", new JsonObject().add("policyVersion", "bogruk-v1"))
+			.add("actor", "away").add("decisionKind", "reroll")
+			.add("prompt", new JsonObject().add("id", "private"))
+			.add("actions", new com.eclipsesource.json.JsonArray().add(new JsonObject().add("id", "private")))
+			.add("reaction", new JsonObject().add("id", "private").add("actor", "away").add("expiresAt", 250))
 			.add("threats", new JsonObject().add("role", "away")).add("savedFormations", new com.eclipsesource.json.JsonArray()).add("blockPreview", new JsonObject());
 
 		publisher.publish("match", null, coach);
@@ -204,6 +209,12 @@ class ActiveMatchPublisherTest {
 		JsonObject view = JsonObject.readFrom(frame.getValue()).get("state").asObject();
 		assertEquals("spectator", view.getString("callerRole", null));
 		assertEquals(51, view.getInt("revision", -1));
+		assertEquals("reroll", view.getString("decisionKind", null));
+		assertEquals("away", view.getString("actor", null));
+		assertTrue(view.get("actions").asArray().isEmpty());
+		assertTrue(view.get("prompt").isNull());
+		assertNull(view.get("reaction").asObject().get("id"));
+		assertEquals(250, view.get("reaction").asObject().getInt("expiresAt", -1));
 		assertNull(view.get("computer"));
 		assertNull(view.get("threats"));
 		assertNull(view.get("savedFormations"));

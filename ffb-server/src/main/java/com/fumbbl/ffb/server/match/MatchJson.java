@@ -898,6 +898,18 @@ public final class MatchJson {
         if (object.get("playerActionMenu") != null) extended.add("playerActionMenu");
         if (object.get("activePlayerAction") != null) extended.add("activePlayerAction");
         if (object.get("passing") != null) extended.add("passing");
+        if (object.get("decisionKind") != null) {
+            extended.add("decisionKind");
+            String kind = object.get("decisionKind").asString();
+            if (!PublicMatchDecision.isKind(kind) || "none".equals(kind) != "FULL_TIME".equals(object.getString("phase", null))
+                || object.get("movementForecast") != null || object.get("blockPreview") != null || object.get("playerActionMenu") != null)
+                throw new IllegalArgumentException();
+        }
+        if (object.get("stopReason") != null) {
+            extended.add("stopReason");
+            if (!"FULL_TIME".equals(object.getString("phase", null))
+                || !MatchStopReason.MATCH_SIZE_LIMIT.name().equals(object.getString("stopReason", null))) throw new IllegalArgumentException();
+        }
         exact(object, extended.toArray(new String[0]));
     }
 
