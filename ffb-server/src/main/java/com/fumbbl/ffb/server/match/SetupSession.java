@@ -1008,7 +1008,7 @@ public final class SetupSession {
 				&& command instanceof ClientCommandUseSkill;
 			boolean turnCounterChanged = oldHalf != game.getHalf() || oldHomeTurn != game.getTurnDataHome().getTurnNr()
 				|| oldAwayTurn != game.getTurnDataAway().getTurnNr();
-			// Settle the ending turn's clock once, after the offer, even if an off-turn score adjusted a counter earlier.
+			// Defer the off-turn counter adjustment's reserve charge until the Star of the Show response.
 			if (chatV1 && !awaitingStarOfTheShow
 				&& (turnCounterChanged || resolvedStarOfTheShow && pendingTouchdownEndingHome != oldHomePlaying)) {
 				long excess = Math.min(RESERVE_ALLOWANCE_MS, Math.max(0L, oldElapsed - TURN_ALLOWANCE_MS));

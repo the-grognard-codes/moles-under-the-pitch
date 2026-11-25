@@ -142,7 +142,10 @@ public class StepEndTurn extends AbstractStep {
 		return StepId.END_TURN;
 	}
 
-	/** The ending team while a settled touchdown is waiting for the Star of the Show response. */
+	/**
+	 * @return whether the ending team is home while a settled touchdown awaits the
+	 * Star of the Show response, or null when there is no such pending offer
+	 */
 	public Boolean getHomeTurnEndingBeforeStarOfTheShow() {
 		return useStarOfTheShow == null ? touchdownTurnEndingHome : null;
 	}

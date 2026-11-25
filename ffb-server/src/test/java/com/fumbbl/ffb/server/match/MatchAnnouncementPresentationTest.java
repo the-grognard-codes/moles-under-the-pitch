@@ -177,6 +177,59 @@ class MatchAnnouncementPresentationTest {
         assertEquals(1, allEvents(resumed).stream().filter(event -> "touchdown".equals(event.getString("kind", null))).count());
     }
 
+    @Test void offTurnStarThenRestoredSendOffKeepsOneTouchdownAndDriveAdvance() throws Exception {
+        SetupSessionMovementTest.Fixture fixture = fixture();
+        JsonObject ready = fixture.advanceToTurn();
+        Game game = state(fixture.session).getGame();
+        Team scoringTeam = game.getOtherTeam(game.getActingTeam());
+        boolean scorerHome = scoringTeam == game.getTeamHome();
+        String role = scorerHome ? "home" : "away";
+        Player<?> scorer = scoringTeam.getPlayers()[0];
+        Player<?> weapon = scoringTeam.getPlayers()[1];
+        game.getOptions().addOption(new GameOptionBoolean(GameOptionId.ARGUE_THE_CALL).setValue(true));
+        InducementTypeFactory inducements = game.getFactory(FactoryType.Factory.INDUCEMENT_TYPE);
+        TurnData scoringTurn = scorerHome ? game.getTurnDataHome() : game.getTurnDataAway();
+        scoringTurn.getInducementSet().addInducement(new Inducement(inducements.forName("bribes"), 1));
+        UtilBox.putAllPlayersIntoBox(game);
+        ((RosterPlayer) scorer).addSkill(game.getRules().getSkillFactory().forName("Star of the Show"));
+        ((RosterPlayer) weapon).addSkill(game.getRules().getSkillFactory().forName("Secret Weapon"));
+        place(game, weapon, 8, 6, PlayerState.STANDING);
+        prepareScorer(game, scorer);
+
+        JsonObject scored = applyAction(fixture, ready, "score-with-weapon", action(ready, "endTurn").getString("id", null));
+        JsonArray scoringOutcomes = nativeOutcomes(fixture.session, scored.getInt("revision", -1));
+        int touchdown = announcementIndex(scoringOutcomes, "touchdown");
+        assertTrue(touchdown >= 0 && touchdown < changeIndex(scoringOutcomes, "gameSetDialogParameter", "skillUse"));
+        assertEquals(ready.get("drive"), scored.get("drive"));
+
+        SetupSession starSession = new SetupSession(fixture.server, fixture.document, fixture.session.recoveryArtifact());
+        JsonObject star = starSession.reply("load", "ACCEPTED", false, role).get("state").asObject();
+        JsonObject sendOff = starSession.apply(role, fixture.request("action", "accept-star-before-send-off", star)
+            .add("actionId", actionWithSuffix(star, "skill:true"))).get("state").asObject();
+        assertDecisionOffered(starSession, sendOff, "argueTheCall");
+        assertEquals(ready.getInt("drive", -1) + 1, sendOff.getInt("drive", -1));
+
+        SetupSession sendOffSession = new SetupSession(fixture.server, fixture.document, starSession.recoveryArtifact());
+        JsonObject argue = sendOffSession.reply("load", "ACCEPTED", false, role).get("state").asObject();
+        JsonObject declineArgue = fixture.request("action", "decline-argue-after-restore", argue)
+            .add("actionId", actionWithSuffix(argue, "argue:no"));
+        JsonObject bribe = sendOffSession.apply(role, declineArgue).get("state").asObject();
+        assertDecisionOffered(sendOffSession, bribe, "bribes");
+        JsonObject decline = fixture.request("action", "decline-bribe", bribe)
+            .add("actionId", actionWithSuffix(bribe, "bribe:no"));
+        JsonObject setup = sendOffSession.apply(role, decline).get("state").asObject();
+        assertEquals("SETUP", setup.getString("phase", null));
+        assertEquals(sendOff.get("drive"), setup.get("drive"));
+        assertEquals(scorerHome ? 1 : 0, setup.getInt("homeScore", -1));
+        assertEquals(scorerHome ? 0 : 1, setup.getInt("awayScore", -1));
+        assertTrue(sendOffSession.apply(role, decline).getBoolean("duplicate", false));
+        assertEquals(setup.getInt("revision", -1) + 1, sendOffSession.transcriptPage(0, 1).getInt("total", -1));
+        Game continued = state(sendOffSession).getGame();
+        assertEquals(1, continued.getGameResult().getPlayerResult(continued.getPlayerById(scorer.getId())).getTouchdowns());
+        assertEquals(PlayerState.BANNED, continued.getFieldModel().getPlayerState(continued.getPlayerById(weapon.getId())).getBase());
+        assertEquals(1, allEvents(sendOffSession).stream().filter(event -> "touchdown".equals(event.getString("kind", null))).count());
+    }
+
     @Test void secretWeaponChoicesFollowTheTouchdown() throws Exception {
         secretWeaponChoicesFollowTheSettledBoundary("touchdown");
     }
