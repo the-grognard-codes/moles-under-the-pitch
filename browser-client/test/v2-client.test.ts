@@ -603,18 +603,56 @@ test('one authenticated socket browses and watches the shared state; spectator c
   assert.throws(() => decodeSetupStateValue(state)); // v1 does not silently accept the v2 seat value.
 });
 
-test('uncertain player intent survives reconnect and retries exactly once on explicit request', async () => {
+for (const refusal of [
+  { type: 'error', code: 'MATCH_OUTCOME_UNKNOWN' },
+  { type: 'setupState', code: 'PERSISTENCE_FAILED', duplicate: false, state: null },
+]) test(`${refusal.code} retains the player intent for one explicit retry after reconnect`, async () => {
   const { client, connect, storageData } = fixture(); let socket = await connect();
   let requestId = client.open(match, false);
   socket.reply({ type: 'setupState', code: 'ACCEPTED', requestId, duplicate: false, state: { ...state, callerRole: 'home' } });
   const intent = { matchId: match, operation: 'confirm', expectedRevision: 2 };
   requestId = client.request('setup', intent, true); const original = socket.sent.at(-1);
   assert.ok(storageData.has(v2PendingKey)); assert.ok(!storageData.get(v2PendingKey)!.includes('secret-bearer'));
-  socket.reply({ type: 'error', requestId, code: 'MATCH_OUTCOME_UNKNOWN' }); assert.ok(client.pending);
+  socket.reply({ ...refusal, requestId });
+  assert.deepEqual(client.pending?.request, original);
+  assert.deepEqual(JSON.parse(storageData.get(v2PendingKey)!).request, original);
   socket = await connect(); assert.equal(socket.sent.filter(message => message.operation === 'confirm').length, 0);
-  client.retry(); assert.deepEqual(socket.sent.at(-1), original);
+  client.retry();
+  assert.deepEqual(socket.sent.filter(message => message.operation === 'confirm'), [original]);
   socket.reply({ type: 'setupState', requestId, code: 'ACCEPTED', duplicate: true, state: { ...state, revision: 3, callerRole: 'home' } });
   assert.equal(client.pending, null); assert.equal(storageData.size, 0);
+});
+
+test('the accepted final action shows full time and acknowledges the retained intent', async () => {
+  const { client, connect, storageData } = fixture();
+  const socket = await connect();
+  const actionId = '2:end-turn';
+  const playing = { ...state, callerRole: 'home', phase: 'PLAY', prompt: null, turnMode: 'REGULAR', half: 2,
+    actions: [{ id: actionId, kind: 'endTurn', label: 'End Turn', actor: 'home' }] };
+  const load = client.open(match, false);
+  socket.reply({ type: 'setupState', requestId: load, code: 'ACCEPTED', duplicate: false, state: playing });
+  assert.deepEqual(client.state, playing);
+  const requestId = client.request('setup', { matchId: match, operation: 'action', actionId, expectedRevision: 2 }, true);
+  assert.equal(client.pending?.request.requestId, requestId);
+  const fullTime = { ...playing, revision: 3, phase: 'FULL_TIME', turnMode: 'END_GAME', actions: [] };
+  socket.reply({ type: 'setupState', requestId, code: 'ACCEPTED', duplicate: false, state: fullTime });
+  assert.deepEqual(client.state, fullTime);
+  assert.equal(client.pending, null);
+  assert.equal(storageData.has(v2PendingKey), false);
+});
+
+test('the waiting coach receives full time from an unsolicited setup broadcast', async () => {
+  const { client, connect, events } = fixture();
+  const socket = await connect();
+  const playing = { ...state, callerRole: 'away', phase: 'PLAY', prompt: null, turnMode: 'REGULAR', half: 2 };
+  const load = client.open(match, false);
+  socket.reply({ type: 'setupState', requestId: load, code: 'ACCEPTED', duplicate: false, state: playing });
+  assert.deepEqual(client.state, playing);
+  const fullTime = { ...playing, revision: 3, phase: 'FULL_TIME', turnMode: 'END_GAME' };
+  socket.reply({ type: 'setupState', requestId: null, code: 'ACCEPTED', duplicate: false, state: fullTime });
+  assert.deepEqual(client.state, fullTime);
+  assert.equal(events.at(-1).state.phase, 'FULL_TIME');
+  assert.equal(events.at(-1).requestId, null);
 });
 
 test('only an accepted action with an advanced revision is available for Last used', async () => {

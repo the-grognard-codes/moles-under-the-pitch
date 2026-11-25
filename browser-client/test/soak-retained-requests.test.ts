@@ -67,9 +67,9 @@ test('a retained retry waits for an asynchronous send and its acknowledgment aft
   assert.equal(page.events.find(event => event.event === 'retained-request-repeated').code, 'PERSISTENCE_FAILED');
 });
 
-test('original refusal codes survive retries and remain visible when a repeat is rejected', async () => {
+test('an unknown match outcome survives retries and remains visible when a repeat is rejected', async () => {
   const page = new PageFixture();
-  page.refuse();
+  page.refuse('MATCH_OUTCOME_UNKNOWN');
   const first = page.recovery.repeat();
   await page.clicked.promise;
   await turn();
@@ -82,7 +82,7 @@ test('original refusal codes survive retries and remain visible when a repeat is
   await turn();
   page.reply('ACCEPTED');
   await second;
-  assert.deepEqual(page.recovery.counts(), { PERSISTENCE_FAILED: 2 });
+  assert.deepEqual(page.recovery.counts(), { MATCH_OUTCOME_UNKNOWN: 2 });
   assert.equal(page.events.filter(event => event.event === 'setup-refused').length, 2);
 });
 
@@ -111,14 +111,14 @@ test('a resumed request with unavailable cause is counted explicitly as UNKNOWN'
   assert.deepEqual(page.recovery.counts(), { UNKNOWN: 1 });
 });
 
-test('refusals are logged even when no retained retry is sent', async () => {
+test('a refusal at full time is logged without sending a retained retry', async () => {
   const page = new PageFixture();
-  page.refuse('COMPLETION_PENDING');
+  page.refuse('MATCH_COMPLETED');
   page.visible = false;
   await page.recovery.captureRefusals();
   assert.equal(await page.recovery.repeat(), false);
   assert.deepEqual(page.recovery.counts(), {});
-  assert.equal(page.events.find(event => event.event === 'setup-refused').code, 'COMPLETION_PENDING');
+  assert.equal(page.events.find(event => event.event === 'setup-refused').code, 'MATCH_COMPLETED');
 });
 
 test('later setup traffic cannot acknowledge or reclassify the retained retry', async () => {
@@ -154,7 +154,7 @@ test('capture preserves action failures, logs each sequence once and resets on a
   assert.equal(page.soak.failures.length, 2);
   assert.equal(page.events.filter(event => event.event === 'setup-refused').length, 2);
   page.soak = { seq: 0, revision: 10, outgoing: [], receipts: [], failures: [] };
-  page.refuse('COMPLETION_PENDING');
+  page.refuse('MATCH_OUTCOME_UNKNOWN');
   await page.recovery.captureRefusals();
   assert.equal(page.events.filter(event => event.event === 'setup-refused').length, 3);
 });

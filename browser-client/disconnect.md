@@ -28,8 +28,8 @@ replay. Same-tab page reload preserves a pending request. A successful load alon
 does not establish which request produced a state, so it does not unlock an
 uncertain action. Exact retry returns the current state without executing twice.
 
-`PERSISTENCE_FAILED`, `MATCH_OUTCOME_UNKNOWN` and `COMPLETION_PENDING` keep this
-lock: the engine may already have resolved the action or reached full time.
+`PERSISTENCE_FAILED` and `MATCH_OUTCOME_UNKNOWN` keep this lock because the
+engine may already have resolved the action or reached full time.
 An accepted response or definite rejection resolves it. An unavailable resident
 session discards its unusable retry. A denied load (`NOT_FOUND`) does not erase
 another credential's retained action. Reconnect with its original credential

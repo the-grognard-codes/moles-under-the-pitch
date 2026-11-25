@@ -122,20 +122,28 @@ for (const coach of ['bogruk','gobbo']) test(`${coach} normal transport repairs 
   const [code]=await once(child,'exit');assert.equal(code,0,errors);assert.equal(confirmations,2);assert.ok(placements>0 && placements<=22);
 });
 
-for (const failureCode of ['PERSISTENCE_FAILED', 'COMPLETION_PENDING']) {
-  test(`computer worker yields ${failureCode} to the daemon after one load`, { timeout: 5000 }, async t => {
+for (const refusedOperation of ['load', 'action']) {
+  test(`computer worker yields PERSISTENCE_FAILED to the daemon on ${refusedOperation}`, { timeout: 5000 }, async t => {
     const server = createServer();
     const sockets = new Set();
-    let loads = 0;
+    const operations = [];
+    const playing = { ...state, phase: 'PLAY', prompt: null,
+      actions: [{ id: '0:end-turn', kind: 'endTurn', label: 'End Turn', actor: 'home', target: null }] };
     server.on('upgrade', (request, socket) => {
       sockets.add(socket); socket.on('error', () => {});
       const accept = createHash('sha1').update(`${request.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64');
       socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
       readFrames(socket, body => {
-        if (body.type === 'authenticateComputer') send(socket, { version: 2, type: 'computerAuthentication', requestId: body.requestId, code: 'ACCEPTED' });
-        else {
-          loads++;
-          send(socket, { version: 2, type: 'setupState', requestId: body.requestId, code: failureCode, duplicate: false, state: null });
+        if (body.type === 'authenticateComputer') {
+          send(socket, { version: 2, type: 'computerAuthentication', requestId: body.requestId, code: 'ACCEPTED' });
+          return;
+        }
+        operations.push(body.operation);
+        if (body.operation === refusedOperation) {
+          send(socket, { ...response(body.requestId, null), code: 'PERSISTENCE_FAILED' });
+        } else {
+          assert.equal(body.operation, 'load');
+          send(socket, response(body.requestId, playing));
         }
       });
     });
@@ -150,7 +158,7 @@ for (const failureCode of ['PERSISTENCE_FAILED', 'COMPLETION_PENDING']) {
     child.stderr.on('data', chunk => { errors += chunk; });
     const [code] = await once(child, 'close');
     assert.equal(code, persistenceUnavailableExitCode, errors);
-    assert.equal(loads, 1);
+    assert.deepEqual(operations, refusedOperation === 'load' ? ['load'] : ['load', 'action']);
     assert.equal(errors, '', 'The daemon owns the one diagnostic per backoff cycle');
   });
 }

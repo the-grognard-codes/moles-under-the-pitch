@@ -28,7 +28,7 @@ type ClientOptions = {
 };
 export const v2PendingKey = 'ffb.intent.v2';
 const uuid = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
-const uncertain = new Set(['PERSISTENCE_FAILED', 'MATCH_OUTCOME_UNKNOWN', 'COMPLETION_PENDING', 'SAVE_OUTCOME_UNKNOWN', 'DELETE_OUTCOME_UNKNOWN']);
+const uncertain = new Set(['PERSISTENCE_FAILED', 'MATCH_OUTCOME_UNKNOWN', 'SAVE_OUTCOME_UNKNOWN', 'DELETE_OUTCOME_UNKNOWN']);
 
 const lobbyReadInterval = 2000;
 const isLobbyRead = (type: string) => type === 'browse' || type === 'currentMatches';

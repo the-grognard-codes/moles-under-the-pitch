@@ -25,5 +25,5 @@ export function decodeRetainedSetup(raw: string | null): RetainedSetup | null {
 }
 
 export function setupOutcomeUncertain(code: SetupCode): boolean {
-  return code === 'PERSISTENCE_FAILED' || code === 'MATCH_OUTCOME_UNKNOWN' || code === 'COMPLETION_PENDING';
+  return code === 'PERSISTENCE_FAILED' || code === 'MATCH_OUTCOME_UNKNOWN';
 }

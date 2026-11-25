@@ -147,7 +147,7 @@ function receive(raw) {
     requestLoad(); return;
   }
   if ((message.type === 'error' || message.type === 'setupState')
-      && (message.code === 'PERSISTENCE_FAILED' || message.code === 'COMPLETION_PENDING')) {
+      && message.code === 'PERSISTENCE_FAILED') {
     if (message.requestId === pending?.requestId) { yieldToDaemon(); return; }
     if (loadId && message.requestId === loadId) { yieldToDaemon(); return; }
   }
