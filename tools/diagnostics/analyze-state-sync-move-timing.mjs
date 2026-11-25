@@ -5,20 +5,19 @@ import { join } from 'node:path';
 import { analysisFiles, analyzerSourceSha256, measurementStatistics } from './history-analysis.mjs';
 
 const [directory, ...extra] = process.argv.slice(2);
-const nativeOnly = directory === '--native-only';
-const moveOnly = directory === '--move-only' || nativeOnly;
+const moveOnly = directory === '--move-only';
 assert.ok(directory && (moveOnly ? extra.length : !extra.length),
-  'Usage: node tools/diagnostics/analyze-state-sync-move-timing.mjs <capture-directory> | --move-only|--native-only <trial-directory>...');
+  'Usage: node tools/diagnostics/analyze-state-sync-move-timing.mjs <capture-directory> | --move-only <trial-directory>...');
 const files = moveOnly ? null : analysisFiles(directory);
 const metadata = moveOnly ? { earlyRevision: 50 } : files.readJson('selected/match.json');
-const phases = nativeOnly ? ['nativeCapture'] : ['nativeCapture', 'blockCopy', 'transferCopy'];
+const phases = ['nativeCapture', 'blockCopy', 'transferCopy'];
 const halfWindow = 25;
 
 function validateMoves(moves, candidate) {
   assert.equal(moves.length, candidate.terminalRevision, 'Every committed revision must have a move sample');
   assert.ok(moves.every((row, index) => row.revision === index + 1));
   assert.ok(moves.some(row => row.nativeCapture.length), 'No native capture timings found');
-  if (!nativeOnly) assert.ok(moves.some(row => row.blockCopy.length), 'No block preview copy timings found');
+  assert.ok(moves.some(row => row.blockCopy.length), 'No block preview copy timings found');
 }
 
 const runs = moveOnly ? extra.map(label => {

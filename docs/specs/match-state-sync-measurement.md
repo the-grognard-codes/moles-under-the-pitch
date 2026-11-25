@@ -2,6 +2,8 @@
 
 Issue: [#650](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/650)
 
+[PR #656](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/656) implements the measurement harness. Review demonstrated that test-only advice can time the original completion call. The production instrumentation proposal has been withdrawn. See the [outcome report](match-state-sync-measurement-outcome.md) for measurements, validation and limits, and the [issue discussion](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/650#issuecomment-7149336735) for the revised approach.
+
 Part of #611. Extended on 2026-11-24 after [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290) of the implementation plan, with the maintainer's approval.
 
 ## Abstract
