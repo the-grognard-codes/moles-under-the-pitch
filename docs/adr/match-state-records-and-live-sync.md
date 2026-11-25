@@ -4,7 +4,7 @@ Status: proposed
 Issue: [#611](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/611)
 Request: [match state, history and live sync](../specs/match-state-sync-adr.md)
 Plan: [#651](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651) ([tickets](../specs/match-state-sync-tickets.md)), with [Codex's review](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/651#issuecomment-7146170290)
-Measurement: [#650](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/650), not yet reported
+Measurement: [#650](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/650), [reported](../specs/match-state-sync-measurement-outcome.md), with evidence on [storage](../reviews/650-state-sync-storage.md), [moves](../reviews/650-state-sync-moves.md) and [full time](../reviews/650-state-sync-full-time.md)
 Evidence revision: `main` at `eb5057d022865f255005c0cd86f5101d503b37a3`. Line numbers are at that revision.
 On acceptance, supersedes: [ADR 0002](0002-bounded-match-transcript.md), [ADR 0004](0004-durable-recovery-journal.md)
 On acceptance, amends: [ADR 0001](0001-active-match-publication.md), [ADR 0007](0007-server-owned-turn-sequence-presentation.md), [ADR 0008](0008-staged-placements.md), [ADR 0012](0012-versioned-browser-protocol.md). Extends [ADR 0013](0013-application-seams.md).
@@ -100,7 +100,7 @@ One database transaction per accepted decision (D3):
 - **Admission.** An action is refused before native execution when the store can't reserve room for its record, snapshot and receipt.
 - **Unknown commit.** The session is released, and the next load reconciles from the stored generation and the receipt.
 - **Crash before commit.** Nothing happened. **Crash after commit and before publication.** Viewers repair themselves, as below.
-- **No worker.** There is no background replay worker (D3).
+- **No worker.** There is no background replay worker (D3). The maintainer kept D3 after #650's results, and can revisit a worker thread for the SQL writes if performance on the GCP hosting is significantly worse ([2026-11-25](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/656#issuecomment-7153291066)).
 
 ### Retries
 
@@ -117,7 +117,7 @@ A receipt holds the match, actor and request ID, the canonical fingerprint, the 
 - Every request keeps its own correlated reply, even when the record is over the live frame limit or can't be queued.
 - The browser checks the match and the base revision, ignores duplicates and detects gaps. A snapshot or a page states the revision it starts from, so nothing is applied twice.
 - **A missed update always leads to a repair.** Today a newer state replaces a deferred one (`PublicationDelivery.java:50-57`), which is safe only for complete states. A replaced, dropped or oversized update makes the recipient due a bounded, authorized snapshot, including when no further move follows and when a repair read fails.
-- Joining and reloading get a snapshot and the latest page. Short gaps can be filled from a tail that is bounded in records and bytes, or from stored records. Neither restores the match.
+- Joining and reloading get a snapshot and the latest page. Short gaps can be filled from a tail that is bounded in records and bytes (see Budgets), or from stored records. The oldest records leave the tail at either limit, and a browser whose base has left it gets an authorized snapshot. Offers never enter the tail. Neither source restores the match.
 - Staged placements are delivered as in ADR 0008.
 - The computer player keeps receiving full snapshots, and a parked one is told when nothing changed since a named revision (D18).
 
@@ -161,17 +161,24 @@ No history stays resident beyond the tail. `MatchMemoryBudget` and the frozen hi
 
 ### Budgets
 
-ADR 0006 is unchanged: p99 ≤ 100 ms per healthy worker task, and 2,000 ms per failed request. The targets below are set from #650, and each must hold early and late in a match (D6).
+ADR 0006 is unchanged: p99 ≤ 100 ms per healthy worker task, and 2,000 ms per failed request. The targets below are #650's proposals. Each must hold early and late in a match (D6), on the real implementation.
 
-| Measure | Target | Source |
+| Measure | Target | Measured in #650 |
 | --- | --- | --- |
-| Durable write of one decision | *from #650* | item 3 |
-| Whole worker task, ordinary move and keyframe move | *from #650* | item 11 |
-| Restore | *from #650* | item 4 |
-| Publication of one move | *from #650* | item 11 |
-| Full time | *from #650* | item 5 |
-| Snapshot size, early and late | *from #650* | item 2 |
-| Keyframe cadence; tail size in records and bytes | *from #650* | item 9 |
+| Durable write of one decision | p99 ≤ 60 ms | p99 in five rounds. Ordinary: 30.7–56.9 ms early, 31.7–98.5 ms late. Keyframe, late: 30.2–80.4 ms. Rare, late: 34.2–118.7 ms |
+| Whole worker task, ordinary move and keyframe move | p99 ≤ 100 ms (ADR 0006) | p99 in five rounds. Ordinary: 33.5–57.5 ms early, 32.0–99.2 ms late. Keyframe: 31.0–45.5 ms early, 31.3–81.3 ms late. Rare, late: 35.0–120.1 ms |
+| Restore of an active match, through native reconstruction | p90 ≤ 60 ms | Late: p50 35.4 ms, p90 50.1 ms, from nine samples. The current restore took 3,605 ms at p50 |
+| Projection and delivery to five recipients, without the commit | p99 ≤ 5 ms | Ordinary: 3.06 ms early, 0.65 ms late. Keyframe: 1.88 ms early, 1.54 ms late |
+| Full time | p99 ≤ 100 ms | p99 in five rounds. Ordinary: 30.4–161.5 ms. Keyframe: 48.5–164.7 ms. One round of the five exceeded 100 ms |
+| Snapshot size | Late no more than 25% larger than early | 91,336 bytes early, 86,294 late (gzip 9,647 and 9,746) |
+| Keyframe cadence | Every 32 revisions | A keyframe is 13,511–13,616 bytes |
+| Catch-up tail, per match | 32 records or 64 KiB of encoded public data, whichever comes first. The bytes include the keyframe and the record envelopes | A keyframe and 32 ordinary patches: 17,127–29,872 bytes before envelopes. A late rare patch alone: 11,664 bytes |
+
+- **What was measured.** One machine, an isolated MariaDB, and a prototype that leaves out rules execution, authorization and sockets. The measurements weren't run on the GCP hosting.
+- **The write p99 didn't converge.** Late ordinary writes missed 60 ms in two of five rounds, and five full rounds didn't explain why.
+- **Restore has a p90 target, not a p99,** because nine samples can't support a p99. D6 asks for p99, so the final proof (ticket 19b) takes at least 100 samples and sets it. ADR 0006's 100 ms still applies to the whole load task. A finished match's restore had a p90 of 73.9 ms, and the target covers active matches only.
+- **The role view has no target.** Building the acting coach's view after a late restore took 245.8 ms at p50 (nine samples), which is over 100 ms alone. The other coach's took 4.7 ms. The acting coach's view allocated 114 MB, about twice one log-inclusive preview copy (56.6 MB), so two preview copies probably explain most of it. #652 takes the log out of those copies. The view is measured again after #652, and before the restore work is accepted.
+- **The snapshot threshold** is the one #650 was asked to test against. #650 proposed no other size target.
 
 ### Formats, compatibility and cutover
 
@@ -276,7 +283,7 @@ Applied only on acceptance, in the accepting revision:
 | Hash the whole history at full time | Grows with the match |
 | Verify the whole history at restore | Restore would read history again |
 | Field-level patches | Smaller, with more ways to be wrong. Revisit with measured sizes |
-| Binary encoding or compression on the wire | Deferred until measured sizes justify it (ADR 0012) |
+| Binary encoding or compression on the wire | Deferred (ADR 0012). #650's sizes support JSON for the first implementation. Revisit if reconnect gaps, snapshot fallbacks or traffic exceed the production budget |
 | Store offers with records | They are private, large and never replayed |
 
 ## Consequences and known gaps
@@ -286,7 +293,7 @@ Applied only on acceptance, in the accepting revision:
 **Costs.** There are more rows, and finished matches keep their records. Browsers must rebuild state correctly, and the server must repair them when they can't. Two storages exist side by side until the cutover. Every existing match is cleared.
 
 **Known gaps.** None of the controls here exists yet.
-- The budgets, keyframe cadence and tail size wait for #650. If the compact snapshot isn't flat, or one transaction can't meet 100 ms, the snapshot or D3 comes back to the maintainer.
+- The budgets were measured on a prototype on one machine, not on the real implementation. The write target isn't met consistently, and full-time tasks exceeded 100 ms in one of five rounds. The maintainer kept D3 on this evidence. The compact snapshot was flat in the one match measured.
 - ADR 0007's markers aren't built (ticket 12; #603 settles the touchdown order first).
 - The public view is not yet defined field by field (ticket 20). Today's views send every role the actions, prompts and forecasts.
 - Old history is checked when it is read or audited, not at restore.
@@ -297,7 +304,7 @@ Applied only on acceptance, in the accepting revision:
 
 | Question | Proposed here | Settled by |
 | --- | --- | --- |
-| Budgets, keyframe cadence, tail size | Blank | #650, then the maintainer |
+| Budgets, keyframe cadence, tail size | #650's proposals, filled in on the maintainer's request | Maintainer, by accepting this ADR |
 | What each operation writes | The table above | Maintainer |
 | Whether chat advances the storage generation | No | Maintainer, with ticket 8 |
 | What the digest covers | Record bytes only, not keyframes or chat | Maintainer |
@@ -308,6 +315,7 @@ Applied only on acceptance, in the accepting revision:
 ## Revisit conditions
 
 - The measured cost of a write, restore, publication or full time grows with match length again.
+- The GCP hosting is significantly slower than #650's measurements, which would reopen having no worker thread for the SQL writes (D3).
 - Storage per match or the number of rows becomes a problem.
 - Measured patch sizes justify field-level patches or a binary encoding.
 - Drift reports show browsers disagreeing with the server, which would reopen the state digest (D12).

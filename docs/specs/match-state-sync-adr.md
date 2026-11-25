@@ -74,10 +74,10 @@ Decisions 1–6 are from 2026-11-22. Decisions 7–21 are from 2026-11-24. Decis
    - It replaces the full `state` with a **public patch**. An earlier version of this request also listed a public-state digest here, but the maintainer had not decided it. Decision 12 now rules it out for now.
    - **Keyframes** (a full public snapshot) are written periodically for seeking.
    - Live viewers receive the record, catch-up reads it, and replay plays it.
-3. **Replay storage is written in the move's own transaction.** The transaction updates the restore snapshot, writes the exact-request receipt, and appends the record plus any keyframe. There is no background replay worker. Revisit only if storage cost requires it.
+3. **Replay storage is written in the move's own transaction.** The transaction updates the restore snapshot, writes the exact-request receipt, and appends the record plus any keyframe. There is no background replay worker. Revisit only if storage cost requires it. The maintainer kept this after the measurement, and can revisit a worker thread for the SQL writes if performance on the GCP hosting is significantly worse ([2026-11-25](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/656#issuecomment-7153291066)).
 4. **Publish after commit**, as today.
 5. **Old formats are retired.** All existing matches are cleared, active and completed. Older artifacts are refused with `RECOVERY_UNSUPPORTED`, as in ADRs 0007 and 0008.
-6. **Required outcome: the cost of a move does not grow with match length.** It is held to ADR 0006's p99 ≤ 100 ms per task. The numbers are set after the measurement below.
+6. **Required outcome: the cost of a move does not grow with match length.** It is held to ADR 0006's p99 ≤ 100 ms per task. The numbers are set after the measurement below. #650's proposed numbers are in the ADR draft (PR #655).
 7. **The new storage and the replay reader are built together.** Which part comes first within that work is open.
 8. **Match log and chat.** The records are the durable log. The client caches and pages what it has received. Neither the game log nor chat is in the restore object.
 9. **Full-time and load timing are part of this measurement**, replacing #593's instrumentation.
