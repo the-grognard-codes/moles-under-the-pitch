@@ -23,16 +23,23 @@ import java.util.stream.Collectors;
 
 public class InjuryTypeDropJump extends ModificationAwareInjuryTypeServer<DropJump> {
 
-	private final Player<?> divingTackler;
+	private final String divingTacklerId;
 
 	public InjuryTypeDropJump() {
-		this(null);
+		this((String) null);
 	}
 
 	public InjuryTypeDropJump(Player<?> divingTackler) {
-		super(new DropJump());
-		this.divingTackler = divingTackler;
+		this(divingTackler == null ? null : divingTackler.getId());
 	}
+
+	public InjuryTypeDropJump(String divingTacklerId) {
+		super(new DropJump());
+		this.divingTacklerId = divingTacklerId;
+	}
+
+	@Override
+	public String continuationPlayerId() { return divingTacklerId; }
 
 	@Override
 	protected void armourRoll(Game game, GameState gameState, DiceRoller diceRoller, Player<?> pAttacker,
@@ -100,6 +107,7 @@ public class InjuryTypeDropJump extends ModificationAwareInjuryTypeServer<DropJu
 			return players.stream().map(player -> player.getSkillWithProperty(NamedProperties.affectsEitherArmourOrInjuryOnJump))
 				.filter(Objects::nonNull).findFirst().orElseGet(() -> {
 
+					Player<?> divingTackler = game.getPlayerById(divingTacklerId);
 					if (divingTackler != null) {
 						return divingTackler.getSkillWithProperty(NamedProperties.affectsEitherArmourOrInjuryOnDodge);
 					}

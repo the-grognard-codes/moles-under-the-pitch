@@ -109,6 +109,7 @@ public final class SetupSession {
 	private final GameState state;
 
 	void configureSkillUsePreferences(SkillUsePreferences home, SkillUsePreferences away) {
+		requireAvailable();
 		state.getOptionalSkillUse().configure(home, away);
 	}
 	private final String matchId;
@@ -271,12 +272,17 @@ public final class SetupSession {
 		this(server, document, new JsonObject(checkpoint.payload()), false);
 	}
 
+	/** @throws IllegalArgumentException if the snapshot cannot be decoded or restored. */
 	static SetupSession restoreCompactSnapshot(FantasyFootballServer server, String snapshot) {
-		JsonObject payload = new MatchJson().parse(snapshot, MAX_MATCH_ARTIFACT_BYTES, COMPACT_SNAPSHOT_DEPTH);
-		if (payload.getInt("snapshotVersion", -1) != COMPACT_SNAPSHOT_VERSION)
-			throw new IllegalArgumentException("Unsupported compact snapshot version");
-		MatchDocument document = new MatchJson().readFrozenMatch(payload.get("matchId").asString(), payload.get("frozen").asObject());
-		return new SetupSession(server, document, payload, true);
+		try {
+			JsonObject payload = new MatchJson().parse(snapshot, MAX_MATCH_ARTIFACT_BYTES, COMPACT_SNAPSHOT_DEPTH);
+			if (payload.getInt("snapshotVersion", -1) != COMPACT_SNAPSHOT_VERSION)
+				throw new IllegalArgumentException("Unsupported compact snapshot version");
+			MatchDocument document = new MatchJson().readFrozenMatch(payload.get("matchId").asString(), payload.get("frozen").asObject());
+			return new SetupSession(server, document, payload, true);
+		} catch (RuntimeException invalid) {
+			throw new IllegalArgumentException("Invalid compact match snapshot", invalid);
+		}
 	}
 
 	private static JsonValue takeSnapshotField(JsonObject snapshot, String field) {
@@ -455,7 +461,7 @@ public final class SetupSession {
 			refreshReaction(System.currentTimeMillis());
 		} catch (MatchService.Failure failure) { throw failure; }
 		catch (RuntimeException invalid) {
-			if (compact) throw new IllegalArgumentException("Invalid compact match snapshot", invalid);
+			if (compact) throw invalid;
 			throw new MatchService.Failure("RECOVERY_CORRUPT");
 		}
 	}
@@ -506,20 +512,25 @@ public final class SetupSession {
 		return compactHistory;
 	}
 
-	/** The owner must evict this session if the writer cannot confirm the commit. */
+	/**
+	 * Attempts a compact write and releases the session unless the write is confirmed durable.
+	 * @throws IllegalStateException if the session or write boundary is invalid, or a write is reentrant
+	 * @throws RuntimeException if the writer or release callback fails
+	 */
 	CompactMatchWrite.Result writeCompactSnapshot(CompactMatchWrite.History boundary,
 		Function<CompactMatchWrite, CompactMatchWrite.Result> write, Runnable release) {
 		requireCompactSession();
-		Objects.requireNonNull(write);
 		Objects.requireNonNull(release);
-		if (compactWriting || failed || boundary.recordCount() != revision + 1
-			|| compactHistory != null && (boundary.chatCount() < compactHistory.chatCount()
-				|| compactCapture == null && !compactHistory.digest().equals(boundary.digest()))
-			|| state.getGameLog().size() != capturedCommandCount)
-			throw new IllegalStateException("Invalid compact snapshot write boundary");
+		if (compactWriting) throw new IllegalStateException("Compact snapshot write already in progress");
 		compactWriting = true;
 		boolean durable = false;
 		try {
+			Objects.requireNonNull(write);
+			if (failed || boundary == null || boundary.recordCount() != revision + 1
+				|| compactHistory != null && (boundary.chatCount() < compactHistory.chatCount()
+					|| compactCapture == null && !compactHistory.digest().equals(boundary.digest()))
+				|| state.getGameLog().size() != capturedCommandCount)
+				throw new IllegalStateException("Invalid compact snapshot write boundary");
 			CompactMatchWrite candidate = new CompactMatchWrite(compactSnapshot(boundary), compactCapture);
 			CompactMatchWrite.Result result = Objects.requireNonNull(write.apply(candidate));
 			if (result == CompactMatchWrite.Result.DURABLE) {
@@ -540,7 +551,12 @@ public final class SetupSession {
 	}
 
 	private void requireCompactSession() {
-		if (!compact || released) throw new IllegalStateException("Compact session unavailable");
+		requireAvailable();
+		if (!compact) throw new IllegalStateException("Compact session unavailable");
+	}
+
+	private void requireAvailable() {
+		if (released) throw new IllegalStateException("Compact session unavailable");
 	}
 
 	private void requireCommittedCompactState() {
@@ -603,7 +619,10 @@ public final class SetupSession {
 	int[] recoveryJournalCounts() {
 		return new int[] {history.size(), events.size(), state.getGameLog().size(), transcriptV2 ? transcript.size() : 0};
 	}
-	int revision() { return revision; }
+	int revision() {
+		requireAvailable();
+		return revision;
+	}
 	long recoveryNativeEpoch() { return state.getGameLog().recoveryEpoch(); }
 
 	/** Exact decoded envelope size using cached history lengths and a bounded current-state projection. */
@@ -706,6 +725,7 @@ public final class SetupSession {
 	}
 
 	void validateComputerDecision(JsonObject request) {
+		requireAvailable();
 		if (computerPolicy == null || request.get("computerDecision") == null)
 			throw new IllegalArgumentException("Missing computer policy state");
 		computerPolicy.validateDecision(request.get("computerDecision").asObject(), document.computer,
@@ -713,11 +733,13 @@ public final class SetupSession {
 	}
 
 	void acceptComputerDecision(JsonObject request) {
+		requireAvailable();
 		computerPolicy.accept(request.get("computerDecision").asObject());
 	}
 
 	/** Only the authenticated computer response path adds this private projection. */
 	JsonObject computerProjection() {
+		requireAvailable();
 		ComputerOpponentService opponents = new ComputerOpponentService(null);
 		MatchDocument.Member member = opponents.member(document);
 		if (member == null) return null;
@@ -791,20 +813,28 @@ public final class SetupSession {
 		}
 	}
 
-	public boolean isFailed() { return failed; }
+	public boolean isFailed() {
+		requireAvailable();
+		return failed;
+	}
 	String checkpointOwner() { return document.home.owner; }
 
 	/** Called while staging a new r4.1 checkpoint, before activation is acknowledged. */
 	public void startSaveResumeRetention(long now) {
+		requireAvailable();
 		if (!saveResume) throw new IllegalStateException("Save/resume is unavailable for this checkpoint runtime");
 		saveResumeState = new SaveResumeState(now);
 		refreshHumanDecisionClock(false, now);
 	}
 
-	public boolean usesSaveResume() { return saveResume; }
+	public boolean usesSaveResume() {
+		requireAvailable();
+		return saveResume;
+	}
 
 	/** Expiry is durable and fail-closed; it is never a background deletion or an inferred consent. */
 	public boolean abandonIfInactive(long now) {
+		requireAvailable();
 		if (!abandonmentDue(now)) return false;
 		saveResumeState.abandoned = true;
 		saveResumeState.proposal = null;
@@ -826,12 +856,16 @@ public final class SetupSession {
 
 	boolean isAbandoned() { return saveResume && saveResumeState.abandoned; }
 
-	boolean isComputerMatch() { return computerMember != null; }
+	boolean isComputerMatch() {
+		requireAvailable();
+		return computerMember != null;
+	}
 
 	long computerWorkUntil() { return saveResume ? saveResumeState.computerWorkUntil() : Long.MAX_VALUE; }
 
 	/** A native action invalidates pending consent. Only a human action extends retention. */
 	public void recordPlayerActivity(String role, long now) {
+		requireAvailable();
 		if (!saveResume || saveResumeState.abandoned) return;
 		saveResumeState.proposal = null;
 		if (!saveResumeState.suspended()) refreshHumanActivity(role, now);
@@ -865,11 +899,13 @@ public final class SetupSession {
 	}
 
 	boolean saveResumeProposalDue(long now) {
+		requireAvailable();
 		return saveResume && saveResumeState.proposal != null && now >= saveResumeState.proposal.expiresAt;
 	}
 
 	/** An expired proposal must not be shown again when a saved match is loaded. */
 	public boolean expireSaveResumeProposal(long now) {
+		requireAvailable();
 		if (saveResumeProposalDue(now)) {
 			long expiredAt = saveResumeState.proposal.expiresAt;
 			if (isComputerMatch() && (saveResumeState.inactive(true, expiredAt)
@@ -969,6 +1005,7 @@ public final class SetupSession {
 
 	/** Public live decorations only; coach threat guidance never enters frozen snapshots. */
 	public JsonObject decorateSaveResumeState(JsonObject state) {
+		requireAvailable();
 		if (saveResume) state.add("saveResume", saveResumeState.publicJson());
 		if (chatV1) state.add("clock", clockProjection());
 		JsonObject reaction = reactiveDecision.publicJson(System.currentTimeMillis());
@@ -1336,6 +1373,7 @@ public final class SetupSession {
 
 	/** Small read-only scoreboard for browse; avoids building the full player and action view. */
 	public JsonObject browseSummary() {
+		requireAvailable();
 		if (failed) throw new MatchService.Failure("SESSION_UNAVAILABLE");
 		Game game = state.getGame();
 		return new JsonObject().add("phase", browsePhase())
@@ -1371,7 +1409,7 @@ public final class SetupSession {
 	}
 
 	private JsonObject view(String role, boolean live, Supplier<List<JsonObject>> pendingOutcomes) {
-		if (released) throw new IllegalStateException("Compact session unavailable");
+		requireAvailable();
 		Game game = state.getGame();
         KickoffAdjustmentBudget budget = new KickoffBudgetLookup().find(state);
 		JsonArray players = new JsonArray();
@@ -1690,6 +1728,7 @@ public final class SetupSession {
 
 	/** The bounded durable fields that reaction refresh can change without executing a decision. */
 	String reactiveMaintenanceState() {
+		requireAvailable();
 		JsonObject reaction = reactiveDecision.checkpoint();
 		return new JsonObject().add("reaction", reaction == null ? JsonValue.NULL : reaction)
 			.add("turnTimeStarted", state.getTurnTimeStarted()).add("turnTime", state.getGame().getTurnTime()).toString();
@@ -1718,11 +1757,15 @@ public final class SetupSession {
 	}
 
 	boolean reactiveDecisionDue(long now) {
+		requireAvailable();
 		return !failed && !isComplete() && (!saveResume || !saveResumeState.suspended() && !saveResumeState.abandoned)
 			&& reactiveDecision.due(now);
 	}
 
-    public boolean isComplete() { return state.getGame().getFinished() != null; }
+    public boolean isComplete() {
+		requireAvailable();
+		return state.getGame().getFinished() != null;
+	}
     private int homeScore() { return state.getGame().getGameResult().getTeamResultHome().getScore(); }
     private int awayScore() { return state.getGame().getGameResult().getTeamResultAway().getScore(); }
     /** One source for the guard and the period fields frozen in every public snapshot. */
@@ -1820,6 +1863,7 @@ public final class SetupSession {
         announcements.recorded();
     }
 	public CompletedMatch completedMatch() {
+		requireAvailable();
         if (compact || !isComplete() || failed) throw new MatchService.Failure("NOT_COMPLETED");
 		JsonObject result = new JsonObject().add("formatVersion", chatV1 ? 3 : transcriptV2 ? 2 : 1)
             .add("engineVersion", "ffb-3.4.0-bb2025-m3d.1").add("ruleset", document.home.team.ruleset)
@@ -1832,14 +1876,17 @@ public final class SetupSession {
         return new CompletedMatch(result, document);
     }
 	public JsonObject transcriptPage(int from, int limit) {
+		requireAvailable();
 		if (compact || !transcriptV2) throw new MatchService.Failure("REPLAY_UNSUPPORTED");
 		return transcript.page(from, limit);
 	}
 	public JsonObject chatPage(int from, int limit) {
+		requireAvailable();
 		if (compact || !chatV1) throw new MatchService.Failure("CHAT_UNAVAILABLE");
 		return chat.page(from, limit);
 	}
 	public MatchChat.Outcome sendChat(String accountId, String role, String requestId, String content, long now) {
+		requireAvailable();
 		if (compact || !chatV1) throw new MatchService.Failure("CHAT_UNAVAILABLE");
 		if (isComplete()) return chat.duplicate(accountId, requestId, content);
 		if (artifactBytes() > MAX_MATCH_ARTIFACT_BYTES - MATCH_ARTIFACT_RESERVE_BYTES)
@@ -1855,6 +1902,7 @@ public final class SetupSession {
 	}
 	/** A revision-bound forecast; neither the engine nor the checkpoint is changed. */
 	public JsonObject routePreview(String role, int expectedRevision, JsonArray points) {
+		requireAvailable();
 		if (!routeV2) throw new MatchService.Failure("ROUTE_UNAVAILABLE");
 		if (expectedRevision != revision) throw new MatchService.Failure("STALE_REVISION");
 		if (failed || isComplete() || saveResume && saveResumeState.suspended())
@@ -2010,6 +2058,7 @@ public final class SetupSession {
 	private boolean ballTransfer(String kind) { return "pass".equals(kind) || "handOff".equals(kind); }
 
 	private void movementRead(String role, int expectedRevision) {
+		requireAvailable();
 		if (!routeV2 || failed || isComplete() || saveResume && saveResumeState.suspended())
 			throw new MatchService.Failure("ROUTE_UNAVAILABLE");
 		if (expectedRevision != revision) throw new MatchService.Failure("STALE_REVISION");

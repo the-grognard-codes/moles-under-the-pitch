@@ -10,9 +10,12 @@ import com.fumbbl.ffb.json.IJsonSerializable;
 import com.fumbbl.ffb.json.UtilJson;
 import com.fumbbl.ffb.server.IServerJsonOption;
 import com.fumbbl.ffb.server.InjuryResult;
+import com.fumbbl.ffb.server.factory.InjuryTypeServerFactory;
+import com.fumbbl.ffb.server.factory.bb2025.DeferredCommandFactory;
 import com.fumbbl.ffb.server.injury.injuryType.InjuryTypeServer;
 import com.fumbbl.ffb.server.step.DeferredCommand;
-import com.fumbbl.ffb.server.factory.bb2025.DeferredCommandFactory;
+import com.fumbbl.ffb.server.step.DeferredCommandId;
+import com.fumbbl.ffb.server.step.bb2025.command.DropPlayerCommand;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -23,6 +26,7 @@ public class SteadyFootingContext implements IJsonSerializable {
 	private InjuryTypeServer<?> injuryType;
 	private InjuryResult injuryResult;
 	private final List<DeferredCommand> deferredCommands = new ArrayList<>();
+	private boolean legacyCommandNames;
 
 	public SteadyFootingContext() {}
 
@@ -92,9 +96,6 @@ public class SteadyFootingContext implements IJsonSerializable {
 		DeferredCommandFactory factory = source.getFactory(FactoryType.Factory.DEFERRED_COMMAND);
 
 		JsonObject jsonObject = UtilJson.toJsonObject(jsonValue);
-		JsonArray commandArray = IServerJsonOption.DEFERRED_COMMANDS.getFrom(source, jsonObject);
-		commandArray.values().stream().map(command -> (DeferredCommand) UtilJson.toEnumWithName(factory, command)).forEach(deferredCommands::add);
-
 		if (IServerJsonOption.DROP_PLAYER_CONTEXT.isDefinedIn(jsonObject)) {
 			dropPlayerContext = new DropPlayerContext().initFrom(source, IServerJsonOption.DROP_PLAYER_CONTEXT.getFrom(source, jsonObject));
 		}
@@ -103,17 +104,41 @@ public class SteadyFootingContext implements IJsonSerializable {
 			injuryResult = new InjuryResult().initFrom(source, IServerJsonOption.INJURY_RESULT.getFrom(source, jsonObject));
 		}
 
-		if (IServerJsonOption.INJURY_TYPE_SERVER.isDefinedIn(jsonObject)) {
-			injuryType = (InjuryTypeServer<?>) IServerJsonOption.INJURY_TYPE_SERVER.getFrom(source, jsonObject);
+		injuryType = InjuryTypeServerFactory.restore(source, jsonObject);
+		JsonArray commandArray = IServerJsonOption.DEFERRED_COMMANDS.getFrom(source, jsonObject);
+		deferredCommands.clear();
+		legacyCommandNames = !commandArray.isEmpty() && commandArray.get(0).isString();
+		for (JsonValue saved : commandArray) {
+			if (legacyCommandNames) {
+				deferredCommands.add(restoreLegacyCommand(factory, saved.asString()));
+			} else {
+				DeferredCommandId id = (DeferredCommandId) IServerJsonOption.DEFERRED_COMMAND_ID.getFrom(source, saved.asObject());
+				if (id == null) throw new IllegalArgumentException("Missing deferred command ID");
+				deferredCommands.add(factory.forId(id).initFrom(source, saved));
+			}
 		}
 		return this;
+	}
+
+	private DeferredCommand restoreLegacyCommand(DeferredCommandFactory factory, String name) {
+		if (DeferredCommandId.DROP_PLAYER.getName().equals(name)) {
+			// Both producers' old contexts already identify the player being dropped.
+			String playerId = dropPlayerContext != null ? dropPlayerContext.getPlayerId()
+				: injuryResult == null ? null : injuryResult.injuryContext().getDefenderId();
+			if (playerId == null) throw new IllegalArgumentException("Missing deferred drop player");
+			return new DropPlayerCommand(playerId, getApothecaryMode(), true);
+		}
+		DeferredCommand command = (DeferredCommand) factory.forName(name);
+		if (command == null) throw new IllegalArgumentException("Unknown deferred command: " + name);
+		return command;
 	}
 
 	@Override
 	public JsonObject toJsonValue() {
 		JsonObject jsonObject = new JsonObject();
 		JsonArray commandArray = new JsonArray();
-		deferredCommands.stream().map(UtilJson::toJsonValue).forEach(commandArray::add);
+		for (DeferredCommand command : deferredCommands)
+			commandArray.add(legacyCommandNames ? JsonValue.valueOf(command.getName()) : command.toJsonValue());
 		IServerJsonOption.DEFERRED_COMMANDS.addTo(jsonObject, commandArray);
 		if (dropPlayerContext != null) {
 			IServerJsonOption.DROP_PLAYER_CONTEXT.addTo(jsonObject, dropPlayerContext.toJsonValue());
@@ -122,7 +147,7 @@ public class SteadyFootingContext implements IJsonSerializable {
 			IServerJsonOption.INJURY_RESULT.addTo(jsonObject, injuryResult.toJsonValue());
 		}
 		if (injuryType != null) {
-			IServerJsonOption.INJURY_TYPE_SERVER.addTo(jsonObject, injuryType);
+			InjuryTypeServerFactory.write(jsonObject, injuryType);
 		}
 		return jsonObject;
 	}

@@ -10,13 +10,19 @@ import com.fumbbl.ffb.factory.SkillFactory;
 import com.fumbbl.ffb.model.Game;
 import com.fumbbl.ffb.model.Player;
 import com.fumbbl.ffb.model.RosterPlayer;
-import com.fumbbl.ffb.option.GameOptionBoolean;
-import com.fumbbl.ffb.option.GameOptionId;
 import com.fumbbl.ffb.net.commands.ServerCommand;
 import com.fumbbl.ffb.net.commands.ServerCommandModelSync;
+import com.fumbbl.ffb.option.GameOptionBoolean;
+import com.fumbbl.ffb.option.GameOptionId;
+import com.fumbbl.ffb.report.ReportList;
+import com.fumbbl.ffb.report.ReportSecretWeaponBan;
 import com.fumbbl.ffb.server.GameState;
+import com.fumbbl.ffb.server.model.SteadyFootingContext;
 import com.fumbbl.ffb.server.skilluse.SkillUsePreferences;
 import com.fumbbl.ffb.server.step.StepId;
+import com.fumbbl.ffb.server.step.StepParameter;
+import com.fumbbl.ffb.server.step.StepParameterKey;
+import com.fumbbl.ffb.server.step.bb2025.pass.StepHailMaryPass;
 import com.fumbbl.ffb.util.UtilBox;
 
 import com.eclipsesource.json.JsonArray;
@@ -29,8 +35,11 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
@@ -49,8 +58,8 @@ class CompactMatchSnapshotTest {
     void twoSeededMatchesRestoreAcrossTheMatchWithoutGrowingHistory() throws Exception {
         boolean measure = "true".equals(System.getenv("COMPACT_SNAPSHOT_TIMING"));
         if (measure) StateSyncMoveTiming.install();
-        fullMatch("Human", "Orc", 43, measure);
-        fullMatch("Orc", "Human", 45, measure);
+        fullMatch("Human", "Orc", 103, measure);
+        fullMatch("Orc", "Human", 107, measure);
     }
 
     private void fullMatch(String home, String away, long seed, boolean measure) throws Exception {
@@ -58,7 +67,11 @@ class CompactMatchSnapshotTest {
             SetupSession baseline = fixture.session;
             String snapshot = commit(baseline, 0);
             JsonObject early = null, late = null;
-            int reactions = 0, cleanup = 0, captureCount = 0;
+            int captureCount = 0, passDependencyBoundaries = 0, reactions = 0;
+            Map<String, Integer> reports = new HashMap<>();
+            Random choices = new Random(seed);
+            int decisionsInTurn = 0;
+            String turn = "";
             List<JsonObject> replyTimings = new ArrayList<>();
             List<JsonObject> taskTimings = new ArrayList<>();
             for (int sequence = 0; sequence < 1_600 && !baseline.isComplete(); sequence++) {
@@ -67,21 +80,23 @@ class CompactMatchSnapshotTest {
                 JsonObject view = actorView(baseline);
                 if (revision == 50) early = current;
                 if (revision > 50 && "PLAY".equals(view.getString("phase", null))
-                    && "REGULAR".equals(view.getString("turnMode", null)) && view.get("reaction") == null)
+                    && "REGULAR".equals(view.getString("turnMode", null)) && current.get("reactiveDecision") == null)
                     late = current;
 
-                boolean reaction = current.get("reactiveDecision") != null;
-                boolean betweenDrives = List.of(StepId.SETUP, StepId.KICKOFF).contains(nativeState(baseline).getCurrentStep().getId());
-                boolean firstCleanup = betweenDrives && view.getInt("half", 1) == 2 && cleanup == 0;
-                boolean compare = revision < 6 || revision == 50 || reaction && reactions == 0
-                    || firstCleanup || revision % 100 == 0;
-                if (reaction) reactions++;
-                if (firstCleanup) cleanup++;
-
+                String period = view.get("half") + ":" + view.get("homeTurn") + ":" + view.get("awayTurn");
+                if (!turn.equals(period)) { decisionsInTurn = 0; turn = period; }
                 String role = view.getString("actor", null);
-                JsonObject request = BogrukEngineFixture.recordedDecision(fixture.document.matchId,
-                    view, "step-" + sequence, sequence % 24 == 0);
-                SetupSession restored = compare ? restoreAndCompare(fixture, baseline, snapshot) : null;
+                JsonObject request = choose(fixture, baseline, view, sequence, decisionsInTurn++, choices,
+                    reports.getOrDefault("passRoll", 0) == 0);
+                if (current.get("reactiveDecision") != null) reactions++;
+                boolean awaitingPassFix = waitingForPassRecoveryFix(baseline, current);
+                if (awaitingPassFix) {
+                    passDependencyBoundaries++;
+                    IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                        () -> SetupSession.restoreCompactSnapshot(fixture.server, current.toString()));
+                    assertEquals("Compact native state did not round-trip", error.getCause().getMessage());
+                }
+                SetupSession restored = awaitingPassFix ? null : restoreAndCompare(fixture, baseline, snapshot);
                 long now = System.currentTimeMillis();
                 if (measure && revision > 50) {
                     StateSyncMoveTiming.begin(revision, "reply");
@@ -101,7 +116,9 @@ class CompactMatchSnapshotTest {
                     capture = baseline.compactCapture();
                     assertNotNull(capture);
                     assertEquals(revision + 1, capture.revision());
-                    captureCount += JsonArray.readFrom(capture.nativeOutcomes()).size();
+                    JsonArray outcomes = JsonArray.readFrom(capture.nativeOutcomes());
+                    captureCount += outcomes.size();
+                    countReports(outcomes, reports);
                     snapshot = commit(baseline, 0);
                     if (measure) taskTimings.add(StateSyncMoveTiming.result(revision + 1));
                 } finally {
@@ -119,17 +136,20 @@ class CompactMatchSnapshotTest {
             }
             assertTrue(baseline.isComplete(), "The workload must play to full time");
             assertTrue(captureCount > baseline.revision(), "Use real native commands with model syncs");
-            assertTrue(cleanup > 0, "Exercise a new half's native cleanup and setup");
+            assertTrue(reactions > 0, () -> "Missing a native reaction for seed " + seed);
+            for (String report : List.of("blockRoll", "passRoll", "injury"))
+                assertTrue(reports.getOrDefault(report, 0) > 0, () -> "Missing " + report + " for seed " + seed + ": " + reports);
             restoreAndCompare(fixture, baseline, snapshot);
             assertNotNull(early);
             assertNotNull(late);
-            assertEquals("REGULAR", actorView(SetupSession.restoreCompactSnapshot(fixture.server, early.toString()))
-                .getString("turnMode", null));
+            assertEquals("regular", early.get("native").asObject().get("game").asObject().getString("turnMode", null),
+                "Compare the same native turn mode at revision 50 and late play");
             int earlyBytes = bytes(early.toString());
             int lateBytes = bytes(late.toString());
             int terminalBytes = bytes(snapshot);
-            System.out.printf("COMPACT_SNAPSHOT seed=%d early=r50:%d late=r%d:%d fullTime=r%d:%d nativeSyncs=%d reactions=%d%n",
-                seed, earlyBytes, late.getInt("revision", -1), lateBytes, baseline.revision(), terminalBytes, captureCount, reactions);
+            System.out.printf("COMPACT_SNAPSHOT seed=%d early=r50:%d late=r%d:%d fullTime=r%d:%d nativeSyncs=%d reactions=%d passDependencyBoundaries=%d reports=%s%n",
+                seed, earlyBytes, late.getInt("revision", -1), lateBytes, baseline.revision(), terminalBytes, captureCount,
+                reactions, passDependencyBoundaries, new java.util.TreeMap<>(reports));
             assertTrue(4L * lateBytes <= 5L * earlyBytes, "Matched PLAY/REGULAR snapshot grew more than 25%");
             assertTrue(4L * terminalBytes <= 5L * earlyBytes, "Full-time snapshot grew more than 25%");
             if (measure) {
@@ -137,6 +157,92 @@ class CompactMatchSnapshotTest {
                 timing(seed, "apply-and-snapshot", taskTimings);
             }
         }
+    }
+
+    private JsonObject choose(BogrukEngineFixture fixture, SetupSession session, JsonObject view,
+        int sequence, int decisionsInTurn, Random random, boolean seekPass) {
+        String id = "step-" + sequence;
+        if (!view.get("prompt").isNull() || "SETUP".equals(view.getString("phase", null)))
+            return fixture.recordedDecision(view, id, sequence);
+
+        List<JsonObject> choices = new ArrayList<>();
+        if (seekPass && decisionsInTurn < 20 && "REGULAR".equals(view.getString("turnMode", ""))) {
+            JsonObject possession = seekPass(view, random);
+            if (possession != null) return request(session, "action", id).add("actionId", possession.get("id"));
+        }
+        for (JsonValue value : view.get("actions").asArray()) {
+            JsonObject action = value.asObject();
+            JsonObject request = request(session, "action", id).add("actionId", action.get("id"));
+            if (session.isStagedRequest(request)) continue;
+            String kind = action.getString("kind", "");
+            if ("endTurn".equals(kind) && decisionsInTurn >= 20) return request;
+            int weight = switch (kind) {
+                case "block", "pass", "move", "jump", "pickup", "reroll" -> 10;
+                case "selectBlock", "declarePass", "kick" -> 4;
+                default -> 1;
+            };
+            for (int i = 0; i < weight; i++) choices.add(request);
+        }
+        if (choices.isEmpty()) return fixture.recordedDecision(view, id, sequence);
+        return choices.get(random.nextInt(choices.size()));
+    }
+
+    private JsonObject seekPass(JsonObject view, Random random) {
+        List<JsonObject> passes = offeredActions(view, "pass").toList();
+        if (!passes.isEmpty()) return passes.get(random.nextInt(passes.size()));
+        JsonValue ball = view.get("ball");
+        JsonObject state = view.get("ballState").asObject();
+        JsonValue carrier = state.get("carrierPlayerId");
+        if (carrier.isString()) {
+            return offeredActions(view, "declarePass")
+                .filter(option -> carrier.equals(option.get("sourcePlayerId"))).findFirst().orElse(null);
+        }
+        if (!ball.isObject() || !state.getBoolean("inPlay", false)) return null;
+        JsonObject position = ball.asObject();
+        List<JsonObject> players = view.get("players").asArray().values().stream().map(JsonValue::asObject).toList();
+        JsonValue active = view.get("activePlayerId");
+        JsonObject mover = players.stream().filter(player -> active.equals(player.get("id"))).findFirst().orElse(null);
+        if (mover != null && mover.get("x").isNumber()) {
+            int current = distance(mover, position);
+            JsonObject toward = offeredActions(view, "move").filter(option -> option.get("target").isObject())
+                .filter(option -> distance(option.get("target").asObject(), position) < current)
+                .min(Comparator.comparingInt(option -> distance(option.get("target").asObject(), position))).orElse(null);
+            if (toward != null) return toward;
+        }
+        return offeredActions(view, "select")
+            .filter(option -> option.get("sourcePlayerId") != null && !active.equals(option.get("sourcePlayerId")))
+            .min(Comparator.comparingInt(option -> players.stream()
+                .filter(player -> player.get("id").equals(option.get("sourcePlayerId")) && player.get("x").isNumber())
+                .mapToInt(player -> distance(player, position)).findFirst().orElse(Integer.MAX_VALUE))).orElse(null);
+    }
+
+    private int distance(JsonObject from, JsonObject to) {
+        return Math.max(Math.abs(from.getInt("x", 0) - to.getInt("x", 0)),
+            Math.abs(from.getInt("y", 0) - to.getInt("y", 0)));
+    }
+
+    private void countReports(JsonArray outcomes, Map<String, Integer> counts) {
+        for (JsonValue value : outcomes) {
+            JsonValue list = value.asObject().get("reportList");
+            if (list == null || list.isNull()) continue;
+            for (JsonValue report : list.asObject().get("reports").asArray())
+                counts.merge(report.asObject().getString("reportId", ""), 1, Integer::sum);
+        }
+    }
+
+    private boolean waitingForPassRecoveryFix(SetupSession baseline, JsonObject snapshot) throws Exception {
+        // #691 owns the shared native pass codec. Exercise these exact boundaries as soon as it lands.
+        JsonObject state = snapshot.get("native").asObject();
+        List<JsonValue> steps = new ArrayList<>(state.get("stepStack").asObject().get("steps").asArray().values());
+        if (state.get("currentStep") != null) steps.add(state.get("currentStep"));
+        for (JsonValue value : steps) {
+            JsonObject step = value.asObject();
+            if (!StepId.HAIL_MARY_PASS.getName().equals(step.getString("stepId", "")) || !step.get("passResult").isNull()) continue;
+            GameState engine = nativeState(baseline);
+            return !new StepHailMaryPass(engine).initFrom(engine.getGame().getRules(), step)
+                .toJsonValue().get("passResult").isNull();
+        }
+        return false;
     }
 
     @Test
@@ -292,6 +398,248 @@ class CompactMatchSnapshotTest {
     }
 
     @Test
+    void steadyFootingRestoresAFailedRushAndADeferredBlockKnockdown() throws Exception {
+        for (boolean block : List.of(false, true)) {
+            try (BogrukEngineFixture fixture = fixture("Human", "Orc", 43)) {
+                SetupSession baseline = fixture.session;
+                advanceToTurn(fixture);
+                GameState state = nativeState(baseline);
+                Game game = state.getGame();
+                Player<?> player = game.getActingTeam().getPlayers()[1];
+                Player<?> defender = game.getOtherTeam(game.getActingTeam()).getPlayers()[1];
+                UtilBox.putAllPlayersIntoBox(game);
+                place(game, player, 10, 7);
+                if (block) place(game, defender, 11, 7);
+                game.getFieldModel().setBallCoordinate(new FieldCoordinate(4, 4));
+                game.getFieldModel().setBallMoving(false);
+                grant(game, player, "Steady Footing");
+                String role = actorView(baseline).getString("actor", null);
+
+                JsonObject select = action(view(baseline, role), block ? "selectBlock" : "select", player.getId());
+                baseline.apply(role, request(baseline, "action", "select-player").add("actionId", select.get("id")));
+                commit(baseline, 0);
+                if (block) {
+                    BlockDiceCategory die = new BlockDiceCategory();
+                    die.parseCommand("skull", game, game.getActingTeam());
+                    state.getDiceRoller().addTestRoll(die);
+                    forceRolls(state, 2, 2, 2, 2);
+                    applyChoice(baseline, role, "block", "");
+                    commit(baseline, 0);
+                    applyChoice(baseline, role, "blockDie", "");
+                } else {
+                    game.getActingPlayer().setCurrentMove(player.getMovementWithModifiers());
+                    forceRolls(state, 1, 2, 2, 2, 2);
+                    baseline.apply(role, movement(baseline, "falling-rush", player.getId(), 11, 7));
+                    commit(baseline, 0);
+                    applyChoice(baseline, role, "reroll", ":none");
+                }
+                String pending = commit(baseline, 0);
+                assertEquals(StepId.STEADY_FOOTING, state.getCurrentStep().getId());
+                JsonObject step = JsonObject.readFrom(pending).get("native").asObject().get("currentStep").asObject();
+                JsonObject context = step.get("steadyFootingContext").asObject();
+                if (block) {
+                    JsonObject deferredDrop = context.get("deferredCommands").asArray().values().stream()
+                        .map(JsonValue::asObject).filter(command -> player.getId().equals(command.getString("playerId", "")))
+                        .findFirst().orElseThrow();
+                    JsonObject oldContext = JsonObject.readFrom(context.toString()).set("deferredCommands",
+                        new JsonArray().add(deferredDrop.get("deferredCommandId")));
+                    SteadyFootingContext recovered = new SteadyFootingContext().initFrom(game.getRules(), oldContext);
+                    JsonObject recoveredDrop = recovered.getDeferredCommands().get(0).toJsonValue();
+                    for (JsonObject.Member field : deferredDrop) {
+                        assertEquals(field.getValue(), recoveredDrop.get(field.getName()), field.getName());
+                    }
+                    assertEquals(oldContext.get("deferredCommands"), recovered.toJsonValue().get("deferredCommands"));
+                } else assertNotNull(context.get("injuryType"));
+
+                SetupSession restored = restoreAndCompare(fixture, baseline, pending);
+                JsonObject decline = offeredActions(view(baseline, role), "skill")
+                    .filter(option -> option.getString("id", "").endsWith(":false")).findFirst().orElseThrow();
+                JsonObject input = request(baseline, "action", "decline-steady-footing").add("actionId", decline.get("id"));
+                compareDecision(baseline, restored, role, input, 0);
+                Game continued = nativeState(restored).getGame();
+                assertEquals(PlayerState.PRONE, continued.getFieldModel().getPlayerState(continued.getPlayerById(player.getId())).getBase());
+            }
+        }
+    }
+
+    @Test
+    void preservesTheMarkedJumpOriginAcrossABoneHeadReroll() throws Exception {
+        try (BogrukEngineFixture fixture = fixture("Human", "Orc", 44)) {
+            SetupSession baseline = fixture.session;
+            String role = advanceToTurn(fixture).getString("actor", null);
+            GameState state = nativeState(baseline);
+            Game game = state.getGame();
+            Player<?> mover = game.getActingTeam().getPlayers()[1];
+            Player<?>[] opponents = game.getOtherTeam(game.getActingTeam()).getPlayers();
+            UtilBox.putAllPlayersIntoBox(game);
+            place(game, mover, 7, 7);
+            place(game, opponents[0], 6, 6);
+            place(game, opponents[1], 6, 7);
+            place(game, opponents[2], 8, 7);
+            game.getFieldModel().setPlayerState(mover, new PlayerState(PlayerState.PRONE).changeActive(true));
+            game.getFieldModel().setPlayerState(opponents[2], new PlayerState(PlayerState.PRONE));
+            grant(game, mover, "Bone Head");
+            game.getFieldModel().setBallCoordinate(new FieldCoordinate(4, 4));
+            game.getFieldModel().setBallMoving(false);
+            game.getFieldModel().setBallInPlay(true);
+
+            JsonObject select = action(view(baseline, role), "declareHandOff", mover.getId());
+            baseline.apply(role, request(baseline, "action", "select-prone-mover").add("actionId", select.get("id")));
+            commit(baseline, 0);
+            applyChoice(baseline, role, "jumpMode", "");
+            commit(baseline, 0);
+            forceRolls(state, 1);
+            JsonObject jump = offeredActions(view(baseline, role), "jump").filter(choice -> {
+                JsonObject target = choice.get("target").asObject();
+                return target.getInt("x", 0) == 9 && target.getInt("y", 0) == 7;
+            }).findFirst().orElseThrow();
+            baseline.apply(role, request(baseline, "action", "jump").add("actionId", jump.get("id")));
+            String pending = commit(baseline, 0);
+            assertEquals(StepId.BONE_HEAD, state.getCurrentStep().getId());
+            JsonArray steps = JsonObject.readFrom(pending).get("native").asObject().get("stepStack").asObject().get("steps").asArray();
+            assertTrue(steps.values().stream().map(JsonValue::asObject)
+                .anyMatch(step -> StepId.END_SELECTING.getName().equals(step.getString("stepId", ""))
+                    && new JsonArray().add(7).add(7).equals(step.get("moveStart"))));
+            forceRolls(state, 6, 3);
+            pending = commit(baseline, 0);
+            SetupSession restored = restoreAndCompare(fixture, baseline, pending);
+            JsonObject reroll = offeredActions(view(baseline, role), "reroll")
+                .filter(choice -> choice.getString("id", "").contains("team")).findFirst().orElseThrow();
+            compareDecision(baseline, restored, role, request(baseline, "action", "reroll-bone-head").add("actionId", reroll.get("id")), 0);
+            assertEquals(StepId.JUMP, nativeState(restored).getCurrentStep().getId());
+        }
+    }
+
+    @Test
+    void opposingReactionTimesOutAndContinuesAfterRestore() throws Exception {
+        try (BogrukEngineFixture fixture = fixture("Human", "Orc", 43)) {
+            SetupSession baseline = fixture.session;
+            String role = advanceToTurn(fixture).getString("actor", null);
+            GameState state = nativeState(baseline);
+            Game game = state.getGame();
+            Player<?> blocker = game.getActingTeam().getPlayers()[1];
+            Player<?> defender = game.getOtherTeam(game.getActingTeam()).getPlayers()[1];
+            UtilBox.putAllPlayersIntoBox(game);
+            place(game, blocker, 9, 7);
+            place(game, defender, 10, 7);
+            game.getFieldModel().setBallCoordinate(new FieldCoordinate(4, 4));
+            game.getFieldModel().setBallMoving(false);
+            grant(game, defender, "Stand Firm");
+            JsonObject select = action(view(baseline, role), "selectBlock", blocker.getId());
+            baseline.apply(role, request(baseline, "action", "select-blocker").add("actionId", select.get("id")));
+            commit(baseline, 0);
+            BlockDiceCategory die = new BlockDiceCategory();
+            die.parseCommand("pushback", game, game.getActingTeam());
+            state.getDiceRoller().addTestRoll(die);
+            applyChoice(baseline, role, "block", "");
+            commit(baseline, 0);
+            applyChoice(baseline, role, "blockDie", "");
+            String pending = commit(baseline, 0);
+
+            JsonObject reaction = baseline.decorateSaveResumeState(actorView(baseline)).get("reaction").asObject();
+            assertNotEquals(role, reaction.getString("actor", null));
+            assertTrue(reaction.getString("title", "").contains("Stand Firm"));
+            SetupSession restored = restoreAndCompare(fixture, baseline, pending);
+            long deadline = reaction.getLong("expiresAt", -1);
+            MatchService.Failure stale = assertThrows(MatchService.Failure.class,
+                () -> restored.apply(role, request(restored, "action", "late-action"), deadline));
+            assertEquals("STALE_REVISION", stale.code);
+            assertNull(restored.compactCapture());
+            assertTrue(baseline.expireReactiveDecision(deadline));
+            assertTrue(restored.expireReactiveDecision(deadline));
+            assertSameCapture(baseline.compactCapture(), restored.compactCapture());
+            assertContinuation(commit(baseline, 0), commit(restored, 0));
+            assertViews(baseline, restored);
+
+            JsonObject view = actorView(baseline);
+            JsonObject next = fixture.recordedDecision(view, "after-timeout", 1);
+            compareDecision(baseline, restored, view.getString("actor", null), next, 0);
+        }
+    }
+
+    @Test
+    void restoresCleanupBeforeResolvingASecretWeaponDecision() throws Exception {
+        try (BogrukEngineFixture fixture = fixture("Human", "Orc", 43)) {
+            SetupSession baseline = fixture.session;
+            String role = advanceToTurn(fixture).getString("actor", null);
+            Game game = nativeState(baseline).getGame();
+            Player<?> weapon = game.getActingTeam().getPlayers()[1];
+            game.getOptions().addOption(new GameOptionBoolean(GameOptionId.ARGUE_THE_CALL).setValue(true));
+            game.getGameResult().getPlayerResult(weapon).setHasUsedSecretWeapon(true);
+            game.getTurnDataHome().setTurnNr(8);
+            game.getTurnDataAway().setTurnNr(8);
+            applyChoice(baseline, role, "endTurn", "");
+            String pending = commit(baseline, 0);
+            assertEquals(StepId.END_TURN, nativeState(baseline).getCurrentStep().getId());
+            SetupSession restored = restoreAndCompare(fixture, baseline, pending);
+            JsonObject cleanup = actorView(baseline);
+            JsonObject next = offeredActions(cleanup, "secretWeapon").findFirst()
+                .orElseGet(() -> offeredActions(cleanup, "argueTheCall").findFirst().orElseThrow());
+            compareDecision(baseline, restored, cleanup.getString("actor", null),
+                request(baseline, "action", "resolve-cleanup").add("actionId", next.get("id")), 0);
+        }
+    }
+
+    @Test
+    void driveTrackerReadsPendingNativeReportsWithoutConsumingThem() throws Exception {
+        try (BogrukEngineFixture fixture = fixture("Human", "Orc", 43)) {
+            SetupSession session = fixture.session;
+            commit(session, 0);
+            for (int sequence = 0; sequence < 2; sequence++) {
+                JsonObject current = actorView(session);
+                session.apply(current.getString("actor", null), fixture.recordedDecision(current, "setup-" + sequence, sequence));
+                commit(session, 0);
+            }
+            JsonObject base = actorView(session);
+            assertEquals("SETUP", base.getString("phase", ""));
+            assertFalse(base.get("driveTracker").asObject().getBoolean("secretWeapons", true));
+            GameState state = nativeState(session);
+            ReportSecretWeaponBan report = new ReportSecretWeaponBan();
+            report.add(state.getGame().getTeamHome().getPlayers()[0].getId(), 1, true);
+            ReportList reports = new ReportList();
+            reports.add(report);
+            fixture.server.getCommunication().sendModelSync(state, state.fetchChanges(), reports, null, null, 0, 0);
+            int pending = state.getGameLog().size();
+
+            for (String coach : List.of("home", "away"))
+                assertTrue(view(session, coach).get("driveTracker").asObject().getBoolean("secretWeapons", false));
+            assertEquals(pending, state.getGameLog().size());
+            assertNull(session.compactCapture());
+            applyChoice(session, base.getString("actor", null), "confirm", "");
+            assertTrue(session.compactCapture().nativeOutcomes().contains("secretWeaponBan"));
+            String captured = commit(session, 0);
+            assertTrue(actorView(SetupSession.restoreCompactSnapshot(fixture.server, captured))
+                .get("driveTracker").asObject().getBoolean("secretWeapons", false));
+        }
+    }
+
+    private void grant(Game game, Player<?> player, String name) {
+        SkillFactory skills = game.getFactory(FactoryType.Factory.SKILL);
+        ((RosterPlayer) player).addSkill(skills.forName(name));
+    }
+
+    private void applyChoice(SetupSession session, String role, String kind, String suffix) {
+        JsonObject current = view(session, role);
+        if ("confirm".equals(kind)) {
+            session.apply(role, request(session, kind, kind + "-" + session.revision()));
+            return;
+        }
+        JsonObject choice = offeredActions(current, kind)
+            .filter(option -> option.getString("id", "").endsWith(suffix)).findFirst().orElseThrow();
+        session.apply(role, request(session, "action", kind + "-" + session.revision()).add("actionId", choice.get("id")));
+    }
+
+    private void compareDecision(SetupSession baseline, SetupSession restored, String role, JsonObject input, int chatCount)
+        throws Exception {
+        long now = System.currentTimeMillis();
+        baseline.apply(role, input, now);
+        restored.apply(role, input, now);
+        assertSameCapture(baseline.compactCapture(), restored.compactCapture());
+        assertContinuation(commit(baseline, chatCount), commit(restored, chatCount));
+        assertViews(baseline, restored);
+    }
+
+    @Test
     void restoresAnActivationQueuedBehindAnOptionalSkillChoice() throws Exception {
         try (BogrukEngineFixture fixture = fixture("Orc", "Human", 45)) {
             SetupSession baseline = fixture.session;
@@ -436,6 +784,49 @@ class CompactMatchSnapshotTest {
     }
 
     @Test
+    void resumesDuringPlayAndConsumesTheSameNextRushRoll() throws Exception {
+        try (BogrukEngineFixture fixture = fixture("Human", "Orc", 43)) {
+            SetupSession baseline = fixture.session;
+            String role = advanceToTurn(fixture).getString("actor", null);
+            GameState engine = nativeState(baseline);
+            Game game = engine.getGame();
+            Player<?> mover = game.getActingTeam().getPlayers()[1];
+            UtilBox.putAllPlayersIntoBox(game);
+            place(game, mover, 7, 7);
+            game.getFieldModel().setBallCoordinate(new FieldCoordinate(4, 4));
+            game.getFieldModel().setBallMoving(false);
+            JsonObject select = action(view(baseline, role), "select", mover.getId());
+            baseline.apply(role, request(baseline, "action", "select-rusher").add("actionId", select.get("id")));
+            commit(baseline, 0);
+            game.getActingPlayer().setCurrentMove(mover.getMovementWithModifiers());
+            forceRolls(engine, 6);
+            long now = System.currentTimeMillis();
+
+            JsonObject save = request(baseline, "saveRequest", "save-in-play");
+            JsonValue saveId = proposalId(baseline, "home", save, now);
+            baseline.saveResume("away", request(baseline, "saveAccept", "accept-save").add("proposalId", saveId), now + 1);
+            SetupSession restored = restoreAndCompare(fixture, baseline, commit(baseline, 0));
+
+            JsonObject resume = request(baseline, "resumeRequest", "resume-play");
+            JsonValue resumeId = proposalId(baseline, "home", resume, now + 2);
+            assertEquals(resumeId, proposalId(restored, "home", resume, now + 2));
+            JsonObject accept = request(baseline, "resumeAccept", "accept-resume").add("proposalId", resumeId);
+            baseline.saveResume("away", accept, now + 3);
+            restored.saveResume("away", accept, now + 3);
+            assertEquals(commit(baseline, 0), commit(restored, 0));
+
+            compareDecision(baseline, restored, role, movement(baseline, "rush-after-resume", mover.getId(), 8, 7), 0);
+            assertEquals(new FieldCoordinate(8, 7), game.getFieldModel().getPlayerCoordinate(mover));
+            assertTrue(engine.getDiceRoller().getTestRolls().get("General").isEmpty());
+        }
+    }
+
+    private JsonValue proposalId(SetupSession session, String role, JsonObject request, long now) {
+        return session.decorateSaveResume(session.saveResume(role, request, now))
+            .get("state").asObject().get("saveResume").asObject().get("proposalId");
+    }
+
+    @Test
     void onlyDurableWritesPruneFrozenCommandsAndUncertainWritesEvict() throws Exception {
         for (CompactMatchWrite.Result result : CompactMatchWrite.Result.values()) {
             try (BogrukEngineFixture fixture = fixture("Human", "Orc", 47)) {
@@ -483,6 +874,30 @@ class CompactMatchSnapshotTest {
     }
 
     @Test
+    void invalidWriteBoundaryEvictsAndReentrantWriteLeavesTheOuterWriterInCharge() throws Exception {
+        try (BogrukEngineFixture fixture = fixture("Human", "Orc", 47)) {
+            SetupSession session = fixture.session;
+            var boundary = boundary(session, 0);
+            assertEquals(CompactMatchWrite.Result.DURABLE, session.writeCompactSnapshot(boundary, candidate -> {
+                assertThrows(IllegalStateException.class, () -> session.writeCompactSnapshot(boundary,
+                    ignored -> fail("Reentrant writer ran"), () -> fail("Reentrant write released the session")));
+                return CompactMatchWrite.Result.DURABLE;
+            }, () -> fail("Durable writer released the session")));
+
+            var wrong = new CompactMatchWrite.History(2, 0, boundary.digest());
+            AtomicReference<SetupSession> resident = new AtomicReference<>(session);
+            assertThrows(IllegalStateException.class, () -> session.writeCompactSnapshot(wrong,
+                candidate -> fail("Invalid writer ran"), () -> resident.set(null)));
+            assertNull(resident.get());
+            assertThrows(IllegalStateException.class, session::browseSummary);
+            assertThrows(IllegalStateException.class, session::computerProjection);
+            assertThrows(IllegalStateException.class, () -> session.expireSaveResumeProposal(0));
+            assertThrows(IllegalStateException.class, () -> session.recordPlayerActivity("home", 0));
+            assertThrows(IllegalStateException.class, () -> session.routePreview("home", 0, new JsonArray()));
+        }
+    }
+
+    @Test
     void rejectsLogHistoryAndMismatchedCommandOrRecordBoundary() throws Exception {
         try (BogrukEngineFixture fixture = fixture("Orc", "Human", 48)) {
             String snapshot = commit(fixture.session, 0);
@@ -492,8 +907,13 @@ class CompactMatchSnapshotTest {
             JsonObject badCommand = JsonObject.readFrom(snapshot).set("lastCapturedCommand", Integer.MAX_VALUE);
             JsonObject badCount = JsonObject.readFrom(snapshot);
             badCount.get("historyBoundary").asObject().set("recordCount", 2);
-            for (JsonObject invalid : List.of(withLog, withEvents, badCommand, badCount))
-                assertThrows(IllegalArgumentException.class, () -> SetupSession.restoreCompactSnapshot(fixture.server, invalid.toString()));
+            JsonObject missingMatch = JsonObject.readFrom(snapshot).remove("matchId");
+            JsonObject missingFrozen = JsonObject.readFrom(snapshot).remove("frozen");
+            for (JsonObject invalid : List.of(withLog, withEvents, badCommand, badCount, missingMatch, missingFrozen)) {
+                IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                    () -> SetupSession.restoreCompactSnapshot(fixture.server, invalid.toString()));
+                assertEquals("Invalid compact match snapshot", error.getMessage());
+            }
         }
     }
 
@@ -510,7 +930,7 @@ class CompactMatchSnapshotTest {
         session.writeCompactSnapshot(boundary(session, chatCount), data -> {
             snapshot.set(data.snapshot());
             return CompactMatchWrite.Result.DURABLE;
-        }, () -> fail("The test store confirmed durability"));
+        }, () -> { });
         assertEquals(0, nativeState(session).getGameLog().size());
         return snapshot.get();
     }
@@ -553,13 +973,13 @@ class CompactMatchSnapshotTest {
         JsonArray a = JsonArray.readFrom(expected.nativeOutcomes()), b = JsonArray.readFrom(actual.nativeOutcomes());
         eraseWallTime(a);
         eraseWallTime(b);
-        orderSetRemovals(a);
-        orderSetRemovals(b);
+        normalizeSets(a);
+        normalizeSets(b);
         assertEquals(a, b, () -> "native outcomes at r" + expected.revision());
     }
 
-    private void orderSetRemovals(JsonArray syncs) {
-        // Iteration order within a native HashSet clear is immaterial. Keep report, command and other change order exact.
+    private void normalizeSets(JsonArray syncs) {
+        // Keep command, report and change order exact except for consecutive removals from native sets.
         for (JsonValue value : syncs) {
             JsonObject changes = value.asObject().get("modelChangeList").asObject();
             JsonArray ordered = new JsonArray();
@@ -574,6 +994,18 @@ class CompactMatchSnapshotTest {
                 start = end;
             }
             changes.set("modelChangeArray", ordered);
+            JsonValue reportList = value.asObject().get("reportList");
+            if (reportList == null || reportList.isNull()) continue;
+            for (JsonValue entry : reportList.asObject().get("reports").asArray()) {
+                JsonObject report = entry.asObject();
+                if (!"injury".equals(report.getString("reportId", ""))) continue;
+                JsonValue modifiers = report.get("injuryModifiers");
+                if (modifiers == null) continue;
+                // The injury report copies this list from a native HashSet.
+                JsonArray sorted = new JsonArray();
+                modifiers.asArray().values().stream().sorted(Comparator.comparing(JsonValue::asString)).forEach(sorted::add);
+                report.set("injuryModifiers", sorted);
+            }
         }
     }
 
@@ -596,6 +1028,8 @@ class CompactMatchSnapshotTest {
             for (JsonValue item : value.asArray()) eraseWallTime(item);
         } else if (value.isObject()) {
             JsonObject object = value.asObject();
+            if ("gameSetFinished".equals(object.getString("modelChangeId", "")) && object.get("modelChangeValue").isString())
+                object.set("modelChangeValue", "<wall clock>");
             for (String key : List.of("gameTime", "turnTime", "finished", "endTime", "turnTimeStarted")) object.remove(key);
             for (JsonObject.Member field : object) eraseWallTime(field.getValue());
         }

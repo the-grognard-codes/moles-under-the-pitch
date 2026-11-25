@@ -26,6 +26,8 @@ import com.fumbbl.ffb.server.util.UtilServerDialog;
 import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonValue;
 
+import java.util.List;
+
 /** Browser-owned BB2025 policy. Native desktop games do not enable this service. */
 public final class OptionalSkillUse {
 
@@ -51,7 +53,7 @@ public final class OptionalSkillUse {
 			return;
 		}
 		JsonObject preferences = saved.asObject();
-		if (preferences.size() != 2 || !preferences.names().containsAll(java.util.List.of("home", "away")))
+		if (preferences.size() != 2 || !preferences.names().containsAll(List.of("home", "away")))
 			throw new IllegalArgumentException("Invalid skill policy state");
 		configure(SkillUsePreferences.fromJson(preferences.get("home").asObject()),
 			SkillUsePreferences.fromJson(preferences.get("away").asObject()));
