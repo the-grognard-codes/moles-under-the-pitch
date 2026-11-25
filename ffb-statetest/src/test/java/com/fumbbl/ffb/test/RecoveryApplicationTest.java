@@ -244,10 +244,10 @@ class RecoveryApplicationTest {
 		accepted(application.activate("home", activate(fixture.id, "activate").toString()));
 		fixture.repository.completionBudgetRefused = true;
 		FinishedMatch finished = finishWithResponse(application, fixture.id);
-		assertEquals("FULL_TIME", accepted(finished.response).get("state").asObject().getString("phase", null));
+		assertEquals("FULL_TIME", accepted(finished.outcome.response()).get("state").asObject().getString("phase", null));
 		assertTrue(fixture.repository.completionAttempts > 0);
 		assertEquals("ACTIVATED", fixture.matches.load("home", fixture.id).document.lifecycle.name());
-		assertTrue(finished.publish);
+		assertTrue(finished.outcome.publish());
 		long durable = fixture.recovery.rows.get(fixture.id).generation;
 		fixture.repository.completionBudgetRefused = false;
 		SetupApplication restarted = app(fixture);
@@ -266,7 +266,7 @@ class RecoveryApplicationTest {
 		accepted(application.activate("home", activate(fixture.id, "activate").toString()));
 		fixture.repository.completionBudgetRefused = true;
 		FinishedMatch finished = finishWithResponse(application, fixture.id);
-		assertEquals("ACCEPTED", finished.response.getString("code", null));
+		assertEquals("ACCEPTED", finished.outcome.response().getString("code", null));
 		RecoveryRepository.Record checkpoint = fixture.recovery.rows.get(fixture.id);
 		int attempts = fixture.repository.completionAttempts;
 		int reads = fixture.repository.reads;
@@ -307,7 +307,7 @@ class RecoveryApplicationTest {
 		SetupApplication application = new SetupApplication(new TestServer().getServer(), fixture.matches, fixture.recovery, true, clock);
 		accepted(application.activate("home", activate(fixture.id, "activate").toString()));
 		fixture.repository.completionBudgetRefused = true;
-		JsonObject finalResponse = finishWithResponse(application, fixture.id).response;
+		JsonObject finalResponse = finishWithResponse(application, fixture.id).outcome.response();
 		assertEquals("ACCEPTED", finalResponse.getString("code", null));
 		assertEquals("FULL_TIME", finalResponse.get("state").asObject().getString("phase", null));
 		RecoveryRepository.Record terminal = fixture.recovery.rows.get(fixture.id);
@@ -342,7 +342,7 @@ class RecoveryApplicationTest {
 		accepted(application.activate("home", activate(fixture.id, "activate").toString()));
 		FinishedMatch finished = finishWithResponse(application, fixture.id);
 		String role = finished.role;
-		JsonObject liveState = accepted(finished.response).get("state").asObject();
+		JsonObject liveState = accepted(finished.outcome.response()).get("state").asObject();
 		assertEquals("FULL_TIME", liveState.getString("phase", null));
 		assertEquals("ACTIVE", liveState.get("saveResume").asObject().getString("status", null));
 		assertNotNull(liveState.get("clock"));
@@ -492,10 +492,11 @@ class RecoveryApplicationTest {
 	private static final class FinishedMatch {
 		private final JsonObject request;
 		private final String role;
-		private final JsonObject response;
-		private final boolean publish;
+		private final SetupApplication.HandleOutcome outcome;
 		private FinishedMatch(JsonObject request, String role, SetupApplication.HandleOutcome outcome) {
-			this.request = request; this.role = role; this.response = outcome.response(); this.publish = outcome.publish();
+			this.request = request;
+			this.role = role;
+			this.outcome = outcome;
 		}
 	}
 
@@ -505,7 +506,7 @@ class RecoveryApplicationTest {
 		java.lang.reflect.Field stateField = SetupSession.class.getDeclaredField("state"); stateField.setAccessible(true);
 		com.fumbbl.ffb.server.GameState engine = (com.fumbbl.ffb.server.GameState) stateField.get(session);
 		JsonObject last = null; String role = null;
-		SetupApplication.HandleOutcome terminalOutcome = null;
+		SetupApplication.HandleOutcome outcome = null;
 		for (int index = 0; index < 160 && !session.isComplete(); index++) {
 			JsonObject view = accepted(onWorker(() -> application.handle("home", load(id, "view")))).get("state").asObject();
 			role = view.getString("actor", null);
@@ -527,8 +528,8 @@ class RecoveryApplicationTest {
 			}
 			long actionStarted = System.nanoTime();
 			String selectedRole = role; JsonObject selectedRequest = last;
-			terminalOutcome = onWorker(() -> application.handleWithOutcome(selectedRole, selectedRequest));
-			JsonObject response = terminalOutcome.response();
+			outcome = onWorker(() -> application.handleWithOutcome(selectedRole, selectedRequest));
+			JsonObject response = outcome.response();
 			actionNanos.add(System.nanoTime() - actionStarted);
 			if (response.get("state") != null && !response.get("state").isNull())
 				maxSnapshotBytes = Math.max(maxSnapshotBytes, response.get("state").toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
@@ -537,7 +538,7 @@ class RecoveryApplicationTest {
 			if (!session.isComplete() || !("PERSISTENCE_FAILED".equals(code) || "MATCH_OUTCOME_UNKNOWN".equals(code))) accepted(response);
 		}
 		assertTrue(session.isComplete());
-		return new FinishedMatch(last, role, terminalOutcome);
+		return new FinishedMatch(last, role, outcome);
 	}
 	@Test
 	void recreatedApplicationRestoresAcceptedActivationAndRequestRetry() throws Exception {

@@ -90,7 +90,9 @@ try {
     await page.close();
   }
   console.log('PASS size-limited and quarantined matches show a definitive coach-facing notice');
-  for (const retained of [false, true]) {
+  for (const scenario of ['no-retained-request', 'mid-match-retry', 'full-time-retry']) {
+    const retained = scenario !== 'no-retained-request';
+    const finishOnRetry = scenario === 'full-time-retry';
     const page = await browser.newPage();
     const pageErrors = [];
     page.on('pageerror', error => pageErrors.push(error.message));
@@ -111,13 +113,13 @@ try {
         requests.push({ connection: connections, request });
         if (request.type === 'authenticate') send({ type: 'authentication', requestId: request.requestId, code: 'ACCEPTED', accountId });
         else if (request.type === 'setup') {
-          const finalAction = request.operation === 'action';
-          if (finalAction) revision++;
-          // Deferred result persistence still sends the accepted full-time state with the action receipt.
+          const isAction = request.operation === 'action';
+          if (isAction) revision++;
+          const fullTime = finishOnRetry && isAction;
           send({ type: 'setupState', requestId: request.requestId, code: 'ACCEPTED', duplicate: false,
-            state: { matchId, revision, callerRole: 'home', actor: 'home', phase: finalAction ? 'FULL_TIME' : 'PLAY', prompt: null,
+            state: { matchId, revision, callerRole: 'home', actor: 'home', phase: fullTime ? 'FULL_TIME' : 'PLAY', prompt: null,
               players: [], actions: [], weather: 'NICE', homeRerolls: 0, awayRerolls: 0, turn: 1,
-              turnMode: finalAction ? 'END_GAME' : 'REGULAR', ball: null, activePlayerId: null, half: 2, drive: 2,
+              turnMode: fullTime ? 'END_GAME' : 'REGULAR', ball: null, activePlayerId: null, half: 2, drive: 2,
               homeTurn: 1, awayTurn: 0, homeScore: 0, awayScore: 0 } });
         }
       });
@@ -147,7 +149,7 @@ try {
       assert.deepEqual(await page.evaluate(() => JSON.parse(sessionStorage.getItem('ffb.intent.v2'))), pending,
         'Reconnect preserves the exact retained request');
       await page.getByRole('button', { name: 'Repeat retained request', exact: true }).click();
-      await page.getByText('Match finished.', { exact: false }).waitFor();
+      if (finishOnRetry) await page.getByText('Match finished.', { exact: false }).waitFor();
       await page.waitForFunction(() => sessionStorage.getItem('ffb.intent.v2') === null);
       assert.deepEqual(requests.filter(({ request }) => request.type === 'setup' && request.operation === 'action')
         .map(({ request }) => request), [pending.request], 'Only explicit retry submits the original intent once');
@@ -156,7 +158,7 @@ try {
     await page.close();
   }
   console.log('PASS unavailable connected match views reconnect, authenticate and reload without replaying retained gameplay');
-  console.log('PASS the accepted final action receipt shows full time and clears the retained request without a result reply');
+  console.log('PASS the accepted final action receipt shows full time and clears the retained request');
 } finally {
   await browser.close();
   await server.close();
