@@ -8,15 +8,36 @@ import com.fumbbl.ffb.server.GameState;
 import com.fumbbl.ffb.server.step.IStep;
 import com.fumbbl.ffb.server.step.StepId;
 
-import com.eclipsesource.json.JsonArray;
 import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonValue;
 
 import java.util.List;
+import java.util.function.Supplier;
 
 /** BB2025 start-of-drive guidance derived only from the native sequence and accepted public reports. */
 final class DriveTrackerPresentation {
-    JsonObject project(GameState state, MatchTranscript transcript, int drive, String phase) {
+    /** Committed drive facts, sufficient to continue projection without replaying past outcomes. */
+    record Summary(int drive, boolean setupSeen, String firstSetupActor, boolean secretWeapons, boolean knockouts,
+        String event) { }
+
+    private Summary summary = new Summary(-1, false, null, false, false, null);
+
+    Summary exportSummary() { return summary; }
+
+    void restoreSummary(Summary saved) { summary = saved; }
+
+    void record(int drive, String phase, String actor, Iterable<? extends JsonValue> outcomes) {
+        Summary previous = summaryFor(drive);
+        boolean firstSetup = !previous.setupSeen() && "SETUP".equals(phase);
+        Reports added = new Reports();
+        added.readSyncs(outcomes);
+        // The earliest recorded revision with a supported event wins.
+        summary = new Summary(drive, previous.setupSeen() || firstSetup,
+            firstSetup ? actor : previous.firstSetupActor(), previous.secretWeapons() || added.secretWeapons,
+            previous.knockouts() || added.knockouts, previous.event() == null ? added.event : previous.event());
+    }
+
+    JsonObject project(GameState state, int drive, String phase, Supplier<List<JsonObject>> pendingOutcomes) {
         if ("PRE_MATCH".equals(phase) || "FULL_TIME".equals(phase)) return null;
         boolean setup = hasStep(state, StepId.SETUP);
         boolean kickTarget = hasStep(state, StepId.KICKOFF);
@@ -25,18 +46,15 @@ final class DriveTrackerPresentation {
             : !"PLAY".equals(phase) || setup || kickTarget || !kickoff) return null;
 
         Game game = state.getGame();
-        String receivingRole = receivingRole(state, transcript, drive, setup);
+        Summary committed = summaryFor(drive);
+        String receivingRole = receivingRole(state, committed.firstSetupActor(), setup);
         String currentPhase = setup ? game.isSetupOffense() ? "RECEIVING_SETUP" : "KICKING_SETUP"
             : kickTarget ? "KICK_TARGET" : "KICKOFF";
-        Reports reports = transcript == null ? new Reports() : transcript.driveHistory().reports(drive);
-        if (transcript != null) {
-            // The current public snapshot is built before its native outcomes join the transcript.
-            List<JsonObject> pending = new NativeOutcomeCapture()
-                .since(state.getGameLog(), transcript.nativeCursor()).modelSyncs;
-            for (JsonObject sync : pending) reports.readSync(sync);
-        }
+        // The recorded view also includes the current revision's still-pending outcomes.
+        Reports pending = new Reports();
+        pending.readSyncs(pendingOutcomes.get());
 
-        String event = reports.event;
+        String event = pending.event == null ? committed.event() : pending.event;
         if (event == null && game.getDialogParameter() instanceof DialogPlayerChoiceParameter) {
             PlayerChoiceMode choice = ((DialogPlayerChoiceParameter) game.getDialogParameter()).getPlayerChoiceMode();
             if (choice == PlayerChoiceMode.CHARGE || choice == PlayerChoiceMode.SOLID_DEFENCE) event = choice.name();
@@ -52,8 +70,9 @@ final class DriveTrackerPresentation {
                     && (((DialogPlayerChoiceParameter) game.getDialogParameter()).getPlayerChoiceMode() == PlayerChoiceMode.CHARGE
                         || ((DialogPlayerChoiceParameter) game.getDialogParameter()).getPlayerChoiceMode() == PlayerChoiceMode.SOLID_DEFENCE));
         return new JsonObject().add("version", 1).add("receivingRole", receivingRole)
-            .add("phase", currentPhase).add("secretWeapons", reports.secretWeapons)
-            .add("knockouts", reports.knockouts).add("event", event == null ? JsonValue.NULL : JsonValue.valueOf(event))
+            .add("phase", currentPhase).add("secretWeapons", committed.secretWeapons() || pending.secretWeapons)
+            .add("knockouts", committed.knockouts() || pending.knockouts)
+            .add("event", event == null ? JsonValue.NULL : JsonValue.valueOf(event))
             .add("eventComplete", event != null && !eventActive);
     }
 
@@ -64,8 +83,7 @@ final class DriveTrackerPresentation {
         return false;
     }
 
-    private String receivingRole(GameState state, MatchTranscript transcript, int drive, boolean setup) {
-        String firstSetupActor = transcript == null ? null : transcript.driveHistory().firstSetupActor(drive);
+    private String receivingRole(GameState state, String firstSetupActor, boolean setup) {
         if ("home".equals(firstSetupActor)) return "away";
         if ("away".equals(firstSetupActor)) return "home";
         Game game = state.getGame();
@@ -76,36 +94,8 @@ final class DriveTrackerPresentation {
         return homeReceiving ? "home" : "away";
     }
 
-    /** Small derived facts for the contiguous current drive; rebuilt through the normal restore append path. */
-    static final class History {
-        private int drive = -1;
-        private boolean setupSeen;
-        private String firstSetupActor;
-        private Reports reports = new Reports();
-
-        void append(JsonObject record) {
-            JsonObject snapshot = record.get("state").asObject();
-            int nextDrive = snapshot.getInt("drive", -1);
-            if (nextDrive != drive) {
-                drive = nextDrive;
-                setupSeen = false;
-                firstSetupActor = null;
-                reports = new Reports();
-            }
-            if (!setupSeen && "SETUP".equals(snapshot.getString("phase", null))) {
-                setupSeen = true;
-                firstSetupActor = snapshot.getString("actor", null);
-            }
-            Reports added = new Reports();
-            added.readSyncs(record.get("native").asArray());
-            reports.mergeEarliest(added);
-        }
-
-        String firstSetupActor(int requestedDrive) { return requestedDrive == drive ? firstSetupActor : null; }
-
-        Reports reports(int requestedDrive) {
-            return requestedDrive == drive ? reports.copy() : new Reports();
-        }
+    private Summary summaryFor(int drive) {
+        return summary.drive() == drive ? summary : new Summary(drive, false, null, false, false, null);
     }
 
     private static final class Reports {
@@ -113,20 +103,7 @@ final class DriveTrackerPresentation {
         boolean knockouts;
         String event;
 
-        void mergeEarliest(Reports added) {
-            secretWeapons |= added.secretWeapons;
-            knockouts |= added.knockouts;
-            // The original reverse scan lets the earliest record containing an event win.
-            if (event == null) event = added.event;
-        }
-
-        Reports copy() {
-            Reports result = new Reports();
-            result.mergeEarliest(this);
-            return result;
-        }
-
-        void readSyncs(JsonArray syncs) {
+        void readSyncs(Iterable<? extends JsonValue> syncs) {
             for (JsonValue value : syncs) readSync(value.asObject());
         }
 

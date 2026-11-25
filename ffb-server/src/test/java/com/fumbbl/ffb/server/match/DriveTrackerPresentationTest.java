@@ -13,15 +13,15 @@ import com.eclipsesource.json.JsonArray;
 import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonValue;
 
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 class DriveTrackerPresentationTest {
@@ -41,41 +41,41 @@ class DriveTrackerPresentationTest {
     @Test void followsBothSetupSidesKickTargetAndKickoffThroughAnInterruption() {
         current(StepId.SETUP);
         when(game.isHomePlaying()).thenReturn(true);
-        assertEquals("away", project(null, 1, "SETUP").getString("receivingRole", null));
-        assertEquals("KICKING_SETUP", project(null, 1, "SETUP").getString("phase", null));
+        assertEquals("away", project(1, "SETUP").getString("receivingRole", null));
+        assertEquals("KICKING_SETUP", project(1, "SETUP").getString("phase", null));
         when(game.isSetupOffense()).thenReturn(true);
         when(game.isHomePlaying()).thenReturn(false);
-        assertEquals("away", project(null, 1, "SETUP").getString("receivingRole", null));
-        assertEquals("RECEIVING_SETUP", project(null, 1, "SETUP").getString("phase", null));
+        assertEquals("away", project(1, "SETUP").getString("receivingRole", null));
+        assertEquals("RECEIVING_SETUP", project(1, "SETUP").getString("phase", null));
         when(game.isHomePlaying()).thenReturn(true);
         current(StepId.KICKOFF);
-        assertEquals("KICK_TARGET", project(null, 1, "READY_FOR_KICKOFF").getString("phase", null));
+        assertEquals("KICK_TARGET", project(1, "READY_FOR_KICKOFF").getString("phase", null));
         stack.push(step(StepId.END_KICKOFF));
         current(StepId.APOTHECARY);
         when(game.getTurnMode()).thenReturn(TurnMode.KICKOFF);
-        assertEquals("KICKOFF", project(null, 1, "PLAY").getString("phase", null));
-        assertEquals("away", project(null, 1, "PLAY").getString("receivingRole", null));
+        assertEquals("KICKOFF", project(1, "PLAY").getString("phase", null));
+        assertEquals("away", project(1, "PLAY").getString("receivingRole", null));
         stack.clear();
-        assertNull(project(null, 1, "PLAY"));
+        assertNull(project(1, "PLAY"));
     }
 
     @Test void usesCurrentDriveReportsIncludingFailedRecoveryAndHandledWeaponChecks() {
         current(StepId.SETUP);
-        MatchTranscript transcript = transcript(1, "home", new JsonArray());
+        presentation.record(1, "SETUP", "home", new JsonArray());
         JsonArray prior = syncs(report("secretWeaponBan", "playerIds", new JsonArray().add("old")));
-        transcript.append(1, "ACTION", "home", 1, new JsonObject(), prior, snapshot(1, "PLAY", "home", 1), 1);
+        presentation.record(1, "PLAY", "home", prior);
         JsonArray current = syncs(report("turnEnd", "knockoutRecoveryArray", new JsonArray().add(
             new JsonObject().add("playerId", "failed").add("successful", false))),
             report("secretWeaponBan", "playerIds", new JsonArray().add("handled")));
-        current.get(0).asObject().set("commandNr", 2);
-        transcript.append(2, "TOUCHDOWN", "home", 2, new JsonObject(), current,
-            snapshot(2, "SETUP", "away", 2), 2);
-        JsonObject result = project(transcript, 2, "SETUP");
+        presentation.record(2, "SETUP", "away", current);
+        JsonObject result = project(2, "SETUP");
         assertTrue(result.getBoolean("secretWeapons", false));
         assertTrue(result.getBoolean("knockouts", false));
         assertEquals("home", result.getString("receivingRole", null));
-        assertFalse(project(transcript, 3, "SETUP").getBoolean("secretWeapons", true));
-        assertFalse(project(transcript, 3, "SETUP").getBoolean("knockouts", true));
+        presentation.record(3, "SETUP", null, new JsonArray());
+        assertFalse(project(3, "SETUP").getBoolean("secretWeapons", true));
+        assertFalse(project(3, "SETUP").getBoolean("knockouts", true));
+        assertFalse(project(2, "SETUP").getBoolean("secretWeapons", true));
     }
 
     @Test void retainsRolledEventsAndKeepsChargeBlitzWithinKickoff() {
@@ -85,65 +85,73 @@ class DriveTrackerPresentationTest {
             { "Solid Defence", "SOLID_DEFENCE", "SOLID_DEFENCE" },
             { "Quick Snap", "QUICK_SNAP", "QUICK_SNAP" }, { "Charge", "CHARGE", "BLITZ" } }) {
             when(game.getTurnMode()).thenReturn(TurnMode.valueOf(event[2]));
-            MatchTranscript transcript = transcript(1, "home", syncs(report("kickoffResult", "kickoffResult", JsonValue.valueOf(event[0]))));
-            JsonObject active = project(transcript, 1, "PLAY");
+            DriveTrackerPresentation tracker = new DriveTrackerPresentation();
+            tracker.record(1, "SETUP", "home", syncs(report("kickoffResult", "kickoffResult", JsonValue.valueOf(event[0]))));
+            JsonObject active = tracker.project(state, 1, "PLAY", List::of);
             assertEquals(event[1], active.getString("event", null));
             assertFalse(active.getBoolean("eventComplete", true));
             when(game.getTurnMode()).thenReturn(TurnMode.KICKOFF);
-            assertTrue(project(transcript, 1, "PLAY").getBoolean("eventComplete", false));
+            assertTrue(tracker.project(state, 1, "PLAY", List::of).getBoolean("eventComplete", false));
         }
     }
 
     @Test void readsPendingNativeReportsBeforeTheCurrentDecisionIsAppended() {
         current(StepId.SETUP);
-        MatchTranscript transcript = transcript(1, "home", new JsonArray());
-        JsonObject sync = syncs(report("turnEnd", "knockoutRecoveryArray", new JsonArray().add(new JsonObject())))
+        presentation.record(1, "SETUP", "home", new JsonArray());
+        JsonObject sync = syncs(report("turnEnd", "knockoutRecoveryArray", new JsonArray().add(new JsonObject())),
+            report("kickoffResult", "kickoffResult", JsonValue.valueOf("Charge")))
             .get(0).asObject();
         ServerCommandModelSync command = mock(ServerCommandModelSync.class);
         when(command.getCommandNr()).thenReturn(1);
         when(command.isReplayable()).thenReturn(true);
         when(command.toJsonValue()).thenReturn(sync);
         log.add(command);
-        assertTrue(project(transcript, 1, "SETUP").getBoolean("knockouts", false));
-        assertEquals(0, transcript.nativeCursor());
+        DriveTrackerPresentation.Summary before = presentation.exportSummary();
+        List<JsonObject> pending = new NativeOutcomeCapture().since(log, 0).modelSyncs;
+        JsonObject preview = presentation.project(state, 1, "SETUP", () -> pending);
+        assertTrue(preview.getBoolean("knockouts", false));
+        assertEquals("CHARGE", preview.getString("event", null));
+        assertEquals(before, presentation.exportSummary());
+        assertFalse(project(1, "SETUP").getBoolean("knockouts", true));
+        presentation.record(1, "SETUP", "away", pending);
+        assertTrue(new NativeOutcomeCapture().since(log, 1).modelSyncs.isEmpty());
+        assertEquals(preview, project(1, "SETUP"));
     }
 
-    @Test void restoresCurrentDriveFactsWithoutExpandingHistoryDuringViews() {
+    @Test void continuesFromAnExportedSummaryWithoutRecords() {
         current(StepId.SETUP);
-        MatchTranscript transcript = transcript(1, "home", syncs(report("kickoffResult", "kickoffResult", JsonValue.valueOf("High Kick"))));
         JsonArray current = syncs(report("secretWeaponBan", "playerIds", new JsonArray().add("handled")),
             report("kickoffResult", "kickoffResult", JsonValue.valueOf("Charge")));
-        current.get(0).asObject().set("commandNr", 2);
-        transcript.append(1, "TOUCHDOWN", "home", 1, new JsonObject(), current,
-            snapshot(1, "SETUP", "away", 2), 2);
-        transcript.append(2, "ACTION", "away", 2, new JsonObject(), new JsonArray(),
-            snapshot(2, "SETUP", "home", 2), 2);
-        JsonObject expected = project(transcript, 2, "SETUP");
-        MatchTranscript restored = spy(new MatchTranscript(transcript.json()));
-        doThrow(new AssertionError("Ordinary views must not expand retained transcript history")).when(restored).json();
-        assertEquals(expected.toString(), project(restored, 2, "SETUP").toString());
+        presentation.record(2, "SETUP", "away", current);
+        DriveTrackerPresentation restored = new DriveTrackerPresentation();
+        restored.restoreSummary(presentation.exportSummary());
+        JsonArray later = syncs(report("kickoffResult", "kickoffResult", JsonValue.valueOf("High Kick")));
+        presentation.record(2, "SETUP", "home", later);
+        restored.record(2, "SETUP", "home", later);
+        JsonObject expected = project(2, "SETUP");
+        assertEquals(expected, restored.project(state, 2, "SETUP", List::of));
         assertEquals("home", expected.getString("receivingRole", null));
         assertEquals("CHARGE", expected.getString("event", null));
         assertTrue(expected.getBoolean("secretWeapons", false));
-        assertFalse(project(restored, 1, "SETUP").getBoolean("secretWeapons", true));
+        assertFalse(restored.project(state, 1, "SETUP", List::of).getBoolean("secretWeapons", true));
     }
 
     @Test void omitsPreMatchFullTimeAndOlderUnknownOptionalHistory() {
         current(StepId.SETUP);
-        assertNull(project(null, 1, "PRE_MATCH"));
-        assertNull(project(null, 1, "FULL_TIME"));
-        JsonObject shown = project(null, 1, "SETUP");
+        assertNull(project(1, "PRE_MATCH"));
+        assertNull(project(1, "FULL_TIME"));
+        JsonObject shown = project(1, "SETUP");
         assertFalse(shown.getBoolean("secretWeapons", true));
         assertFalse(shown.getBoolean("knockouts", true));
         assertTrue(shown.get("event").isNull());
         current(StepId.END_TURN);
         stack.push(step(StepId.SETUP));
         stack.push(step(StepId.END_KICKOFF));
-        assertNull(project(null, 1, "PLAY"));
+        assertNull(project(1, "PLAY"));
     }
 
-    private JsonObject project(MatchTranscript transcript, int drive, String phase) {
-        return presentation.project(state, transcript, drive, phase);
+    private JsonObject project(int drive, String phase) {
+        return presentation.project(state, drive, phase, List::of);
     }
 
     private void current(StepId id) {
@@ -155,17 +163,6 @@ class DriveTrackerPresentationTest {
         IStep step = mock(IStep.class);
         when(step.getId()).thenReturn(id);
         return step;
-    }
-
-    private MatchTranscript transcript(int drive, String actor, JsonArray reports) {
-        MatchTranscript transcript = new MatchTranscript();
-        transcript.append(0, "START", "system", 0, JsonValue.NULL, reports,
-            snapshot(0, "SETUP", actor, drive), reports.size() == 0 ? 0 : 1);
-        return transcript;
-    }
-
-    private JsonObject snapshot(int revision, String phase, String actor, int drive) {
-        return new JsonObject().add("revision", revision).add("phase", phase).add("actor", actor).add("drive", drive);
     }
 
     private JsonArray syncs(JsonObject... reports) {
