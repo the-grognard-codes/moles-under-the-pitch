@@ -258,6 +258,7 @@ public final class SetupSession {
 			@Override public void observeEndTurnParameter(StepId source, boolean endTurn) { announcements.cause(getGame(), source, endTurn); }
 			@Override public void observeTurnoverReason(String reason) { announcements.reason(getGame(), reason); }
 			@Override public void observeTurnEnd(Player<?> scorer, boolean halfEnded) { announcements.end(getGame(), scorer, halfEnded); announcements.flush(this); }
+			@Override public void observeHalfEnd() { announcements.halfEnd(); }
 			@Override public void observePlayableTurn() { announcements.playable(getGame()); announcements.flush(this); }
 			@Override public void observeKickoffResult(KickoffResult result) { announcements.kickoff(getGame(), result); }
 			@Override protected void observeWeather() { announcements.weather(getGame()); }

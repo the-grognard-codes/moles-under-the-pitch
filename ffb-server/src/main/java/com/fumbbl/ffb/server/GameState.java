@@ -64,6 +64,7 @@ public class GameState implements IModelChangeObserver, IJsonSerializable {
 	public void observeEndTurnParameter(StepId source, boolean endTurn) { }
 	public void observeTurnoverReason(String reason) { }
 	public void observeTurnEnd(Player<?> scorer, boolean halfEnded) { }
+	public void observeHalfEnd() { }
 	public void observePlayableTurn() { }
 	public void observeKickoffResult(KickoffResult result) { }
 	protected void observeWeather() { }

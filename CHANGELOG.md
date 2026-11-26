@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Show halftime after the first half's cleanup decisions are complete.
 - Record and announce touchdowns before offering Star of the Show.
 
 - Keep block, blitz, pass and hand-off previews responsive late in matches by skipping the native game log when copying the engine for a preview.

@@ -550,6 +550,10 @@ public class StepEndTurn extends AbstractStep {
 				endingTurnData.setReRollShowStarOneDrive(endingTurnData.getReRollShowStarOneDrive() + 1);
 				getResult().addReport(new ReportShowStarReRoll(touchdownPlayerId));
 			}
+			if (fNewHalf) {
+				// The step's final model sync records the cleanup and half transition before setup runs.
+				getGameState().observeHalfEnd();
+			}
 
 			game.startTurn();
 
