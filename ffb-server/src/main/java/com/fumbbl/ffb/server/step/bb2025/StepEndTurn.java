@@ -550,6 +550,10 @@ public class StepEndTurn extends AbstractStep {
 				endingTurnData.setReRollShowStarOneDrive(endingTurnData.getReRollShowStarOneDrive() + 1);
 				getResult().addReport(new ReportShowStarReRoll(touchdownPlayerId));
 			}
+			if (fNewHalf) {
+				// Stage halftime after applying the Star of the Show reward, before the final model sync.
+				getGameState().observeHalfEnd();
+			}
 
 			game.startTurn();
 
