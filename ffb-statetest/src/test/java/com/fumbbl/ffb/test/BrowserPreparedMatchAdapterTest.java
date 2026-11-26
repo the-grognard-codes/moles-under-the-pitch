@@ -60,7 +60,8 @@ class BrowserPreparedMatchAdapterTest {
 		JsonObject view = app.handle("away", load).get("state").asObject();
 		List<JsonObject> submitted = new ArrayList<>();
 		int number = 0;
-		while (!view.get("prompt").isNull()) {
+		while ("PRE_MATCH".equals(view.getString("phase", null))) {
+			view = app.handle(subjectFor(view.getString("actor", null)), load).get("state").asObject();
 			JsonObject prompt = view.get("prompt").asObject();
 			JsonObject request = setupRequest(id, "choice", number++, view).add("promptId", prompt.get("id"))
 				.add("optionId", prompt.getString("kind", "").equals("coin") ? "heads" : "receive");
@@ -91,6 +92,7 @@ class BrowserPreparedMatchAdapterTest {
 			view = app.handle("away", load).get("state").asObject();
 		}
 		assertEquals("READY_FOR_KICKOFF", view.getString("phase", null));
+		view = app.handle(subjectFor(view.getString("actor", null)), load).get("state").asObject();
 		JsonObject action = view.get("actions").asArray().get(0).asObject();
 		JsonObject kick = setupRequest(id, "action", number, view).add("actionId", action.get("id"));
 		assertReversedMutation(app, engine, kick, action.getString("actor", null));

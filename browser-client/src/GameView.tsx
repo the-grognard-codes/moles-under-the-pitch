@@ -37,7 +37,7 @@ import { isRectangularDecision } from './RectangularDecisionPrompt.tsx';
 import { withProTest } from './reroll-presentation.ts';
 import { pitchPushChoices, pitchHitAndRunChoices, pitchPuntChoices } from './push-choice.ts';
 import { kickoffDraft, toggleKickoffPlayer } from './kickoff-choice.ts';
-import { currentGameStep } from './match-status.ts';
+import { currentGameStep, waitingMessage } from './match-status.ts';
 import { matchTeamName } from './match-team-name.ts';
 import { canPlaceReserve } from './setup-protocol.ts';
 import type { SetupAction, SetupState } from './setup-protocol.ts';
@@ -1133,7 +1133,7 @@ function GameViewContent({ view, connected, pending: requestPending, mutate, acc
         </div>}
         {routeMode && <p className="sr-only" aria-live="polite">Click squares to add waypoints. Right-click undoes; Escape clears; Confirm commits.</p>}
         </> :
-        <p>{view.phase === 'FULL_TIME' ? <>{view.stopReason === 'MATCH_SIZE_LIMIT' ? 'Match ended at its current score after reaching the safe size limit.' : 'Match finished.'} {results && <a href={resultUrl ?? `/results?matchId=${encodeURIComponent(view.matchId)}`}>Open final result and replay</a>}</> : view.phase === 'PLAY' && view.actions.length === 0 ? 'Waiting for an engine decision. Reconnect if the match appears stuck.' : view.callerRole === 'spectator' ? 'Watching match · coach decisions appear here when resolved.' : view.actor === view.callerRole ? 'Waiting for the next server decision.' : 'Waiting for the other participant.'}</p>}
+        <p>{view.phase === 'FULL_TIME' ? <>{view.stopReason === 'MATCH_SIZE_LIMIT' ? 'Match ended at its current score after reaching the safe size limit.' : 'Match finished.'} {results && <a href={resultUrl ?? `/results?matchId=${encodeURIComponent(view.matchId)}`}>Open final result and replay</a>}</> : waitingMessage(view)}</p>}
       </div>}
       {!hosted && view.phase === 'FULL_TIME' && <p>{view.stopReason === 'MATCH_SIZE_LIMIT' ? 'Match ended at its current score after reaching the safe size limit.' : 'Match finished.'} {results && <a href={resultUrl ?? `/results?matchId=${encodeURIComponent(view.matchId)}`}>Open final result and replay</a>}</p>}
       {!hosted && connected && view.actor !== view.callerRole && view.phase !== 'FULL_TIME' && <p>Waiting for the other participant. Their decision will appear here when resolved.</p>}
@@ -1233,7 +1233,8 @@ function GameViewContent({ view, connected, pending: requestPending, mutate, acc
         {view.prompt.options.map(option => <button key={option} type="button" onClick={() => mutate('choice', { promptId: view.prompt!.id, optionId: option })} disabled={!connected || !!pending || playBlocked || view.prompt!.actor !== view.callerRole}>{option}</button>)}
       </section>}
       {!hosted && view.phase === 'READY_FOR_KICKOFF' && <p>Both teams have confirmed legal setups. The kicking participant can choose a server-issued kick target.</p>}
-      {!hosted && view.phase === 'PLAY' && view.actions.length === 0 && <p role="alert">This engine decision does not yet have browser controls. The match remains in memory; reconnecting will preserve this decision.</p>}
+      {!hosted && view.phase === 'PLAY' && view.actor === view.callerRole
+        && (view.decisionKind === 'engine' || view.decisionKind === undefined && view.actions.length === 0) && <p role="alert">This engine decision does not yet have browser controls. The match remains in memory; reconnecting will preserve this decision.</p>}
       {!hosted && serverActionPanel}
       {!hosted && <>
       <p>{matchTeamName(view, 'home')} (H): x 0–12 · {matchTeamName(view, 'away')} (A): x 13–25. Line of scrimmage: x 12/13, y 4–10. Wide zones: y 0–3 and 11–14.</p>

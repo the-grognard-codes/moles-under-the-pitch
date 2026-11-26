@@ -127,7 +127,7 @@ class BlockLogPresentationTest {
         state.getGame().getTurnData().setReRolls(0); return state;
     }
     private void start(SetupSession session) { choose(session, "selectBlock", true); choose(session, "block", true); }
-    private JsonArray actions(SetupSession session) { return log.view(session, "home").get("actions").asArray(); }
+    private JsonArray actions(SetupSession session) { return SetupSessionFixtureState.actingView(session).get("actions").asArray(); }
     private JsonObject action(SetupSession session, String id) { return actions(session).values().stream().map(JsonValue::asObject)
         .filter(value -> value.getString("id", "").endsWith(id)).findFirst().orElseThrow(() -> new AssertionError("Missing " + id + " actions " + actions(session))); }
     private void choose(SetupSession session, String id) { choose(session, id, false); }

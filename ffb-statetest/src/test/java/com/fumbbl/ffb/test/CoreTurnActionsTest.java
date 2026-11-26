@@ -184,7 +184,7 @@ class CoreTurnActionsTest {
             "Moving the block target clears its committed context");
         Files.createDirectories(Paths.get("target"));
         Files.write(Paths.get("target", "m5a-blitz-projections.json"), frames.toString().getBytes(StandardCharsets.UTF_8));
-        assertEquals(new String(Files.readAllBytes(Paths.get("..", "browser-client", "test", "fixtures", "m5a-blitz-projections.json")), StandardCharsets.UTF_8), frames.toString());
+        assertLegacyPublicParity("m5a-blitz-projections.json", frames);
     }
 
     @Test void dodgeAndRushPromptsPublishConsistentCoachAndSpectatorCheckpoints() throws Exception {
@@ -218,8 +218,7 @@ class CoreTurnActionsTest {
 
         Files.createDirectories(Paths.get("target"));
         Files.write(Paths.get("target", "m5-route-interruption-projections.json"), frames.toString().getBytes(StandardCharsets.UTF_8));
-        assertEquals(new String(Files.readAllBytes(Paths.get("..", "browser-client", "test", "fixtures",
-            "m5-route-interruption-projections.json")), StandardCharsets.UTF_8), frames.toString());
+        assertLegacyPublicParity("m5-route-interruption-projections.json", frames);
     }
 
     private SetupSession sessionWithState(GameState state) throws Exception {
@@ -234,6 +233,23 @@ class CoreTurnActionsTest {
             if (value.asObject().getString("id", "").endsWith(actionId)) return true;
         }
         return false;
+    }
+
+    private void assertLegacyPublicParity(String fixture, JsonArray current) throws Exception {
+        JsonArray prior = JsonArray.readFrom(Files.readString(Paths.get("..", "browser-client", "test", "fixtures", fixture), StandardCharsets.UTF_8));
+        assertEquals(prior.size(), current.size());
+        for (int index = 0; index < prior.size(); index++) {
+            JsonObject expected = prior.get(index).asObject(), actual = current.get(index).asObject();
+            assertEquals(expected.get("checkpoint"), actual.get("checkpoint"));
+            for (String role : new String[] {"actor", "otherCoach", "spectator"}) {
+                JsonObject before = expected.get(role).asObject(), after = actual.get(role).asObject();
+                for (String field : before.names()) {
+                    if (!"actor".equals(role) && java.util.Set.of("actions", "prompt", "movementForecast", "playerActionMenu",
+                        "blockPreview", "threats", "savedFormations").contains(field)) continue;
+                    assertEquals(before.get(field), after.get(field), index + " " + role + " " + field);
+                }
+            }
+        }
     }
 
     private void capture(SetupSession session, JsonArray frames, String checkpoint) {
@@ -251,10 +267,12 @@ class CoreTurnActionsTest {
         assertEquals(actor.get("ball"), otherCoach.get("ball"));
         assertEquals(actor.get("phase"), spectator.get("phase"));
         assertEquals(actor.get("phase"), otherCoach.get("phase"));
-        assertEquals(actor.get("actions"), spectator.get("actions"));
-        assertEquals(actor.get("actions"), otherCoach.get("actions"));
-        assertEquals(actor.get("prompt"), spectator.get("prompt"));
-        assertEquals(actor.get("prompt"), otherCoach.get("prompt"));
+        assertTrue(spectator.get("actions").asArray().isEmpty());
+        assertTrue(otherCoach.get("actions").asArray().isEmpty());
+        assertTrue(spectator.get("prompt").isNull());
+        assertTrue(otherCoach.get("prompt").isNull());
+        assertEquals(actor.get("decisionKind"), spectator.get("decisionKind"));
+        assertEquals(actor.get("decisionKind"), otherCoach.get("decisionKind"));
         assertEquals(actor.get("blockContext"), spectator.get("blockContext"));
         assertEquals(actor.get("blockContext"), otherCoach.get("blockContext"));
         actor.set("matchId", "00000000-0000-0000-0000-000000000001");

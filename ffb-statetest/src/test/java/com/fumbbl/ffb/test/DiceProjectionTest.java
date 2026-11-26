@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DiceProjectionTest {
 	@Test void revealedDiceKeepNativeFacesAndChoiceIdentityForBothCoaches() throws Exception {
@@ -49,7 +50,8 @@ class DiceProjectionTest {
 			if (count > 1) assertEquals("Choose PUSHBACK (die 2)", faces.get(1).asString());
 			if (count > 2) assertEquals("Choose POW (die 3)", faces.get(2).asString());
 			JsonObject spectator = session.spectatorView();
-			assertEquals(offered.get("actions"), spectator.get("actions"));
+			assertTrue(spectator.get("actions").asArray().isEmpty());
+			assertEquals(offered.get("decisionKind"), spectator.get("decisionKind"));
 			assertEquals(offered.get("blockContext"), spectator.get("blockContext"));
 			submit(session, role, count == 0 ? "reroll:team" : "block-die:" + (count - 1));
 			JsonObject chosen = view(session, role);

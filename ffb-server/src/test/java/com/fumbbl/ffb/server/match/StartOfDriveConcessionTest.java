@@ -21,6 +21,7 @@ class StartOfDriveConcessionTest {
         JsonObject view = fixture.session.spectatorView();
         Set<String> phases = new LinkedHashSet<>();
         for (int index = 0; index < 30; index++) {
+            view = SetupSessionMovementTest.Fixture.actingView(fixture.session, view);
             phases.add(view.getString("phase", null));
             SetupSession restored = new SetupSession(fixture.server, fixture.document, fixture.session.recoveryArtifact());
             String role = view.getString("actor", null);

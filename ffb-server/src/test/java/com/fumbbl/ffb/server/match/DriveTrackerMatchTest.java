@@ -139,6 +139,7 @@ class DriveTrackerMatchTest {
     }
 
     private JsonObject decision(SetupSessionMovementTest.Fixture fixture, JsonObject live, int revision) {
+		live = SetupSessionMovementTest.Fixture.actingView(fixture.session, live);
         JsonObject request = fixture.request("action", "tracker-" + revision, live);
         if ("SETUP".equals(live.getString("phase", null))) return request.set("operation", "confirm");
         if (!live.get("prompt").isNull()) {

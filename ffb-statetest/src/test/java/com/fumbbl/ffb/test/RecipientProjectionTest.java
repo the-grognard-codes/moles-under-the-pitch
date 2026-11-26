@@ -20,7 +20,7 @@ class RecipientProjectionTest {
 		JsonObject away = session.reply("contract", "ACCEPTED", false, "away").get("state").asObject();
 		JsonObject spectator = session.spectatorView();
 		for (JsonObject view : Arrays.asList(home, away, spectator)) {
-			keys(view, "projectionVersion", "matchId", "revision", "callerRole", "phase", "actor", "prompt", "players", "weather", "homeRerolls", "awayRerolls",
+			keys(view, "projectionVersion", "matchId", "revision", "callerRole", "phase", "actor", "decisionKind", "prompt", "players", "weather", "homeRerolls", "awayRerolls",
 				"actions", "turn", "turnMode", "ball", "activePlayerId", "half", "homeTurn", "awayTurn", "homeScore", "awayScore", "drive",
 				"homeTeamName", "awayTeamName", "homeTeamArt", "awayTeamArt", "homeResources", "awayResources", "ballState");
 			keys(view.get("ballState").asObject(), "version", "carrierPlayerId", "inPlay", "moving");
@@ -48,14 +48,21 @@ class RecipientProjectionTest {
 				assertEquals("human", player.get("art").asObject().getString("rosterId", null));
 				assertEquals("lineman", player.get("art").asObject().getString("positionId", null));
 			}
-			keys(view.get("prompt").asObject(), "id", "actor", "kind", "options");
+			assertEquals("coin", view.getString("decisionKind", null));
+			if (view.getString("actor", "").equals(view.getString("callerRole", null)))
+				keys(view.get("prompt").asObject(), "id", "actor", "kind", "options");
+			else assertEquals(JsonValue.NULL, view.get("prompt"));
 			for (JsonValue value : view.get("actions").asArray()) assertEquals(true, value.asObject().get("sourcePlayerId") != null);
 		}
-		assertEquals(home, away.set("callerRole", "home"));
-		assertEquals(home, spectator.set("callerRole", "home"));
 		String actor = home.getString("actor", null);
+		JsonObject acting = "home".equals(actor) ? home : away;
+		for (String field : spectator.names())
+			if (!"callerRole".equals(field) && !"prompt".equals(field)) {
+				assertEquals(home.get(field), spectator.get(field), field);
+				assertEquals(away.get(field), spectator.get(field), field);
+			}
 		MatchService.Failure rejected = assertThrows(MatchService.Failure.class, () -> session.apply("home".equals(actor) ? "away" : "home", new JsonObject().add("requestId", "wrong-recipient")
-			.add("operation", "choice").add("expectedRevision", home.get("revision")).add("promptId", home.get("prompt").asObject().get("id")).add("optionId", "heads")));
+			.add("operation", "choice").add("expectedRevision", home.get("revision")).add("promptId", acting.get("prompt").asObject().get("id")).add("optionId", "heads")));
 		assertEquals("WRONG_ACTOR", rejected.code);
 		assertEquals(home, session.reply("after", "ACCEPTED", false, "home").get("state"));
 	}

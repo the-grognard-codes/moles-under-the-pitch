@@ -415,9 +415,11 @@ class ReactiveSkillDecisionTest {
             SetupSession restored = new SetupSession(fixture.server, fixture.document,
                 new RecoveryArtifactJson().encode(payload, 128 * 1024 * 1024));
             JsonObject recovered = live(restored, role);
+            assertEquals("reaction", before.getString("decisionKind", null));
+            assertEquals("reaction", restored.spectatorView().getString("decisionKind", null));
             assertEquals(before.get("actions"), recovered.get("actions"), "Recovery retains exact destinations and corrects their graphical owner");
             assertEquals(before.get("reaction").asObject().get("expiresAt"), recovered.get("reaction").asObject().get("expiresAt"));
-            payload.get("homeView").asObject().get("actions").asArray().get(0).asObject().set("sourcePlayerId", "unrelated-player");
+            payload.get(role + "View").asObject().get("actions").asArray().get(0).asObject().set("sourcePlayerId", "unrelated-player");
             assertEquals("RECOVERY_CORRUPT", assertThrows(MatchService.Failure.class, () -> new SetupSession(fixture.server, fixture.document,
                 new RecoveryArtifactJson().encode(payload, 128 * 1024 * 1024))).code);
             JsonObject result = restored.apply(role, fixture.request("action", "choose-square", recovered).add("actionId", choice.get("id")));

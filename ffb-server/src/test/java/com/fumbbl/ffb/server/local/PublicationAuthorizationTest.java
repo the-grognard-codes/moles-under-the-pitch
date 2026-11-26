@@ -276,14 +276,14 @@ class PublicationAuthorizationTest {
 	@Test void deferredTurnHandoffArrivesWithoutAnotherActionAndFinalFrameRetiresSpectator() throws Exception {
 		for (String phase : new String[] {"PLAY", "FULL_TIME"}) {
 			Fixture fixture = new Fixture(); fixture.enroll(V2PublicationAuthorization.Family.STATE, 2); fixture.reset();
-			JsonObject handoff = new JsonObject().add("revision", 2).add("phase", phase).add("activeTeam", "away");
+			JsonObject handoff = new JsonObject().add("revision", 2).add("phase", phase).add("actor", "away");
 			when(fixture.setup.publishedState(anyString(), anyString(), anyBoolean())).thenReturn(state("away").set("state", handoff));
 			fixture.withBudget(() -> { fixture.nanos.addAndGet(BrowserRequestTiming.REQUEST_BUDGET_NANOS); fixture.publisher.publish(MATCH, null, handoff); });
 			assertEquals(1, fixture.publisher.spectatorCount(MATCH));
 			fixture.withBudget(fixture.publisher::retryPublications);
 			for (Connection connection : fixture.connections) {
 				assertEquals(1, connection.messages.size());
-				assertEquals("away", connection.last().get("state").asObject().getString("activeTeam", ""));
+				assertEquals("away", connection.last().get("state").asObject().getString("actor", ""));
 				assertEquals(phase, connection.last().get("state").asObject().getString("phase", ""));
 			}
 			assertEquals("FULL_TIME".equals(phase) ? 0 : 1, fixture.publisher.spectatorCount(MATCH));

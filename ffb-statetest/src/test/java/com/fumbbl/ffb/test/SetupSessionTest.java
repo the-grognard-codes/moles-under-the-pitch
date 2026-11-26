@@ -52,8 +52,11 @@ class SetupSessionTest {
 		assertEquals("coin", initial.get("prompt").asObject().getString("kind", null));
 		JsonObject awayView = session.reply("load", "ACCEPTED", false, "away").get("state").asObject();
 		JsonObject spectatorView = session.spectatorView();
-		assertEquals(initial.get("prompt"), awayView.get("prompt"));
-		assertEquals(initial.get("prompt"), spectatorView.get("prompt"));
+		JsonObject homeView = session.reply("load", "ACCEPTED", false, "home").get("state").asObject();
+		assertEquals("away".equals(initial.getString("actor", null)), !awayView.get("prompt").isNull());
+		assertEquals("home".equals(initial.getString("actor", null)), !homeView.get("prompt").isNull());
+		assertTrue(spectatorView.get("prompt").isNull());
+		assertEquals("coin", spectatorView.getString("decisionKind", null));
 		assertEquals(initial.get("players"), awayView.get("players"));
 		assertEquals(initial.get("players"), spectatorView.get("players"));
 		int orcCount = 0; boolean troll = false;
@@ -739,7 +742,7 @@ class SetupSessionTest {
 			assertEquals("ACCEPTED", session.apply(prompt.getString("actor", null), choice).getString("code", null));
 		}
 	}
-	private JsonObject view(SetupSession session) { return session.reply("load", "ACCEPTED", false, "home").get("state").asObject(); }
+	private JsonObject view(SetupSession session) { return SetupSessionFixtureState.actingView(session); }
 	private String serialized(SetupSession session) throws Exception { return engine(session).toJsonValue().toString(); }
     private com.fumbbl.ffb.server.GameState engine(SetupSession session) throws Exception {
 		java.lang.reflect.Field field = SetupSession.class.getDeclaredField("state"); field.setAccessible(true);

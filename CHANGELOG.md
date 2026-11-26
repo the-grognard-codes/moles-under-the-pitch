@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep match decisions private to the coach who can act. Waiting coaches and spectators see the normal waiting message, and the shared pitch and replay retain revealed match facts. Both Multiple Block dice pools appear for both coaches and spectators.
+
 - Record and announce touchdowns before offering Star of the Show.
 
 - Keep block, blitz, pass and hand-off previews responsive late in matches by skipping the native game log when copying the engine for a preview.

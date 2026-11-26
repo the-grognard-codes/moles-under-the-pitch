@@ -1,5 +1,12 @@
 package com.fumbbl.ffb.server.match;
 
+import com.fumbbl.ffb.Direction;
+import com.fumbbl.ffb.FieldCoordinate;
+import com.fumbbl.ffb.modifiers.RollModifier;
+import com.fumbbl.ffb.report.ReportKickoffScatter;
+import com.fumbbl.ffb.report.ReportPassBlock;
+import com.fumbbl.ffb.report.bb2025.ReportPickupRoll;
+
 import com.eclipsesource.json.Json;
 import com.eclipsesource.json.JsonArray;
 import com.eclipsesource.json.JsonObject;
@@ -8,10 +15,73 @@ import com.eclipsesource.json.JsonValue;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 class MatchTranscriptTest {
+    @Test void legacyHistoryPublicReadRetainsRevealedDiceAndMovementAndExcludesPrivateFields() {
+        MatchTranscript transcript = new MatchTranscript();
+        transcript.append(0, "START", "system", 100L, JsonValue.NULL, new JsonArray(), state(0), 0);
+        JsonObject before = JsonObject.readFrom("""
+            {"revision":1,"decisionKind":"reroll","actor":"away","actions":[{"id":"private"}],
+             "prompt":{"id":"private"},"playerActionMenu":[{}],"saveResume":{"status":"ACTIVE"},
+             "players":[{"id":"player","number":4,"art":{"rosterId":"human","positionId":"lineman","private":"owner"}}]}
+            """);
+        JsonObject decision = JsonObject.readFrom("""
+            {"operation":"action","actionId":"1:event-confirm","requestId":"private","computerDecision":{},
+             "playerIds":["player"],"waypoints":[{"x":2,"y":2}],
+             "logPresentation":{"version":1,"action":{"kind":"kickoffChoice","label":"Confirm","playerId":null,"target":null},
+               "movement":{"commitRevision":0,"playerId":"player","from":{"x":1,"y":2,"private":true},"to":{"x":2,"y":2},"complete":true}}}
+            """);
+        JsonObject nativeSync = JsonObject.readFrom("""
+            {"commandNr":7,"gameTime":1000,"turnTime":190,"modelChangeList":{"modelChangeArray":[
+              {"modelChangeId":"fieldModelSetPlayerCoordinate","modelChangeKey":"player","modelChangeValue":[2,2],"private":true},
+              {"modelChangeId":"gameSetDialogParameter","modelChangeValue":{"id":"private"}}]},
+             "reportList":{"reports":[{"reportId":"blockReRoll","blockRoll":[2],"blockRollAfterReroll":[2,2],"rerolledIndexes":[0],"private":true},
+               {"reportId":"dodgeRoll","playerId":"player","roll":4,"minimumRoll":3,
+                "numericDice":{"version":1,"dice":[{"sides":6,"value":4,"label":"Dodge","private":true}]}},
+               {"reportId":"futurePrivateReport","playerId":"player"}]}}
+            """);
+        transcript.append(1, "ACTION", "away", 101L, decision, new JsonArray().add(nativeSync), before, 7);
+        MatchTranscript restored = new MatchTranscript(transcript.json());
+        JsonObject record = restored.page(1, 1).get("records").asArray().get(0).asObject();
+        JsonObject board = record.get("state").asObject(), accepted = record.get("decision").asObject();
+        JsonObject outcome = record.get("native").asArray().get(0).asObject();
+        assertEquals("reroll", board.getString("decisionKind", ""));
+        assertEquals(new JsonArray(), board.get("actions"));
+        assertEquals(JsonValue.NULL, board.get("prompt"));
+        assertNull(board.get("playerActionMenu"));
+        assertNull(board.get("saveResume"));
+        for (String field : new String[] {"requestId", "actionId", "computerDecision", "waypoints"})
+            assertNull(accepted.get(field));
+        assertEquals(new JsonArray().add("player"), accepted.get("playerIds"));
+        assertEquals(new JsonObject().add("x", 1).add("y", 2),
+            accepted.get("logPresentation").asObject().get("movement").asObject().get("from"));
+        assertEquals(7, outcome.getInt("commandNr", -1));
+        assertNull(outcome.get("turnTime"));
+        JsonArray changes = outcome.get("modelChangeList").asObject().get("modelChangeArray").asArray();
+        assertEquals(1, changes.size());
+        assertEquals(new JsonArray().add(2).add(2), changes.get(0).asObject().get("modelChangeValue"));
+        JsonArray reports = outcome.get("reportList").asObject().get("reports").asArray();
+        assertEquals(2, reports.size());
+        assertEquals(new JsonArray().add(2).add(2), reports.get(0).asObject().get("blockRollAfterReroll"));
+        assertEquals(4, reports.get(1).asObject().getInt("roll", -1));
+        assertFalse(record.toString().contains("private"));
+        assertEquals(transcript.json(), restored.json());
+    }
+
+    @Test void publicReportsRetainSecureBallKickoffDeviationAndPassReactionDetails() {
+        PublicNativeReports reports = new PublicNativeReports();
+        JsonObject pickup = new ReportPickupRoll("player", true, 6, 3, false, new RollModifier<?>[0], true).toJsonValue();
+        JsonObject scatter = new ReportKickoffScatter(new FieldCoordinate(4, 7), Direction.EAST, 3, 2, 6).toJsonValue();
+        JsonObject pass = new ReportPassBlock("away", true).toJsonValue();
+
+        assertEquals(JsonValue.TRUE, reports.report(pickup).get("secureTheBallUsed"));
+        assertEquals(JsonValue.valueOf(6), reports.report(scatter).get("scatterDistanceSides"));
+        assertEquals(JsonValue.TRUE, reports.report(pass).get("passBlockAvailable"));
+    }
+
     @Test void restoresAcceptedDecisionAndRawNativeOutcomeInRevisionOrder() {
         MatchTranscript transcript = new MatchTranscript();
         transcript.append(0, "START", "system", 100L, JsonValue.NULL, new JsonArray(), state(0), 0);

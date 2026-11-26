@@ -144,8 +144,19 @@ final class ReactiveSkillActions {
         return result;
     }
 
+    boolean isOptionalSquareSkill(DialogSkillUseParameter dialog) {
+        return switch (skillName(dialog)) {
+            case "sidestep", "trickster", "safepairofhands", "dumpoff" -> true;
+            default -> false;
+        };
+    }
+
+    private String skillName(DialogSkillUseParameter dialog) {
+        return dialog.getSkill().getName().toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z]", "");
+    }
+
     private List<FieldCoordinate> optionalSquares(GameState state, DialogSkillUseParameter dialog) {
-        String name = dialog.getSkill().getName().toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z]", "");
+        String name = skillName(dialog);
         if ("sidestep".equals(name) && state.getCurrentStep() instanceof StepPushback) {
             List<FieldCoordinate> squares = new ArrayList<>();
             Arrays.stream(((StepPushback) state.getCurrentStep()).sideStepChoices()).forEach(square -> squares.add(square.getCoordinate()));

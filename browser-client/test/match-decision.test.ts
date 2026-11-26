@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { decisionIcon, matchDecision } from '../src/match-decision.ts';
+import type { MatchDecision } from '../src/match-decision.ts';
 import { pitchPushChoices } from '../src/push-choice.ts';
 import { withProTest } from '../src/reroll-presentation.ts';
 import { offeredBlockDice } from '../src/dice-presentation.ts';
 import type { SetupState } from '../src/setup-protocol.ts';
+import type { TranscriptRecord } from '../src/transcript-protocol.ts';
 
 const frames = JSON.parse(readFileSync(new URL('./fixtures/m5a-blitz-projections.json', import.meta.url), 'utf8'));
 
@@ -83,6 +85,22 @@ test('a Pro test has its own d6 while original block outcomes remain visible', (
   assert.equal(withProTest({ ...decision, kind: 'rerollDie' }, [records[0], selectiveRecord], 1)?.proTest?.face, '6',
     'A native block reroll announcement retains Pro while the coach chooses which die to reroll');
   assert.equal(withProTest(decision, records, 2)?.proTest, undefined, 'Earlier Pro results cannot leak into a new decision');
+});
+
+test('Multiple Block Pro keeps the original pool for the rerolled target', () => {
+  const decision: MatchDecision = { key: 'mb-pro', kind: 'rerollDie', title: 'Choose a die',
+    options: [{ id: '1:block-reroll-die:0', kind: 'action', label: 'Re-roll this die', dieKind: 'block', targetPlayerId: 'first' }] };
+  const view: SetupState = { ...frames[0].actor, activePlayerAction: 'multipleBlock' };
+  const records = [
+    { revision: 0, state: view, native: [{ reportList: { reports: [
+      { reportId: 'blockRoll', defenderId: 'first', blockRoll: [1, 2] },
+      { reportId: 'blockRoll', defenderId: 'second', blockRoll: [6, 6] },
+    ] } }] },
+    { revision: 1, state: view, native: [{ reportList: { reports: [
+      { reportId: 'reRoll', reRollSource: 'Pro', roll: 6, successful: true },
+    ] } }] },
+  ] as TranscriptRecord[];
+  assert.deepEqual(withProTest(decision, records, 1)?.originalFaces, ['SKULL', 'BOTH DOWN']);
 });
 
 test('a single-die Pro retry shows its original action d6 instead of an earlier block', () => {

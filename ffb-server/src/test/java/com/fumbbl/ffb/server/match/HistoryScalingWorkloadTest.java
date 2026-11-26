@@ -215,6 +215,7 @@ class HistoryScalingWorkloadTest {
 	private JsonObject advance(SetupSession session, SetupSessionMovementTest.Fixture fixture, boolean stopAtSetup) {
 		JsonObject view = session.reply("load", "ACCEPTED", false, "home").get("state").asObject();
 		for (int index = 0; index < 100; index++) {
+			view = SetupSessionMovementTest.Fixture.actingView(session, view);
 			if (stopAtSetup && "SETUP".equals(view.getString("phase", null))) return view;
 			JsonObject endTurn = null;
 			for (JsonValue value : view.get("actions").asArray()) if ("endTurn".equals(value.asObject().getString("kind", null))) endTurn = value.asObject();

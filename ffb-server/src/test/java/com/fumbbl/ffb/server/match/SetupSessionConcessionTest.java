@@ -132,6 +132,7 @@ class SetupSessionConcessionTest {
     private JsonObject advanceToTurn(SetupSession session, String matchId, String actingRole) {
         JsonObject view = session.reply("load", "ACCEPTED", false, "home").get("state").asObject();
         for (int index = 0; index < 100; index++) {
+            view = SetupSessionMovementTest.Fixture.actingView(session, view);
             JsonObject endTurn = null;
             for (JsonValue item : view.get("actions").asArray())
                 if ("endTurn".equals(item.asObject().getString("kind", null))) endTurn = item.asObject();

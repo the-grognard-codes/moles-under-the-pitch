@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { confirmedMoves, playbackBeats } from '../src/pitch-playback.ts';
+import { multipleBlockRoll } from '../src/multiple-block-dice.ts';
 import type { TranscriptRecord } from '../src/transcript-protocol.ts';
 
 test('native coordinate changes retain every confirmed square in command order', () => {
@@ -17,4 +18,24 @@ test('native coordinate changes retain every confirmed square in command order',
   ]);
   assert.deepEqual(playbackBeats(record).map(beat => beat.kind), ['dice', 'move', 'move', 'move', 'player']);
   assert.deepEqual(playbackBeats(record).at(-1), { kind: 'player', playerId: 'runner', changes: { x: null, y: null } });
+});
+
+
+test('restores the selected Multiple Block target from an earlier public report', () => {
+  const record = (revision: number, reports: Record<string, unknown>[], homeTurn = 1) => ({
+    revision,
+    state: { revision, matchId: 'match', activePlayerAction: 'multipleBlock', activePlayerId: 'attacker',
+      half: 1, homeTurn, awayTurn: 1, players: [], actions: [], callerRole: 'spectator' },
+    native: [{ commandNr: revision, reportList: { reports } }],
+  } as unknown as TranscriptRecord);
+  const rolls = record(3, [
+    { reportId: 'blockRoll', defenderId: 'first', blockRoll: [1, 6], choosingTeamId: 'home' },
+    { reportId: 'blockRoll', defenderId: 'second', blockRoll: [4, 4], choosingTeamId: 'away' },
+  ]);
+  const handoff = record(4, []);
+  const records = { 3: rolls, 4: handoff };
+  assert.deepEqual(multipleBlockRoll(handoff.state, records, 'first')?.faces, ['SKULL', 'POW']);
+  assert.deepEqual(multipleBlockRoll(handoff.state, records, 'second')?.faces, ['PUSHBACK', 'PUSHBACK']);
+  const later = record(5, [], 2);
+  assert.equal(multipleBlockRoll(later.state, { ...records, 5: later }, 'first'), null);
 });

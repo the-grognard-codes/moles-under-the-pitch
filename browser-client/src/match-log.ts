@@ -8,7 +8,7 @@ import { reportedDice } from './dice-presentation.ts';
 import type { DieKind } from './die-geometry.ts';
 import { syncAnnouncements, announcementText } from './match-announcements.ts';
 
-export type MatchLogLine = { key: string; revision: number; at: number; text: string; debug?: string; announcement?: boolean;
+export type MatchLogLine = { key: string; revision: number; at: number; text: string; debug?: string; announcement?: boolean; blockTargetId?: string;
   dice?: { faces: string[]; kinds: DieKind[]; selected: number | null; uphill?: boolean; chooser?: 'home' | 'away'; inline?: boolean } };
 
 const readable = (value: string) => value.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ').toLowerCase();
@@ -240,6 +240,10 @@ function decisionLine(record: TranscriptRecord, presentation?: LogPresentation):
   return null;
 }
 
+function blockTarget(report: Record<string, unknown>): string | undefined {
+  return typeof report.defenderId === 'string' ? report.defenderId : (report.logBlock as LogBlock | undefined)?.defenderId ?? undefined;
+}
+
 export function appendMatchLogLines(lines: MatchLogLine[], record: TranscriptRecord, preferences: MatchLogPreferences = defaultMatchLogPreferences): void {
   if (lines.length && lines[lines.length - 1].revision >= record.revision && lines.some(line => line.key === `${record.index}:0`)) return;
   let ordinal = 0;
@@ -251,10 +255,10 @@ export function appendMatchLogLines(lines: MatchLogLine[], record: TranscriptRec
       if (typeof value === 'string' || typeof value === 'number') parts.push(`${label} ${value}`);
     return parts.join(' · ');
   };
-  const add = (text: string, debug: string, dice?: MatchLogLine['dice']) => {
+  const add = (text: string, debug: string, dice?: MatchLogLine['dice'], blockTargetId?: string) => {
     const key = `${record.index}:${ordinal++}`;
     lines.push({ key, revision: record.revision, at: record.at, text,
-      ...(preferences.debug ? { debug } : {}), ...(dice ? { dice } : {}) });
+      ...(preferences.debug ? { debug } : {}), ...(dice ? { dice } : {}), ...(blockTargetId ? { blockTargetId } : {}) });
   };
   const decision = decisionLine(record, presentation);
   if (decision) add(decision, metadata());
@@ -268,27 +272,49 @@ export function appendMatchLogLines(lines: MatchLogLine[], record: TranscriptRec
       seenReports.add(signature);
       if (report.reportId === 'block' && record.native.some(command => (command.reportList as { reports?: Record<string, unknown>[] } | undefined)?.reports?.some(item => item.reportId === 'blockReRoll'))) continue;
       const moment = reportedDice(report, record.state.players);
-      if (report.reportId === 'blockRoll' && reports.some(item => item && typeof item === 'object'
-        && (item as Record<string, unknown>).reportId === 'blockChoice')) continue;
+      const target = blockTarget(report);
+      const multiple = record.state.activePlayerAction === 'multipleBlock';
+      const sameTarget = (id: string) => reports.some(item => {
+        if (!item || typeof item !== 'object') return false;
+        const other = item as Record<string, unknown>;
+        const otherTarget = blockTarget(other);
+        return other.reportId === id && (otherTarget === target || !multiple && (!otherTarget || !target));
+      });
+      if (report.reportId === 'blockRoll') {
+        if (sameTarget('blockChoice')) continue;
+        // A partial reroll already carries the complete resulting pool.
+        if (multiple && target && reports.some(item => {
+          if (!item || typeof item !== 'object') return false;
+          const other = item as Record<string, unknown>;
+          return other.reportId === 'blockReRoll' && blockTarget(other) === target && Array.isArray(other.blockRollAfterReroll)
+            && JSON.stringify(other.blockRollAfterReroll) === JSON.stringify(report.blockRoll);
+        })) continue;
+      }
       if (report.reportId === 'blockChoice') {
         const blockMoment = reportedDice(report, record.state.players);
         const chosen = blockMoment ? { faces: blockMoment.faces,
           kinds: blockMoment.rolls?.map(roll => roll.kind ?? 'block') ?? blockMoment.faces.map(() => 'block'),
           selected: blockMoment.selected, uphill: blockMoment.uphill, chooser: blockMoment.chooser } : undefined;
-        const hasRollBesideChoice = reports.some(item => item && typeof item === 'object'
-          && (item as Record<string, unknown>).reportId === 'blockRoll');
-        const latestBlockRoll = [...lines].reverse().find(line => line.dice?.kinds.every(kind => kind === 'block'));
-        const prior = !hasRollBesideChoice && chosen && latestBlockRoll?.dice?.selected === null
+        const latestBlockRoll = lines.slice().reverse().find(line => line.dice?.kinds.every(kind => kind === 'block')
+          && (line.blockTargetId === target || !multiple && (!target || !line.blockTargetId)));
+        const prior = !sameTarget('blockRoll') && chosen && latestBlockRoll?.dice?.selected === null
           && JSON.stringify(latestBlockRoll.dice.faces) === JSON.stringify(chosen.faces) ? latestBlockRoll : undefined;
         if (prior && chosen) prior.dice = chosen;
-        else add('Block dice ·', metadata(report, sync.commandNr), chosen);
+        else add('Block dice ·', metadata(report, sync.commandNr), chosen, target);
         continue;
       }
       if (report.reportId === 'blockRoll' || report.reportId === 'blockReRoll') {
-        const blockMoment = moment;
+        const fullPool = report.reportId === 'blockReRoll' && multiple && target && Array.isArray(report.blockRollAfterReroll)
+          ? reports.find(item => {
+            if (!item || typeof item !== 'object') return false;
+            const other = item as Record<string, unknown>;
+            return other.reportId === 'blockRoll' && blockTarget(other) === target
+              && JSON.stringify(other.blockRoll) === JSON.stringify(report.blockRollAfterReroll);
+          }) as Record<string, unknown> | undefined : undefined;
+        const blockMoment = fullPool ? reportedDice(fullPool, record.state.players) ?? moment : moment;
         add(report.reportId === 'blockReRoll' ? `Block dice rerolled · source ${sourceName(report.reRollSource)}.` : 'Block dice ·', metadata(report, sync.commandNr), blockMoment ? {
           faces: blockMoment.faces, kinds: blockMoment.rolls?.map(roll => roll.kind ?? 'block') ?? blockMoment.faces.map(() => 'block'),
-          selected: blockMoment.selected, uphill: blockMoment.uphill, chooser: blockMoment.chooser } : undefined);
+          selected: blockMoment.selected, uphill: blockMoment.uphill, chooser: blockMoment.chooser } : undefined, target);
         continue;
       }
       for (const text of reportLines(report, record.state, preferences, presentation)) {

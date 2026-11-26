@@ -103,12 +103,6 @@ public class StepBlockRollMultiple extends AbstractStepMultiple {
 		return StepId.BLOCK_ROLL_MULTIPLE;
 	}
 
-	/** Read-only identities for browser presentation at each native model-sync boundary. */
-	public List<String> getRolledTargetIds() {
-		return state.blockRolls.stream().filter(roll -> roll.getBlockRoll() != null && roll.getBlockRoll().length > 0)
-			.map(BlockRollProperties::getTargetId).collect(Collectors.toList());
-	}
-
 	@SuppressWarnings("unchecked")
 	@Override
 	public void init(StepParameterSet pParameterSet) {
@@ -233,6 +227,8 @@ public class StepBlockRollMultiple extends AbstractStepMultiple {
 				roll.setNrOfDice(Math.abs(nrOfDice));
 				roll.setOwnChoice(nrOfDice > 0);
 				roll(roll, false, actingPlayer, singleDieReRollSource);
+				getResult().addReport(new ReportBlock(defender.getId()));
+				reportPool(game, roll);
 
 				addReRollData(game, teamReRollAvailable, mascotAvailable, mechanic, roll);
 
@@ -265,8 +261,7 @@ public class StepBlockRollMultiple extends AbstractStepMultiple {
 							} else if (UtilServerReRoll.useReRoll(this, state.reRollSource, actingPlayer.getPlayer())) {
 								roll(roll, true, actingPlayer, singleDieReRollSource);
 							}
-							getResult().addReport(
-								new ReportBlockRoll(defender.getTeam().getId(), roll.getBlockRoll(), roll.getTargetId()));
+							reportPool(game, roll);
 						}
 						roll.clearReRolls();
 					});
@@ -287,6 +282,11 @@ public class StepBlockRollMultiple extends AbstractStepMultiple {
 			}
 			decideNextStep(game);
 		}
+	}
+
+	private void reportPool(Game game, BlockRollProperties roll) {
+		Team chooser = roll.isOwnChoice() ? game.getActingTeam() : game.getPlayerById(roll.getTargetId()).getTeam();
+		getResult().addReport(new ReportBlockRoll(chooser.getId(), roll.getBlockRoll(), roll.getTargetId()));
 	}
 
 	private void handleImplicitReRollIndex(Player<?> player, BlockRollProperties blockRoll, BlockResult resultToReplace) {

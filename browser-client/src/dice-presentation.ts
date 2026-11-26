@@ -126,8 +126,10 @@ export function visibleBlockActions(view: SetupState, actions: SetupAction[]): S
   const multiple = view.actions.filter(action => action.id.includes(':multi:') && action.target && 'playerId' in action.target);
   if (!multiple.length) return actions;
   const firstTarget = multiple[0].target;
-  const target = view.blockContext?.blocks.find(block => multiple.some(action => action.target
-    && 'playerId' in action.target && action.target.playerId === block.targetPlayerId))?.targetPlayerId
+  const hasOffer = (target: string) => multiple.some(action => action.target
+    && 'playerId' in action.target && action.target.playerId === target);
+  const active = view.blockContext?.activeTargetPlayerId;
+  const target = (active && hasOffer(active) ? active : view.blockContext?.blocks.find(block => hasOffer(block.targetPlayerId))?.targetPlayerId)
     ?? (firstTarget && 'playerId' in firstTarget ? firstTarget.playerId : null);
   return actions.filter(action => !action.id.includes(':multi:') || !action.target || !('playerId' in action.target)
     || action.target.playerId === target);

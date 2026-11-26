@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 
 import { playbackBeats, failedRerollGate, withConfirmedBallChanges, withConfirmedMove, withBlockContext, withConfirmedPlayerChanges } from './pitch-playback.ts';
 import { blockFaceLabel, diceRollGroups, offeredBlockDice, isOfferedPartialReroll } from './dice-presentation.ts';
-import { MultipleBlockDiceReveals } from './multiple-block-dice.ts';
+import { MultipleBlockDiceReveals, multipleBlockRoll, isBlockPoolFor } from './multiple-block-dice.ts';
 import { DiceStream } from './dice-stream.ts';
 import { provisionalMoves, remainingConfirmedBeats, movementBeatMillis } from './provisional-movement.ts';
 import { BALL_STEP_MS, PITCH_DICE_ROLL_MS, DICE_GROUP_INTERVAL_MS, DICE_EXIT_MS, ANNOUNCEMENT_GAP_MS, ANNOUNCEMENT_CHAIN_GAP_MS, LIVE_CATCHUP_THRESHOLD, LIVE_CATCHUP_RATE, playbackRate } from './presentation-timing.ts';
@@ -23,7 +23,21 @@ type QueuedAnnouncement = {
   chained: boolean;
 };
 
+const publicResponseKinds = new Set(['coin', 'receive', 'blockDie', 'rerollDie', 'reroll', 'skill', 'kickSkill',
+  'pileDriver', 'push', 'followUp', 'apothecary', 'argueTheCall', 'bribe', 'interception', 'reaction', 'reactionMovement']);
 const responseKinds = new Set(['blockDie', 'rerollDie', 'proTestReroll', 'reroll', 'skill', 'kickSkill', 'pileDriver', 'push', 'followUp', 'apothecary', 'argueTheCall', 'bribe', 'interception', 'reactiveSkill', 'reactiveSquare', 'reactionMove', 'reactionEnd']);
+function hasResponseDecision(view: SetupState): boolean {
+  if (view.decisionKind === undefined)
+    return !!view.prompt || !!view.reaction || view.actions.some(action => responseKinds.has(action.kind));
+  return !!view.reaction || publicResponseKinds.has(view.decisionKind);
+}
+
+
+const pinnedResponseKinds = new Set(['blockDie', 'reroll', 'skill', 'kickSkill']);
+function keepsResponseDice(view: SetupState): boolean {
+  return view.decisionKind === undefined ? view.actions.some(action => pinnedResponseKinds.has(action.kind))
+    : pinnedResponseKinds.has(view.decisionKind);
+}
 
 function sequenceKey(view: SetupState): string {
   return [view.matchId, view.half, view.actor, view.turn, view.turnMode, view.activePlayerId].join(':');
@@ -163,7 +177,7 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
     // Keep catch-up through the tail, even after the backlog drops below the entry threshold.
     if (mode !== 'live' || completed.current >= view.revision) catchingUp.current = false;
     else if (view.revision - completed.current >= LIVE_CATCHUP_THRESHOLD) catchingUp.current = true;
-    const requiresResponse = !!view.prompt || !!view.reaction || view.actions.some(action => responseKinds.has(action.kind));
+    const requiresResponse = hasResponseDecision(view);
     const deferScoringResponse = view.drive > presented.current.drive
       || view.homeScore > presented.current.homeScore || view.awayScore > presented.current.awayScore;
     const responseKey = `${view.matchId}:${view.revision}`;
@@ -173,7 +187,10 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
         .filter(beat => beat.kind === 'dice').map(beat => beat.dice)
         .filter(moment => multipleReveals.current.allows(moment, finalRecord.state)).at(-1) : null;
       const offered = mode === 'live' ? offeredBlockDice(view) : null;
-      return (view.activePlayerAction === 'multipleBlock' && offered && !isOfferedPartialReroll(report, offered) ? offered : report) ?? offered;
+      const target = view.activePlayerAction === 'multipleBlock' ? view.blockContext?.activeTargetPlayerId : undefined;
+      if (target && (view.decisionKind === 'blockDie' || offered))
+        return multipleBlockRoll(view, records, target) ?? offered;
+      return report ?? offered;
     };
     const restoreResponse = () => {
       const dice = responseDice();
@@ -181,7 +198,7 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
       diceRevision.current = view.revision;
       if (!dice) return;
       multipleReveals.current.remember(dice, view);
-      pinnedDice.current = view.actions.some(action => ['blockDie', 'reroll', 'skill', 'kickSkill'].includes(action.kind));
+      pinnedDice.current = keepsResponseDice(view);
       // Recovery restores the result, never an old roll animation or backlog.
       diceStream.current!.enqueue({ ...dice, revision: view.revision }, sequenceKey(view), pinnedDice.current, true, nativeRate());
     };
@@ -251,7 +268,7 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
         return;
       }
       // A missing transcript cannot postpone a newly offered mandatory response.
-      if (!deferScoringResponse && (view.prompt || view.actions.some(action => responseKinds.has(action.kind)) || view.phase === 'FULL_TIME')) {
+      if (!deferScoringResponse && (requiresResponse || view.phase === 'FULL_TIME')) {
         snapshot();
         return;
       }
@@ -290,12 +307,14 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
       }
       beats = remaining;
     }
-    // Some native decisions (notably Multiple Block) offer authoritative faces
-    // before emitting a report. Present those faces once at the queue boundary.
+    // Older recordings can offer a block choice before reporting its dice.
     const offered = mode === 'live' && record.revision === latest.current.revision ? offeredBlockDice(latest.current) : null;
-    if (offered && !retainRoll && !beats.some(beat => beat.kind === 'dice' && isOfferedPartialReroll(beat.dice, offered))
-      && (latest.current.activePlayerAction === 'multipleBlock' || !beats.some(beat => beat.kind === 'dice'
-      && beat.dice.selected === null && beat.dice.faces.some(face => blockFaceLabel(face))))) {
+    if (offered && !retainRoll && !beats.some(beat => beat.kind === 'dice'
+      && (isOfferedPartialReroll(beat.dice, offered) || (latest.current.activePlayerAction === 'multipleBlock'
+        ? isBlockPoolFor(beat.dice, offered.subjectId)
+        : beat.dice.selected === null && beat.dice.faces.some(face => blockFaceLabel(face)))))
+      && (latest.current.activePlayerAction !== 'multipleBlock' || !offered.subjectId
+        || !multipleBlockRoll(latest.current, records, offered.subjectId))) {
       beats.push({ kind: 'dice', dice: offered });
     }
     // Armour/injury/casualty in one report are separate logical rolls. Keep
@@ -323,16 +342,22 @@ export function usePitchPlayback(view: SetupState, records: TranscriptRecord[], 
       multipleReveals.current.remember(dice, record.state);
       diceRevision.current = record.revision;
       const response = mode === 'live' && record.revision === latest.current.revision
-        && (latest.current.prompt || latest.current.actions.some(action => responseKinds.has(action.kind)));
-      const finalResponseRoll = response && index === finalDiceIndex;
-      const keep = !!finalResponseRoll && latest.current.actions.some(action => ['blockDie', 'reroll', 'skill', 'kickSkill'].includes(action.kind));
-      if (finalResponseRoll) {
-        responseDiceKey.current = `${latest.current.matchId}:${record.revision}`;
+        && hasResponseDecision(latest.current);
+      const target = latest.current.activePlayerAction === 'multipleBlock' && latest.current.decisionKind === 'blockDie'
+        ? latest.current.blockContext?.activeTargetPlayerId : undefined;
+      const responseKey = `${latest.current.matchId}:${record.revision}`;
+      const responseRoll = response && (target ? isBlockPoolFor(dice, target)
+        && !beats.slice(index + 1).some(beat => beat.kind === 'dice' && isBlockPoolFor(beat.dice, target))
+        : index === finalDiceIndex);
+      const retainActivePool = !!target && responseDiceKey.current === responseKey && pinnedDice.current;
+      const keep = responseRoll && keepsResponseDice(latest.current);
+      if (responseRoll) {
+        responseDiceKey.current = responseKey;
         pinnedDice.current = keep;
       }
       diceStream.current!.enqueue({ ...dice, revision: record.revision, rollDuration: PITCH_DICE_ROLL_MS / rate,
         rollKey: !reduced && dice.selected === null ? `${record.revision}:${index}` : undefined },
-        sequenceKey(record.state), keep, false, rate, reduced, retainRoll);
+        sequenceKey(record.state), keep, false, rate, reduced, retainRoll || retainActivePool);
     };
     const advance = (index: number) => {
       if (generation.current !== token) return;

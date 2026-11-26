@@ -613,7 +613,9 @@ class BrowserV2AdapterTest {
 		MatchHistory history = mock(MatchHistory.class);
 		when(matches.resultHistory("home", MATCH)).thenReturn(history);
 		when(history.resultMetadata()).thenReturn(new JsonObject().add("matchId", MATCH).add("eventCount", 1));
-		when(history.replayEvent(0)).thenReturn(new JsonObject().add("revision", 0).add("kind", "FULL_TIME"));
+		when(history.replayEvent(0)).thenReturn(new JsonObject().add("revision", 0).add("kind", "FULL_TIME")
+			.add("state", new JsonObject().add("revision", 0).add("phase", "FULL_TIME").add("decisionKind", "none")
+				.add("movementForecast", new JsonObject()).add("actions", new JsonArray().add("private"))));
 		BrowserV2Adapter adapter = new BrowserV2Adapter(bearer -> "player".equals(bearer) ? player : "outsider".equals(bearer) ? outsider : spectator,
 			access, mock(SetupApplication.class), matches, mock(V2PreparationService.class), mock(BrowserSavedTeamJson.class));
 		Connection participant = new Connection(), viewer = new Connection();
@@ -625,7 +627,12 @@ class BrowserV2AdapterTest {
 		assertEquals("ACCEPTED", loaded.getString("code", null));
 		assertEquals(1, loaded.get("result").asObject().getInt("eventCount", -1));
 		adapter.receive(participant, request("matchResult", "replay").add("operation", "replay").add("matchId", MATCH).add("index", 0).toString());
-		assertEquals("FULL_TIME", JsonObject.readFrom(participant.messages.get(2)).get("event").asObject().getString("kind", null));
+		JsonObject event = JsonObject.readFrom(participant.messages.get(2)).get("event").asObject();
+		assertEquals("FULL_TIME", event.getString("kind", null));
+		JsonObject board = event.get("state").asObject();
+		assertEquals("none", board.getString("decisionKind", null));
+		assertTrue(board.get("actions").asArray().isEmpty());
+		assertFalse(board.names().contains("movementForecast"));
 		adapter.receive(viewer, request("matchResult", "denied").add("operation", "load").add("matchId", MATCH).toString());
 		assertEquals("AUTHORIZATION", code(viewer, 1));
 		Connection unrelated = new Connection();
