@@ -8,6 +8,7 @@ import com.fumbbl.ffb.server.match.V2MatchAccess;
 import com.fumbbl.ffb.server.match.V2PrincipalDirectory;
 
 import com.eclipsesource.json.JsonObject;
+import com.eclipsesource.json.JsonValue;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -31,6 +32,30 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class ActiveMatchPublisherTest {
+	@Test void terminalSaveStatusKeepsTheCoachShapeAndHidesProposalIdFromSpectators() throws Exception {
+		V2MatchAccess access = mock(V2MatchAccess.class);
+		SetupApplication setup = mock(SetupApplication.class);
+		BrowserConnection coach = mock(BrowserConnection.class), spectator = mock(BrowserConnection.class);
+		new PublicationTestGrants().allow(access, target -> "away");
+		when(setup.spectatorView("match")).thenReturn(new JsonObject());
+		ActiveMatchPublisher publisher = new ActiveMatchPublisher(access, setup);
+		publisher.enrollPlayer(coach, mock(AuthenticatedPrincipal.class), "match");
+		publisher.watch(spectator, mock(AuthenticatedPrincipal.class), "match", "watch");
+		JsonObject status = JsonObject.readFrom("{\"status\":\"ACTIVE\",\"proposalId\":null,\"proposer\":null,\"expiresAt\":null}");
+		publisher.publish("match", null, new JsonObject().add("phase", "FULL_TIME").add("decisionKind", "none").add("saveResume", status));
+		ArgumentCaptor<String> frame = ArgumentCaptor.forClass(String.class);
+		verify(coach).send(frame.capture());
+		JsonObject coachState = JsonObject.readFrom(frame.getValue()).get("state").asObject();
+		assertEquals("away", coachState.getString("callerRole", null));
+		JsonObject coachStatus = coachState.get("saveResume").asObject();
+		assertEquals(status.get("status"), coachStatus.get("status"));
+		assertEquals(JsonValue.NULL, coachStatus.get("proposalId"));
+		assertEquals(JsonValue.NULL, coachStatus.get("proposer"));
+		assertEquals(JsonValue.NULL, coachStatus.get("expiresAt"));
+		verify(spectator).send(frame.capture());
+		assertNull(JsonObject.readFrom(frame.getValue()).get("state").asObject().get("saveResume").asObject().get("proposalId"));
+	}
+
 	@Test void terminalPublicationUsesTheCommittedTerminalViewAfterTheEngineIsReleased() throws Exception {
 		V2MatchAccess access = mock(V2MatchAccess.class);
 		SetupApplication setup = mock(SetupApplication.class);

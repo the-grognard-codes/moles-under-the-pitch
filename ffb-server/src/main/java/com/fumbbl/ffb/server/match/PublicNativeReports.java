@@ -8,13 +8,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 
-import static com.fumbbl.ffb.server.match.PublicMatchFields.object;
-import static com.fumbbl.ffb.server.match.PublicMatchFields.objects;
-import static com.fumbbl.ffb.server.match.PublicMatchFields.scalars;
-import static com.fumbbl.ffb.server.match.PublicMatchFields.values;
-
 /** Public BB2025 report fields, keyed by the native report ID. */
 final class PublicNativeReports {
+    private final PublicMatchFields fields = new PublicMatchFields();
+
     private static final Map<String, Set<String>> FIELDS = fields();
 
     JsonObject report(JsonObject source) {
@@ -27,29 +24,29 @@ final class PublicNativeReports {
             if (!allowed.contains(field)) continue;
             JsonValue value = member.getValue();
             if (field.equals("knockoutRecoveryArray")) {
-                objects(source, report, field, recovery ->
-                    scalars(recovery, "playerId", "recovering", "roll", "bloodweiserBabes", "bugmansXXXXXXModifier"));
+                fields.objects(source, report, field, recovery ->
+                    fields.scalars(recovery, "playerId", "recovering", "roll", "bloodweiserBabes", "bugmansXXXXXXModifier"));
             } else if (field.equals("heatExhaustionArray")) {
-                objects(source, report, field, heat -> scalars(heat, "playerId", "exhausted", "roll"));
+                fields.objects(source, report, field, heat -> fields.scalars(heat, "playerId", "exhausted", "roll"));
             } else if (field.equals("statBasedRollModifier")) {
-                object(source, report, field, modifier -> scalars(modifier, "reason", "name", "value"));
+                fields.object(source, report, field, modifier -> fields.scalars(modifier, "reason", "name", "value"));
             } else if (value instanceof JsonArray entries) {
-                report.add(field, values(entries));
+                report.add(field, fields.values(entries));
             } else if (!value.isObject()) {
                 report.add(field, value);
             }
         }
-        object(source, report, "logActors", actors -> scalars(actors, "version", "actorId", "targetId"));
-        object(source, report, "logTest", test -> scalars(test, "version", "rerolled"));
-        object(source, report, "logBlock", block -> scalars(block, "version", "attackerId", "defenderId", "chooser"));
-        object(source, report, "logRoll", roll -> {
-            JsonObject result = scalars(roll, "version", "base", "target", "modifier");
-            object(roll, result, "square", PublicMatchFields::square);
+        fields.object(source, report, "logActors", actors -> fields.scalars(actors, "version", "actorId", "targetId"));
+        fields.object(source, report, "logTest", test -> fields.scalars(test, "version", "rerolled"));
+        fields.object(source, report, "logBlock", block -> fields.scalars(block, "version", "attackerId", "defenderId", "chooser"));
+        fields.object(source, report, "logRoll", roll -> {
+            JsonObject result = fields.scalars(roll, "version", "base", "target", "modifier");
+            fields.object(roll, result, "square", fields::square);
             return result;
         });
-        object(source, report, "numericDice", dice -> {
-            JsonObject result = scalars(dice, "version");
-            objects(dice, result, "dice", die -> scalars(die, "sides", "value", "label"));
+        fields.object(source, report, "numericDice", dice -> {
+            JsonObject result = fields.scalars(dice, "version");
+            fields.objects(dice, result, "dice", die -> fields.scalars(die, "sides", "value", "label"));
             return result;
         });
         return report;
@@ -59,8 +56,10 @@ final class PublicNativeReports {
         Map<String, Set<String>> schema = new HashMap<>();
         allow(schema, "nervesOfSteel",
             "ballAction bomb playerId");
-        allow(schema, "alwaysHungryRoll escapeRoll goForItRoll leapRoll pickUpRoll rightStuffRoll regenerationRoll jumpUpRoll bloodLustRoll animosityRoll lookIntoMyEyesRoll allYouCanEat catchOfTheDay steadyFootingRoll saboteurRoll",
+        allow(schema, "alwaysHungryRoll escapeRoll goForItRoll leapRoll rightStuffRoll regenerationRoll jumpUpRoll bloodLustRoll animosityRoll lookIntoMyEyesRoll allYouCanEat catchOfTheDay steadyFootingRoll saboteurRoll",
             "minimumRoll playerId reRolled roll rollModifiers successful");
+        allow(schema, "pickUpRoll",
+            "minimumRoll playerId reRolled roll rollModifiers secureTheBallUsed successful");
         allow(schema, "argueTheCall",
             "biasedRefs coachBanned friendsWithRef playerId roll staysOnPitch successful");
         allow(schema, "catchRoll",
@@ -114,7 +113,7 @@ final class PublicNativeReports {
         allow(schema, "kickoffResult",
             "kickoffResult kickoffRoll");
         allow(schema, "kickoffScatter",
-            "ballCoordinateEnd rollScatterDirection rollScatterDistance scatterDirection");
+            "ballCoordinateEnd rollScatterDirection rollScatterDistance scatterDirection scatterDistanceSides");
         allow(schema, "extraReRoll",
             "rollAway rollHome teamId");
         allow(schema, "kickoffTimeout",
@@ -180,7 +179,7 @@ final class PublicNativeReports {
         allow(schema, "wizardUse",
             "teamId wizardSpell");
         allow(schema, "passBlock",
-            "teamId");
+            "passBlockAvailable teamId");
         allow(schema, "playCard",
             "card playerId teamId");
         allow(schema, "cardDeactivated",

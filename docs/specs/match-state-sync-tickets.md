@@ -127,6 +127,8 @@ Filed as #654. The transcript stops owning presentation state, and the tracker t
 
 ### 20. Screens use a defined public view
 
+Implementation: [#660](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/660).
+
 **What it delivers:** The server builds one public view from an explicit allowlist, and the screens of the waiting coach, spectators and replay work from it.
 
 **Blocked by:** ADR accepted.
@@ -138,6 +140,7 @@ Filed as #654. The transcript stops owning presentation state, and the tracker t
 - Accepted decisions and native outcomes have an allowlist too. Today the recorder copies the request and removes only `computerDecision`.
 - The maintainer approves the exact field list before the view is used (decision 27).
 - Parity fixtures from today's screens cover both coaches, a spectator and replay, including privacy-negative cases. Related: #487.
+- Multiple Block uses the ordinary block report flow. Record both target pools when rolled, with the defender and chooser for each. Live play and replay present them from recorded outcomes, and the log associates each choice with its target. Earlier records remain readable. [Maintainer decision](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/689#discussion_r4701605033)
 
 ## Storage and replay
 

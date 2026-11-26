@@ -4,25 +4,22 @@ import com.eclipsesource.json.JsonArray;
 import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonValue;
 
-import static com.fumbbl.ffb.server.match.PublicMatchFields.object;
-import static com.fumbbl.ffb.server.match.PublicMatchFields.objects;
-import static com.fumbbl.ffb.server.match.PublicMatchFields.scalars;
-import static com.fumbbl.ffb.server.match.PublicMatchFields.values;
-
 /** Adapts existing full snapshots to the shared public view and its legacy wire envelope. */
 public final class PublicMatchView {
+    private final PublicMatchFields fields = new PublicMatchFields();
+
     public JsonObject live(JsonObject source, String role) {
         JsonObject result = recorded(source, role);
         for (String field : new String[] {"stageSeq", "setupAdjustmentsExhausted"}) {
             JsonValue value = source.get(field);
             if (value != null && (value.isNumber() || value.isBoolean())) result.add(field, value);
         }
-        object(source, result, "saveResume", status -> "spectator".equals(role)
-            ? scalars(status, "status", "proposer", "expiresAt")
-            : scalars(status, "status", "proposer", "expiresAt", "proposalId"));
-        object(source, result, "clock", clock -> scalars(clock, "activeRole", "turnElapsedMs", "homeReserveMs", "awayReserveMs"));
-        object(source, result, "reaction", reaction -> {
-            JsonObject status = scalars(reaction, "actor", "title", "detail", "expiresAt", "serverNow", "allowanceMs");
+        fields.object(source, result, "saveResume", status -> "spectator".equals(role)
+            ? fields.scalars(status, "status", "proposer", "expiresAt")
+            : fields.scalars(status, "status", "proposer", "expiresAt", "proposalId"));
+        fields.object(source, result, "clock", clock -> fields.scalars(clock, "activeRole", "turnElapsedMs", "homeReserveMs", "awayReserveMs"));
+        fields.object(source, result, "reaction", reaction -> {
+            JsonObject status = fields.scalars(reaction, "actor", "title", "detail", "expiresAt", "serverNow", "allowanceMs");
             if (role.equals(reaction.getString("actor", null)) && reaction.get("id") != null && reaction.get("id").isString())
                 status.add("id", reaction.get("id"));
             return status;
@@ -31,35 +28,35 @@ public final class PublicMatchView {
     }
 
     JsonObject recorded(JsonObject source, String role) {
-        JsonObject result = scalars(source, "matchId", "revision", "phase", "half", "drive", "turn", "homeTurn", "awayTurn", "turnMode",
+        JsonObject result = fields.scalars(source, "matchId", "revision", "phase", "half", "drive", "turn", "homeTurn", "awayTurn", "turnMode",
             "homeScore", "awayScore", "weather", "actor", "decisionKind", "activePlayerId", "activePlayerAction",
             "homeTeamName", "awayTeamName", "homeRerolls", "awayRerolls", "stopReason");
         for (String side : new String[] {"home", "away"}) {
-            object(source, result, side + "TeamArt", art -> {
-                JsonObject item = scalars(art, "rosterId", "league");
-                object(art, item, "colors", colors -> scalars(colors, "version", "primary", "secondary"));
+            fields.object(source, result, side + "TeamArt", art -> {
+                JsonObject item = fields.scalars(art, "rosterId", "league");
+                fields.object(art, item, "colors", colors -> fields.scalars(colors, "version", "primary", "secondary"));
                 return item;
             });
-            object(source, result, side + "Resources", data -> scalars(data, "apothecaries", "assistantCoaches", "cheerleaders", "bribes"));
+            fields.object(source, result, side + "Resources", data -> fields.scalars(data, "apothecaries", "assistantCoaches", "cheerleaders", "bribes"));
         }
-        objects(source, result, "players", this::player);
-        object(source, result, "ball", PublicMatchFields::square);
-        object(source, result, "ballState", data -> scalars(data, "version", "carrierPlayerId", "inPlay", "moving"));
-        object(source, result, "passing", this::passing);
-        object(source, result, "kickPreview", data -> {
+        fields.objects(source, result, "players", this::player);
+        fields.object(source, result, "ball", fields::square);
+        fields.object(source, result, "ballState", data -> fields.scalars(data, "version", "carrierPlayerId", "inPlay", "moving"));
+        fields.object(source, result, "passing", this::passing);
+        fields.object(source, result, "kickPreview", data -> {
             JsonObject kick = new JsonObject();
-            object(data, kick, "deviation", PublicMatchFields::square);
-            object(data, kick, "withKick", PublicMatchFields::square);
+            fields.object(data, kick, "deviation", fields::square);
+            fields.object(data, kick, "withKick", fields::square);
             return kick;
         });
-        object(source, result, "kickoff", data -> {
-            JsonObject kickoff = scalars(data, "version", "event", "actor", "stage", "allowed", "completed", "selected");
-            values(data, kickoff, "participantIds");
+        fields.object(source, result, "kickoff", data -> {
+            JsonObject kickoff = fields.scalars(data, "version", "event", "actor", "stage", "allowed", "completed", "selected");
+            fields.values(data, kickoff, "participantIds");
             return kickoff;
         });
-        object(source, result, "driveTracker",
-            data -> scalars(data, "version", "receivingRole", "phase", "secretWeapons", "knockouts", "event", "eventComplete"));
-        object(source, result, "blockContext", this::blockContext);
+        fields.object(source, result, "driveTracker",
+            data -> fields.scalars(data, "version", "receivingRole", "phase", "secretWeapons", "knockouts", "event", "eventComplete"));
+        fields.object(source, result, "blockContext", this::blockContext);
         // The full-snapshot decoder still expects the legacy envelope and empty control fields.
         if (source.get("projectionVersion") != null && source.get("projectionVersion").isNumber())
             result.add("projectionVersion", source.get("projectionVersion"));
@@ -67,40 +64,40 @@ public final class PublicMatchView {
     }
 
     JsonObject blockContext(JsonObject source) {
-        JsonObject context = scalars(source, "version", "activeTargetPlayerId");
-        objects(source, context, "blocks", block -> {
-            JsonObject item = scalars(block, "playerId", "targetPlayerId");
-            object(block, item, "from", PublicMatchFields::square);
-            object(block, item, "to", PublicMatchFields::square);
-            objects(block, item, "offensiveAssists", assist -> scalars(assist, "playerId", "x", "y"));
-            objects(block, item, "defensiveAssists", assist -> scalars(assist, "playerId", "x", "y"));
+        JsonObject context = fields.scalars(source, "version", "activeTargetPlayerId");
+        fields.objects(source, context, "blocks", block -> {
+            JsonObject item = fields.scalars(block, "playerId", "targetPlayerId");
+            fields.object(block, item, "from", fields::square);
+            fields.object(block, item, "to", fields::square);
+            fields.objects(block, item, "offensiveAssists", assist -> fields.scalars(assist, "playerId", "x", "y"));
+            fields.objects(block, item, "defensiveAssists", assist -> fields.scalars(assist, "playerId", "x", "y"));
             return item;
         });
         return context;
     }
 
     private JsonObject player(JsonObject source) {
-        JsonObject result = scalars(source, "id", "name", "slot", "role", "number", "position", "positionRace", "positionRole",
+        JsonObject result = fields.scalars(source, "id", "name", "slot", "role", "number", "position", "positionRace", "positionRole",
             "ma", "st", "ag", "pa", "av", "limitedAction", "x", "y", "state", "status", "offPitch");
-        values(source, result, "skills");
-        values(source, result, "conditions");
-        object(source, result, "art", art -> scalars(art, "rosterId", "positionId"));
-        object(source, result, "skillMarkers", data -> {
-            JsonObject markers = scalars(data, "version");
-            objects(data, markers, "entries", entry -> scalars(entry, "id", "category", "origin"));
-            values(data, markers, "details");
+        fields.values(source, result, "skills");
+        fields.values(source, result, "conditions");
+        fields.object(source, result, "art", art -> fields.scalars(art, "rosterId", "positionId"));
+        fields.object(source, result, "skillMarkers", data -> {
+            JsonObject markers = fields.scalars(data, "version");
+            fields.objects(data, markers, "entries", entry -> fields.scalars(entry, "id", "category", "origin"));
+            fields.values(data, markers, "details");
             return markers;
         });
         return result;
     }
 
     private JsonObject passing(JsonObject source) {
-        JsonObject result = scalars(source, "version", "playerId", "weatherPenalty", "rangeLimited", "action", "hailMary");
-        object(source, result, "from", PublicMatchFields::square);
-        values(source, result, "ranges");
+        JsonObject result = fields.scalars(source, "version", "playerId", "weatherPenalty", "rangeLimited", "action", "hailMary");
+        fields.object(source, result, "from", fields::square);
+        fields.values(source, result, "ranges");
         if (source.get("targets") instanceof JsonArray targets) {
             JsonArray rows = new JsonArray();
-            for (JsonValue row : targets) if (row instanceof JsonArray cells) rows.add(values(cells));
+            for (JsonValue row : targets) if (row instanceof JsonArray cells) rows.add(fields.values(cells));
             result.add("targets", rows);
         }
         return result;

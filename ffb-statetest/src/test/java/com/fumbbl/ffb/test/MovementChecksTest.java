@@ -20,6 +20,8 @@ import java.nio.file.Paths;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 class MovementChecksTest {
 
@@ -160,9 +162,15 @@ class MovementChecksTest {
             .add("expectedRevision", view(session).get("revision")).add("actionId", action.get("id"))).getString("code", null));
     }
     private void assertPublicViews(SetupSession session) {
-        JsonValue forecast = view(session).get("movementForecast");
-        assertEquals(forecast, session.reply("inspect", "ACCEPTED", false, "away").get("state").asObject().get("movementForecast"));
-        assertEquals(forecast, session.spectatorView().get("movementForecast"));
+        JsonObject home = view(session);
+        JsonObject away = session.reply("inspect", "ACCEPTED", false, "away").get("state").asObject();
+        JsonObject spectator = session.spectatorView();
+        assertNotNull(home.get("movementForecast"));
+        for (JsonObject observer : java.util.List.of(away, spectator)) {
+            assertNull(observer.get("movementForecast"));
+            assertEquals(home.get("players"), observer.get("players"));
+            assertEquals(home.get("decisionKind"), observer.get("decisionKind"));
+        }
     }
     private JsonObject view(SetupSession session) {
         return session.reply("inspect", "ACCEPTED", false, "home").get("state").asObject().set("matchId", "00000000-0000-0000-0000-000000000193");

@@ -189,8 +189,11 @@ final class ActiveMatchPublisher {
 		String retainedAbandonedAwayState) {
 		List<Recipient> recipients = recipients(matchId, source, false);
 		boolean terminal = "FULL_TIME".equals(publicState.getString("phase", ""));
-		String retainedState = terminal || recipients.stream().anyMatch(recipient -> recipient.viewer.spectator)
-			? new PublicMatchView().live(publicState, "spectator").toString() : "";
+		PublicMatchView projection = new PublicMatchView();
+		String retainedState = recipients.stream().anyMatch(recipient -> recipient.viewer.spectator)
+			? projection.live(publicState, "spectator").toString() : "";
+		String terminalHomeState = terminal ? projection.live(publicState, "home").toString() : "";
+		String terminalAwayState = terminal ? projection.live(publicState, "away").toString() : "";
 		String retainedAbandonedHomeState = retainedAbandonedAwayState == null ? "" : publicState.toString();
 		boolean liveTranscript = recipients.stream()
 			.anyMatch(recipient -> liveTranscriptConnections.contains(recipient.connection));
@@ -201,8 +204,8 @@ final class ActiveMatchPublisher {
 				@Override public void send(V2PublicationAuthorization.Snapshot authorization, int slot) throws SQLException {
 					String role = access.publicationRole(authorization, target(), slot);
 					if (recipient.viewer.spectator || terminal) {
-						JsonObject state = JsonObject.readFrom(retainedState)
-							.set("callerRole", recipient.viewer.spectator ? "spectator" : role);
+						String snapshot = recipient.viewer.spectator ? retainedState : "home".equals(role) ? terminalHomeState : terminalAwayState;
+						JsonObject state = JsonObject.readFrom(snapshot);
 						sendState(recipient.connection, state(null, state), transcript, () -> access.publicationRole(authorization, target(), slot), transcriptReserved);
 						if (terminal) viewers.remove(recipient.connection);
 					} else if (retainedAbandonedAwayState != null) {
@@ -221,7 +224,7 @@ final class ActiveMatchPublisher {
 				}
 			});
 		}
-		int retainedCharacters = retainedState.length() + retainedAbandonedHomeState.length()
+		int retainedCharacters = retainedState.length() + terminalHomeState.length() + terminalAwayState.length() + retainedAbandonedHomeState.length()
 			+ (retainedAbandonedAwayState == null ? 0 : retainedAbandonedAwayState.length());
 		delivery.publish(matchId, V2PublicationAuthorization.Family.STATE, targets, retainedCharacters + Math.max(transcript.retainedCharacters(),
 			liveTranscript ? BrowserMatchTransport.MAX_LIVE_TRANSCRIPT_BYTES : 0));

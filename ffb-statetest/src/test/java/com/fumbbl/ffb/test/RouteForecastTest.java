@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 class RouteForecastTest {
 
 	@Test void nativeDodgeModifiersAreIndependentOfAgilityAndNaturalSixRemainsSuccessful() throws Exception {
@@ -102,8 +103,8 @@ class RouteForecastTest {
 			}
 		}
 		assertEquals(route.get("steps").asArray().get(0), adjacent, "Adjacent and planned checks use the same native conditions");
-		assertEquals(forecast, session.reply("inspect", "ACCEPTED", false, "away").get("state").asObject().get("movementForecast"));
-		assertEquals(forecast, session.spectatorView().get("movementForecast"));
+		assertNull(session.reply("inspect", "ACCEPTED", false, "away").get("state").asObject().get("movementForecast"));
+		assertNull(session.spectatorView().get("movementForecast"));
 		return route;
 	}
 	private JsonObject point(int x, int y) { return new JsonObject().add("x", x).add("y", y); }

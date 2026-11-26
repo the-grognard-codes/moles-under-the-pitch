@@ -1,5 +1,12 @@
 package com.fumbbl.ffb.server.match;
 
+import com.fumbbl.ffb.Direction;
+import com.fumbbl.ffb.FieldCoordinate;
+import com.fumbbl.ffb.modifiers.RollModifier;
+import com.fumbbl.ffb.report.ReportKickoffScatter;
+import com.fumbbl.ffb.report.ReportPassBlock;
+import com.fumbbl.ffb.report.bb2025.ReportPickupRoll;
+
 import com.eclipsesource.json.Json;
 import com.eclipsesource.json.JsonArray;
 import com.eclipsesource.json.JsonObject;
@@ -62,6 +69,17 @@ class MatchTranscriptTest {
         assertEquals(4, reports.get(1).asObject().getInt("roll", -1));
         assertFalse(record.toString().contains("private"));
         assertEquals(transcript.json(), restored.json());
+    }
+
+    @Test void publicReportsRetainSecureBallKickoffDeviationAndPassReactionDetails() {
+        PublicNativeReports reports = new PublicNativeReports();
+        JsonObject pickup = new ReportPickupRoll("player", true, 6, 3, false, new RollModifier<?>[0], true).toJsonValue();
+        JsonObject scatter = new ReportKickoffScatter(new FieldCoordinate(4, 7), Direction.EAST, 3, 2, 6).toJsonValue();
+        JsonObject pass = new ReportPassBlock("away", true).toJsonValue();
+
+        assertEquals(JsonValue.TRUE, reports.report(pickup).get("secureTheBallUsed"));
+        assertEquals(JsonValue.valueOf(6), reports.report(scatter).get("scatterDistanceSides"));
+        assertEquals(JsonValue.TRUE, reports.report(pass).get("passBlockAvailable"));
     }
 
     @Test void restoresAcceptedDecisionAndRawNativeOutcomeInRevisionOrder() {

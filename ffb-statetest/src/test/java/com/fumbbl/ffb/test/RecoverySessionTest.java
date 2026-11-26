@@ -11,6 +11,7 @@ import java.lang.reflect.Field;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -258,6 +259,17 @@ class RecoverySessionTest {
 		assertEquals(7, payload.getInt("recoveryVersion", -1));
 		assertEquals(SetupSession.STAGED_RUNTIME, payload.getString("runtimeVersion", null));
 		String proposal = payload.get("saveResume").asObject().get("proposal").asObject().getString("id", null);
+		JsonObject homeStatus = session.decorateSaveResumeState(view(session, "home")).get("saveResume").asObject();
+		JsonObject awayStatus = session.decorateSaveResumeState(view(session, "away")).get("saveResume").asObject();
+		JsonObject spectatorStatus = session.decorateSaveResumeState(session.spectatorView()).get("saveResume").asObject();
+		assertEquals(proposal, homeStatus.getString("proposalId", null));
+		assertEquals(homeStatus, awayStatus);
+		assertEquals(homeStatus.get("status"), spectatorStatus.get("status"));
+		assertEquals(homeStatus.get("proposer"), spectatorStatus.get("proposer"));
+		assertEquals(homeStatus.get("expiresAt"), spectatorStatus.get("expiresAt"));
+		assertFalse(spectatorStatus.names().contains("proposalId"));
+		JsonObject replay = session.transcriptPage(0, 1).get("records").asArray().get(0).asObject().get("state").asObject();
+		assertFalse(replay.names().contains("saveResume"));
 		JsonObject accept = save(view, "save-accept", "saveAccept", proposal);
 		assertEquals("ACCEPTED", session.saveResume("away", accept, 2100L).getString("code", null));
 		String suspended = session.recoveryArtifact();

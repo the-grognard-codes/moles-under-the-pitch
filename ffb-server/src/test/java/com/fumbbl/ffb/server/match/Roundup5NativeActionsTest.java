@@ -144,6 +144,10 @@ class Roundup5NativeActionsTest {
         assertTrue(report.get("blockRollAfterReroll").asArray().size() > report.get("blockRoll").asArray().size());
         assertEquals(2, report.get("blockRollAfterReroll").asArray().get(0).asInt());
         assertEquals(report, new com.fumbbl.ffb.report.bb2025.ReportBlockReRoll().initFrom(scenario.game.getRules(), report).toJsonValue());
+        JsonObject pool = java.util.Arrays.stream(step.getResult().getReportList().getReports())
+            .filter(value -> value.getId() == com.fumbbl.ffb.report.ReportId.BLOCK_ROLL).findFirst().orElseThrow().toJsonValue().asObject();
+        assertEquals(scenario.defender.getId(), pool.getString("defenderId", null));
+        assertEquals(scenario.attacker.getTeam().getId(), pool.getString("choosingTeamId", null));
         exportReroll("multiple", step.getResult().getReportList());
     }
 

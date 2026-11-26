@@ -68,7 +68,8 @@ record PublicMatchDecision(String actor, String kind) {
             case DialogPileDriverParameter choice -> team(game, choice.getTeamId(), "pileDriver");
             case DialogKickSkillParameter choice -> player(game, choice.getPlayerId(), "kickSkill");
             case DialogSkillUseParameter choice -> player(game, choice.getPlayerId(),
-                choice.getSkill().hasSkillProperty(NamedProperties.canReduceKickDistance) ? "kickSkill" : "skill");
+                new ReactiveSkillActions().isOptionalSquareSkill(choice) ? "reaction"
+                    : choice.getSkill().hasSkillProperty(NamedProperties.canReduceKickDistance) ? "kickSkill" : "skill");
             case DialogUseApothecariesParameter choice -> team(game, choice.getTeamId(), "apothecary");
             case DialogUseApothecaryParameter choice -> player(game, choice.getPlayerId(), "apothecary");
             case DialogApothecaryChoiceParameter choice -> player(game, choice.getPlayerId(), "apothecary");
