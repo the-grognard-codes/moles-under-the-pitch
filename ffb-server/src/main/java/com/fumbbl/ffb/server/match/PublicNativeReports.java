@@ -11,11 +11,11 @@ import java.util.Set;
 final class PublicNativeReports {
     private final PublicMatchFields fields = new PublicMatchFields();
 
-    private static final Map<String, Set<String>> FIELDS = Format4Json.publicNativeReportFields();
+    private final Map<String, Set<String>> fieldsByReport = new Format4Json().publicNativeReportFields();
 
     JsonObject report(JsonObject source) {
         String id = source.getString("reportId", "");
-        Set<String> allowed = FIELDS.get(id);
+        Set<String> allowed = fieldsByReport.get(id);
         if (allowed == null) return null;
         JsonObject report = new JsonObject().add("reportId", id);
         for (JsonObject.Member member : source) {

@@ -30,6 +30,9 @@ public final class TrainingEngineHost {
 		if (format4 && (capture != null || capacity != 1)) throw new IllegalArgumentException("Format-4 parity needs an isolated match");
 		if (capacity < 1 || capacity > 32) throw new IllegalArgumentException("Capacity must be 1..32");
 		if (capture != null && capacity != 1) throw new IllegalArgumentException("Fixture capture requires capacity 1");
+		BogrukEngineFixture.Mode mode = format4 ? BogrukEngineFixture.Mode.FORMAT4
+			: capture == null ? BogrukEngineFixture.Mode.MOCKED : BogrukEngineFixture.Mode.MEASURED;
+		Format4ParityCapture parity = format4 ? new Format4ParityCapture() : null;
 		try (BufferedReader input = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
 			String line;
 			while ((line = input.readLine()) != null) {
@@ -48,7 +51,7 @@ public final class TrainingEngineHost {
 						if (matches.size() >= capacity || matches.containsKey(matchId))
 							throw new IllegalArgumentException("Host capacity or duplicate match");
 						matches.put(matchId, new BogrukEngineFixture(command.getString("homeRoster", "Human"),
-							command.getString("awayRoster", "Orc"), command.getLong("seed", 42), true, capture != null, format4));
+							command.getString("awayRoster", "Orc"), command.getLong("seed", 42), true, mode));
 						if (capture != null) capture.start(matches.get(matchId).session);
 						response = matches.get(matchId).reply(role);
 					} else if ("close".equals(operation)) {
@@ -64,8 +67,8 @@ public final class TrainingEngineHost {
 						} else throw new IllegalArgumentException("Unknown operation");
 					}
 					BogrukEngineFixture active = matches.get(matchId);
-					if (active != null && format4 && active.session.compactCapture() != null)
-						addFormat4Revision(response, active.session, workerStart);
+					if (active != null && parity != null && active.session.compactCapture() != null)
+						response.add("format4", parity.commit(active.session, workerStart));
 					if (active != null && "home".equals(role)) response.add("trainingMovement", active.homeMovement());
 				} catch (Exception failure) {
 					closeMatch(matchId);
@@ -98,20 +101,6 @@ public final class TrainingEngineHost {
 		if (!staged && "ACCEPTED".equals(response.getString("code", null)) && !response.getBoolean("duplicate", false))
 			capture.advance(fixture.session, fixture.document.matchId);
 		return response;
-	}
-
-	private void addFormat4Revision(JsonObject response, SetupSession session, long workerStart) {
-		CompactMatchWrite.Capture capture = session.compactCapture();
-		CompactMatchWrite.History history = new CompactMatchWrite.History(session.revision() + 1, 0, "0".repeat(64));
-		session.writeCompactSnapshot(history, candidate -> CompactMatchWrite.Result.DURABLE,
-			() -> { throw new IllegalStateException("Format-4 parity write failed"); });
-		long workerNanos = System.nanoTime() - workerStart;
-
-		Format4Json codec = new Format4Json();
-		codec.readRecord(capture.record());
-		if (capture.keyframe() != null) codec.readKeyframe(capture.keyframe());
-		response.add("format4", new JsonObject().add("record", capture.record()).add("keyframe", capture.keyframe())
-			.add("expected", session.spectatorView()).add("workerNanos", workerNanos));
 	}
 
 	private void closeMatch(String matchId) {

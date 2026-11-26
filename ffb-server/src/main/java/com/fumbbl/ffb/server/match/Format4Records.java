@@ -13,8 +13,7 @@ import java.util.Set;
 final class Format4Records {
     private static final int KEYFRAME_INTERVAL = 32;
     private static final Set<String> VIEW_IDENTITY = Set.of("matchId", "revision", "players");
-    static final Set<String> TEAM_FIELDS = Set.of("teamId", "choosingTeamId");
-    static final Set<String> TEAM_LIST_FIELDS = Set.of("teamIdsAdditionalAssist", "teamIdsReRolledCheeringFangs");
+
 
     private final Format4Json codec = new Format4Json();
     private final PublicMatchView publicView = new PublicMatchView();
@@ -31,28 +30,58 @@ final class Format4Records {
 
     record NativeSide(String teamId, String coach) { }
 
-    record Captured(String record, String keyframe, JsonObject view, long at) { }
+    record MatchSides(String matchId, NativeSide home, NativeSide away) {
+        String publicSide(String coach) {
+            if (coach == null) return null;
+            if (coach.equals(home.coach())) return "home";
+            return coach.equals(away.coach()) ? "away" : null;
+        }
 
-    Captured capture(JsonObject previous, JsonObject current, long at, String kind, String side,
-        JsonValue decision, JsonArray nativeOutcomes, NativeSide home, NativeSide away) {
+        JsonValue publicTeamId(JsonValue nativeId, Format4Json codec) {
+            if (nativeId.isString()) {
+                String value = nativeId.asString();
+                if (value.equals(home.teamId())) return JsonValue.valueOf(codec.teamId(matchId, "home"));
+                if (value.equals(away.teamId())) return JsonValue.valueOf(codec.teamId(matchId, "away"));
+            }
+            return JsonValue.NULL;
+        }
+    }
+
+    /** Current worker-owned projection and the timestamp used to order the next record. */
+    record Baseline(JsonObject view, long at) { }
+
+    /** Immutable payload to hand to storage. */
+    record Encoded(String record, String keyframe) { }
+
+    record Captured(Baseline baseline, Encoded encoded) { }
+
+    Baseline restoreBaseline(JsonObject view, String matchId, int revision, JsonValue at) {
+        codec.validateBaseline(view, matchId, revision, at);
+        return new Baseline(view, at.asLong());
+    }
+
+    Captured capture(Baseline previous, JsonObject current, long now, String kind, String side,
+        JsonValue decision, JsonArray nativeOutcomes, MatchSides sides) {
         int revision = current.get("revision").asInt();
-        String matchId = current.get("matchId").asString();
+        String matchId = sides.matchId();
+        long at = previous == null ? now : Math.max(previous.at(), now);
         JsonValue actor = "system".equals(side) ? JsonValue.NULL
             : new JsonObject().add("side", side).add("teamId", codec.teamId(matchId, side));
         JsonValue accepted = decision.isNull() ? JsonValue.NULL : accepted(decision.asObject());
         JsonArray outcomes = new JsonArray();
         for (JsonValue value : nativeOutcomes) {
             JsonObject outcome = publicRecord.outcome(value.asObject());
-            normalizeOutcomes(outcome, current, home, away);
+            normalizeOutcomes(outcome, current, sides);
             outcomes.add(outcome);
         }
         JsonObject record = new JsonObject().add("formatVersion", 4).add("matchId", matchId)
             .add("revision", revision).add("kind", kind).add("actor", actor).add("at", at)
             .add("decision", accepted).add("outcomes", outcomes).add("presentation", new JsonArray())
-            .add("patch", patch(previous, current));
+            .add("patch", patch(previous == null ? null : previous.view(), current));
         String keyframe = revision % KEYFRAME_INTERVAL == 0
             ? codec.encode(codec.validateKeyframe(new JsonObject().add("formatVersion", 4).add("view", current))) : null;
-        return new Captured(codec.encode(codec.validateRecord(record)), keyframe, current, at);
+        Encoded encoded = new Encoded(codec.encode(codec.validateRecord(record)), keyframe);
+        return new Captured(new Baseline(current, at), encoded);
     }
 
     JsonObject patch(JsonObject previous, JsonObject current) {
@@ -115,22 +144,18 @@ final class Format4Records {
         return result;
     }
 
-    private void normalizeOutcomes(JsonObject outcome, JsonObject view, NativeSide home, NativeSide away) {
-        String matchId = view.get("matchId").asString();
+    private void normalizeOutcomes(JsonObject outcome, JsonObject view, MatchSides sides) {
         if (outcome.get("reportList") instanceof JsonObject list) for (JsonValue value : list.get("reports").asArray()) {
             JsonObject report = value.asObject();
-            String coach = report.getString("coach", null);
-            if (coach != null) {
-                if (coach.equals(home.coach())) report.add("side", "home");
-                else if (coach.equals(away.coach())) report.add("side", "away");
-            }
-            Format4Json.omittedReportFields().forEach(report::remove);
-            for (String field : TEAM_FIELDS) if (report.get(field) != null)
-                report.set(field, publicTeamId(report.get(field), matchId, home, away));
-            for (String field : TEAM_LIST_FIELDS) if (report.get(field) instanceof JsonArray oldIds) {
+            String side = sides.publicSide(report.getString("coach", null));
+            if (side != null) report.add("side", side);
+            codec.omittedReportFields().forEach(report::remove);
+            for (String field : codec.teamFields()) if (report.get(field) != null)
+                report.set(field, sides.publicTeamId(report.get(field), codec));
+            for (String field : codec.teamListFields()) if (report.get(field) instanceof JsonArray oldIds) {
                 JsonArray ids = new JsonArray();
                 for (JsonValue id : oldIds) {
-                    JsonValue normalized = publicTeamId(id, matchId, home, away);
+                    JsonValue normalized = sides.publicTeamId(id, codec);
                     if (!normalized.isNull()) ids.add(normalized);
                 }
                 report.set(field, ids);
@@ -155,12 +180,4 @@ final class Format4Records {
         }
     }
 
-    private JsonValue publicTeamId(JsonValue nativeId, String matchId, NativeSide home, NativeSide away) {
-        if (nativeId.isString()) {
-            String value = nativeId.asString();
-            if (value.equals(home.teamId())) return JsonValue.valueOf(codec.teamId(matchId, "home"));
-            if (value.equals(away.teamId())) return JsonValue.valueOf(codec.teamId(matchId, "away"));
-        }
-        return JsonValue.NULL;
-    }
 }

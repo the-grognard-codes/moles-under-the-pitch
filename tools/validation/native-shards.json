@@ -22,6 +22,7 @@
       "com.fumbbl.ffb.server.match.ComputerCoachNativeDecisionTest",
       "com.fumbbl.ffb.server.match.ComputerPolicyStateTest",
       "com.fumbbl.ffb.server.match.FollowUpActionsTest",
+      "com.fumbbl.ffb.server.match.Format4ParityTest",
       "com.fumbbl.ffb.server.match.Format4RecordsTest",
       "com.fumbbl.ffb.server.match.JdbcPublicationMariaDbTest",
       "com.fumbbl.ffb.server.match.KickSkillActionsTest",

@@ -5,8 +5,7 @@ import { join } from 'node:path';
 import { Engine } from '../../computer-player/training/engine.mjs';
 import { play } from '../../computer-player/training/match.mjs';
 import { validateParameters } from '../../computer-player/src/bogruk-parameters.mjs';
-import { decodeMatchKeyframe, decodeMatchRecord } from '../../browser-client/src/match-record-protocol.ts';
-import { applyMatchKeyframe, applyMatchRecord, startMatchReduction } from '../../browser-client/src/match-record-reducer.ts';
+import { createFormat4ParityVerifier } from './format-4-parity-verifier.mjs';
 
 const classpath = (await readFile(process.env.FFB_STATE_SYNC_CLASSPATH_FILE ?? '.tools/training-classpath.txt', 'utf8')).trim();
 const java = process.env.JAVA_HOME ? join(process.env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'java.exe' : 'java') : 'java';
@@ -18,9 +17,9 @@ let playerLeftPitch = false;
 for (const [seed, rosters] of [[43, ['Human', 'Orc']], [44, ['Orc', 'Human']], [45, ['Human', 'Orc']]]) {
   const engine = new Engine({ java, classpath, heapMiB: 768, matchesPerJvm: 1, priority: 'normal',
     jvmArguments: ['-Dffb.format4.parity=true'] });
-  let reduced, records = 0, outcomes = 0, keyframes = 0;
+  const verifier = createFormat4ParityVerifier('seed ' + seed);
   const workerNanos = [];
-  let lastNative = 0, lastAt = 0, finished = false;
+  let hasActivation = false, finished = false;
   let homeOffer, passDeclared = false;
   try {
     const tracked = {
@@ -46,33 +45,9 @@ for (const [seed, rosters] of [[43, ['Human', 'Orc']], [44, ['Orc', 'Human']], [
         const response = await engine.command(request, timeout);
         if (response.state?.callerRole === 'home') homeOffer = response.state;
         if (response.format4) {
-          const entry = response.format4;
-          const record = decodeMatchRecord(entry.record);
-          reduced ??= startMatchReduction(record.matchId);
-          const prior = reduced.view;
-          assert.equal(record.revision, records++);
-          if (prior) workerNanos.push(entry.workerNanos);
-          assert.ok(record.at >= lastAt);
-          lastAt = record.at;
-          for (const outcome of record.outcomes) {
-            assert.ok(outcome.commandNr > lastNative);
-            lastNative = outcome.commandNr;
-            outcomes++;
-          }
-          record.patch.removeSections.forEach(section => removals.add(section));
-          for (const player of record.patch.players) {
-            if (player.x === null && prior?.players.find(before => before.id === player.id)?.x != null)
-              playerLeftPitch = true;
-          }
-          reduced = applyMatchRecord(reduced, record);
-          assert.deepEqual(reduced.view, independentRecordedView(entry.expected), `seed ${seed}, revision ${record.revision}`);
-          assert.equal(entry.keyframe !== null, record.revision % 32 === 0);
-          if (entry.keyframe !== null) {
-            const frame = decodeMatchKeyframe(entry.keyframe);
-            assert.deepEqual(frame.view, reduced.view);
-            assert.deepEqual(applyMatchKeyframe(reduced, frame).driftPaths, []);
-            keyframes++;
-          }
+          verifier.accept(response.format4);
+          if (hasActivation) workerNanos.push(response.format4.workerNanos);
+          hasActivation = true;
         }
         return response;
       },
@@ -80,9 +55,12 @@ for (const [seed, rosters] of [[43, ['Human', 'Orc']], [44, ['Orc', 'Human']], [
     const result = await play(tracked, { id: 'format-4-parity', seed, rosters,
       coaches: ['bogruk', 'bogruk'], parameters: [parameters, parameters] }, config, null);
     assert.ok(result.completed, `seed ${seed} failed: ${result.error ?? result.failureCode}\n${engine.diagnostic}`);
-    assert.equal(reduced.view.phase, 'FULL_TIME');
+    const total = verifier.finish();
+    const { view, records, outcomes, keyframes } = total;
     assert.ok(records > 100 && outcomes > 100);
-    assert.deepEqual([reduced.view.homeScore, reduced.view.awayScore], result.score);
+    assert.deepEqual([view.homeScore, view.awayScore], result.score);
+    for (const section of total.removals) removals.add(section);
+    playerLeftPitch ||= total.playerLeftPitch;
     await engine.finish();
     finished = true;
     workerNanos.sort((first, second) => first - second);
@@ -96,13 +74,3 @@ for (const [seed, rosters] of [[43, ['Human', 'Orc']], [44, ['Orc', 'Human']], [
 for (const section of ['ball', 'passing', 'kickoff', 'activePlayerAction', 'blockContext'])
   assert.ok(removals.has(section), `Full matches must exercise removal of ${section}`);
 assert.ok(playerLeftPitch, 'Full matches must exercise a player leaving the pitch');
-
-function independentRecordedView(snapshot) {
-  const { projectionVersion, callerRole, actions, prompt, homeTeamName, awayTeamName, ...expected } = snapshot;
-  assert.equal(callerRole, 'spectator');
-  assert.deepEqual(actions, []);
-  assert.equal(prompt, null);
-  if (expected.ball === null) delete expected.ball;
-  expected.players = expected.players.map(({ name, ...player }) => player);
-  return expected;
-}

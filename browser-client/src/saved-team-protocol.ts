@@ -23,8 +23,10 @@ function name(value: unknown, max: number): asserts value is string { if (typeof
 function integer(value: unknown, max = 2147483646): asserts value is number { if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) > max) throw Error('Invalid integer'); }
 function bool(value: unknown): asserts value is boolean { if (typeof value !== 'boolean') throw Error('Invalid boolean'); }
 function array(value: unknown, max: number): unknown[] { if (!Array.isArray(value) || value.length > max) throw Error('Invalid array'); return value; }
+type JsonParseOptions = { integersOnly?: boolean; maxDepth?: number };
+
 /** JSON.parse accepts duplicate object keys; protocol JSON must reject them before decoding. */
-export function parseUniqueJson(source: string, integersOnly = false): unknown {
+export function parseUniqueJson(source: string, { integersOnly = false, maxDepth = Infinity }: JsonParseOptions = {}): unknown {
   let index = 0;
   const tokenPattern = /(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/y;
   function space() {
@@ -41,10 +43,11 @@ export function parseUniqueJson(source: string, integersOnly = false): unknown {
     }
     throw Error('Unterminated string');
   }
-  function value(): unknown {
+  function value(depth: number): unknown {
     space();
     const char = source[index];
     if (char === '"') return string();
+    if ((char === '{' || char === '[') && depth >= maxDepth) throw Error('JSON nesting depth exceeds the limit');
     if (char === '{') {
       index++;
       const result: Record<string, unknown> = {};
@@ -57,7 +60,7 @@ export function parseUniqueJson(source: string, integersOnly = false): unknown {
         if (Object.hasOwn(result, key)) throw Error('Duplicate key');
         space();
         if (source[index++] !== ':') throw Error('Expected colon');
-        Object.defineProperty(result, key, { value: value(), enumerable: true, configurable: true, writable: true });
+        Object.defineProperty(result, key, { value: value(depth + 1), enumerable: true, configurable: true, writable: true });
         space();
         if (source[index] === '}') { index++; return result; }
         if (source[index++] !== ',') throw Error('Expected comma');
@@ -69,7 +72,7 @@ export function parseUniqueJson(source: string, integersOnly = false): unknown {
       space();
       if (source[index] === ']') { index++; return result; }
       while (true) {
-        result.push(value());
+        result.push(value(depth + 1));
         space();
         if (source[index] === ']') { index++; return result; }
         if (source[index++] !== ',') throw Error('Expected comma');
@@ -82,7 +85,7 @@ export function parseUniqueJson(source: string, integersOnly = false): unknown {
     index = tokenPattern.lastIndex;
     return JSON.parse(token);
   }
-  const result = value();
+  const result = value(0);
   space();
   if (index !== source.length) throw Error('Trailing JSON');
   return result;

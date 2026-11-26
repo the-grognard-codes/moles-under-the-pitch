@@ -72,7 +72,7 @@ class StateSyncFullTimeTest {
 		JsonObject match = inputs == null ? new JsonObject() : JsonObject.readFrom(Files.readString(inputs.resolve("match.json")));
 		long seed = match.getLong("seed", 650);
 		boolean retained = "retained".equals(mode);
-		try (BogrukEngineFixture fixture = new BogrukEngineFixture("Human", "Orc", seed, true, true);
+		try (BogrukEngineFixture fixture = new BogrukEngineFixture("Human", "Orc", seed, true, BogrukEngineFixture.Mode.MEASURED);
 			JdbcRequestConnections connections = new JdbcRequestConnections(
 				url + "?connectTimeout=500&socketTimeout=1500&sessionVariables=innodb_lock_wait_timeout=1", "root", password, false)) {
 			String id = fixture.document.matchId;

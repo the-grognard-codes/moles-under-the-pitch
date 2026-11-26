@@ -3,6 +3,7 @@ package com.fumbbl.ffb.server.match;
 import com.eclipsesource.json.JsonArray;
 import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonValue;
+import com.eclipsesource.json.ParseException;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -24,13 +25,24 @@ final class Format4Json {
     private static final Map<String, Set<String>> REPORT_FIELDS = loadReportFields();
     private static final Set<String> OMITTED_REPORT_FIELDS = strings(CONTRACT.get("omittedReportFields").asArray());
 
-    static Map<String, Set<String>> publicNativeReportFields() { return REPORT_FIELDS; }
-    static Set<String> omittedReportFields() { return OMITTED_REPORT_FIELDS; }
+    private static final Set<String> TEAM_FIELDS = strings(CONTRACT.get("teamFields").asArray());
+    private static final Set<String> TEAM_LIST_FIELDS = strings(CONTRACT.get("teamListFields").asArray());
 
+    Map<String, Set<String>> publicNativeReportFields() { return REPORT_FIELDS; }
+    Set<String> omittedReportFields() { return OMITTED_REPORT_FIELDS; }
+    Set<String> teamFields() { return TEAM_FIELDS; }
+    Set<String> teamListFields() { return TEAM_LIST_FIELDS; }
+
+    /** @throws IllegalArgumentException if the record JSON is malformed, unsupported or invalid */
     JsonObject readRecord(String json) { return validateRecord(parse(json)); }
+
+    /** @throws IllegalArgumentException if the keyframe JSON is malformed, unsupported or invalid */
     JsonObject readKeyframe(String json) { return validateKeyframe(parse(json)); }
+
+    /** @throws IllegalArgumentException if the status JSON is malformed, unsupported or invalid */
     JsonObject readStatus(String json) { return validateStatus(parse(json)); }
 
+    /** @throws IllegalArgumentException if the record breaks the format, identity or ordering rules */
     JsonObject validateRecord(JsonObject record) {
         check(record, SCHEMAS.get("record"), "record");
         int revision = record.get("revision").asInt();
@@ -81,12 +93,14 @@ final class Format4Json {
         return record;
     }
 
+    /** @throws IllegalArgumentException if the keyframe or its recorded view is invalid */
     JsonObject validateKeyframe(JsonObject keyframe) {
         check(keyframe, SCHEMAS.get("keyframe"), "keyframe");
         checkView(keyframe.get("view").asObject());
         return keyframe;
     }
 
+    /** @throws IllegalArgumentException if the status or its timing data is invalid */
     JsonObject validateStatus(JsonObject status) {
         check(status, SCHEMAS.get("status"), "status");
         JsonValue save = status.get("saveResume");
@@ -101,10 +115,18 @@ final class Format4Json {
         return status;
     }
 
+    /** @throws IllegalArgumentException if the recorded view is invalid */
     JsonObject validateView(JsonObject view) {
         check(view, SCHEMAS.get("view"), "view");
         checkView(view);
         return view;
+    }
+
+    /** @throws IllegalArgumentException if the saved view or record time does not match the snapshot boundary */
+    void validateBaseline(JsonObject view, String matchId, int revision, JsonValue at) {
+        validateView(view);
+        if (!matchId.equals(view.getString("matchId", null)) || view.getInt("revision", -1) != revision
+            || !integer(at, 0, MAX_SAFE_INTEGER)) throw invalid("snapshot recorded view boundary");
     }
 
     String encode(JsonObject value) {
@@ -112,7 +134,11 @@ final class Format4Json {
     }
 
     private JsonObject parse(String json) {
-        return new MatchJson().parse(json, MAX_BYTES, MAX_DEPTH);
+        try {
+            return new MatchJson().parse(json, MAX_BYTES, MAX_DEPTH);
+        } catch (ParseException | UnsupportedOperationException malformed) {
+            throw new IllegalArgumentException("Invalid format 4 JSON", malformed);
+        }
     }
 
     String teamId(String matchId, String side) { return matchId + ":" + side; }
@@ -121,9 +147,9 @@ final class Format4Json {
         if (!(outcome.get("reportList") instanceof JsonObject list)) return;
         for (JsonValue value : list.get("reports").asArray()) {
             JsonObject report = value.asObject();
-            for (String key : Format4Records.TEAM_FIELDS) if (report.get(key) != null && !report.get(key).isNull())
+            for (String key : TEAM_FIELDS) if (report.get(key) != null && !report.get(key).isNull())
                 checkTeam(report.get(key).asString(), matchId);
-            for (String key : Format4Records.TEAM_LIST_FIELDS) if (report.get(key) instanceof JsonArray ids)
+            for (String key : TEAM_LIST_FIELDS) if (report.get(key) instanceof JsonArray ids)
                 for (JsonValue id : ids) checkTeam(id.asString(), matchId);
         }
     }

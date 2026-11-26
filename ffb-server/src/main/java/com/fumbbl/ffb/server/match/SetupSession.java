@@ -95,9 +95,8 @@ public final class SetupSession {
 	private int capturedCommandCount;
 	private CompactMatchWrite.Capture compactCapture;
 	private final Format4Records format4;
-	private Format4Records.Captured pendingFormat4;
-	private JsonObject committedFormat4View;
-	private long lastFormat4Time;
+	private Format4Records.Baseline pendingFormat4;
+	private Format4Records.Baseline committedFormat4;
 	private CompactMatchWrite.History compactHistory;
 	private JsonObject unfinishedMovement;
 	private boolean compactWriting;
@@ -355,12 +354,8 @@ public final class SetupSession {
 				payload.remove("snapshotVersion");
 				lastCapturedCommand = takeSnapshotField(payload, "lastCapturedCommand").asInt();
 				compactHistory = new CompactMatchWrite.History(takeSnapshotField(payload, "historyBoundary").asObject());
-				committedFormat4View = new Format4Json().validateView(takeSnapshotField(payload, "recordedView").asObject());
-				lastFormat4Time = takeSnapshotField(payload, "lastRecordTime").asLong();
-				if (!matchId.equals(committedFormat4View.getString("matchId", null))
-					|| committedFormat4View.getInt("revision", -1) != payload.getInt("revision", -2)
-					|| lastFormat4Time < 0 || lastFormat4Time > 9_007_199_254_740_991L)
-					throw new IllegalArgumentException("Invalid recorded view boundary");
+				committedFormat4 = format4.restoreBaseline(takeSnapshotField(payload, "recordedView").asObject(),
+					matchId, payload.getInt("revision", -2), takeSnapshotField(payload, "lastRecordTime"));
 				savedMovement = takeSnapshotField(payload, "unfinishedMovement");
 				savedSkillPolicy = takeSnapshotField(payload, "skillPolicy");
 				savedDrive = takeSnapshotField(payload, "driveTracker");
@@ -552,8 +547,7 @@ public final class SetupSession {
 				capturedCommandCount = 0;
 				compactHistory = boundary;
 				if (pendingFormat4 != null) {
-					committedFormat4View = pendingFormat4.view();
-					lastFormat4Time = pendingFormat4.at();
+					committedFormat4 = pendingFormat4;
 					pendingFormat4 = null;
 				}
 				compactCapture = null;
@@ -584,6 +578,7 @@ public final class SetupSession {
 	}
 
 	private String compactSnapshot(CompactMatchWrite.History boundary) {
+		Format4Records.Baseline baseline = pendingFormat4 == null ? committedFormat4 : pendingFormat4;
 		JsonArray selections = new JsonArray();
 		kickoffSelection.forEach(selections::add);
 		JsonObject payload = new JsonObject().add("snapshotVersion", COMPACT_SNAPSHOT_VERSION)
@@ -594,8 +589,7 @@ public final class SetupSession {
 			.add("decisionLimit", decisionLimit.snapshot()).add("driveTracker", driveTracker.exportSummary().json())
 			.add("unfinishedMovement", unfinishedMovement == null ? JsonValue.NULL : unfinishedMovement)
 			.add("skillPolicy", state.getOptionalSkillUse().snapshot()).add("historyBoundary", boundary.json())
-			.add("recordedView", pendingFormat4 == null ? committedFormat4View : pendingFormat4.view())
-			.add("lastRecordTime", pendingFormat4 == null ? lastFormat4Time : pendingFormat4.at());
+			.add("recordedView", baseline.view()).add("lastRecordTime", baseline.at());
 		addContinuationFields(payload, null);
 		return new CanonicalJson().encode(payload, MAX_MATCH_ARTIFACT_BYTES, COMPACT_SNAPSHOT_DEPTH,
 			() -> new IllegalArgumentException("Compact snapshot exceeds encoding limits"));
@@ -1961,12 +1955,14 @@ public final class SetupSession {
                 lastCapturedCommand = capture.lastCommandNr;
                 capturedCommandCount = state.getGameLog().size();
                 Game game = state.getGame();
-                pendingFormat4 = format4.capture(committedFormat4View, format4.view(snapshot),
-                    Math.max(lastFormat4Time, System.currentTimeMillis()), kind, role, decision, nativeOutcomes,
+                Format4Records.MatchSides sides = new Format4Records.MatchSides(matchId,
                     new Format4Records.NativeSide(game.getTeamHome().getId(), game.getTeamHome().getCoach()),
                     new Format4Records.NativeSide(game.getTeamAway().getId(), game.getTeamAway().getCoach()));
-                compactCapture = new CompactMatchWrite.Capture(revision, lastCapturedCommand, ordered(nativeOutcomes).toString(),
-                    pendingFormat4.record(), pendingFormat4.keyframe());
+                Format4Records.Captured captured = format4.capture(committedFormat4, format4.view(snapshot),
+                    System.currentTimeMillis(), kind, role, decision, nativeOutcomes, sides);
+                pendingFormat4 = captured.baseline();
+                compactCapture = new CompactMatchWrite.Capture(revision, lastCapturedCommand,
+                    ordered(nativeOutcomes).toString(), captured.encoded());
             } else {
                 JsonValue accepted = JsonValue.NULL;
                 if (decision.isObject()) {

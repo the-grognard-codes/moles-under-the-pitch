@@ -80,7 +80,7 @@ public final class StateSyncStorageProbe {
 
 	private void run(int repeats, boolean earlyOnly) throws Exception {
 		long seed = JsonObject.readFrom(read("match")).getLong("seed", -1);
-		try (BogrukEngineFixture fixture = new BogrukEngineFixture("Human", "Orc", seed, true, true);
+		try (BogrukEngineFixture fixture = new BogrukEngineFixture("Human", "Orc", seed, true, BogrukEngineFixture.Mode.MEASURED);
 			Connection admin = open(); ExecutorService worker = Executors.newSingleThreadExecutor()) {
 			for (String period : earlyOnly ? new String[]{"early"} : new String[]{"early", "late", "terminal"}) {
 				stage = period;

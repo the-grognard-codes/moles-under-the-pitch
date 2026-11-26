@@ -1,17 +1,21 @@
 package com.fumbbl.ffb.server.match;
 
-import com.eclipsesource.json.JsonArray;
-import com.eclipsesource.json.JsonObject;
-import com.eclipsesource.json.JsonValue;
-
 import com.fumbbl.ffb.ReRollSources;
 import com.fumbbl.ffb.ReRolledActions;
 import com.fumbbl.ffb.net.commands.ClientCommandUseReRoll;
+
+import com.eclipsesource.json.JsonArray;
+import com.eclipsesource.json.JsonObject;
+import com.eclipsesource.json.JsonValue;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -38,7 +42,21 @@ class Format4RecordsTest {
     }
 
     @Test
+    void legacyReportFieldsMatchThePreFormat4Allowlist() {
+        // Pin the 139 report IDs and exact field sets from fcf43d319, independent of their declaration order.
+        Map<String, Set<String>> reportFields = new TreeMap<>(codec.publicNativeReportFields());
+        assertEquals(139, reportFields.size());
+        String canonical = reportFields.entrySet().stream()
+            .map(entry -> entry.getKey() + ":" + String.join(",", entry.getValue().stream().sorted().toList()))
+            .collect(Collectors.joining("\n"));
+        assertEquals("556a8e70009bacb7be8a05cb3177217eca9c1804a2c6d0ac89fd2f91222fe8a5", new JsonDigest().sha256(canonical),
+            "Legacy public report fields changed. Keep their existing contract through cutover.");
+    }
+
+    @Test
     void strictDecodersRejectUnknownVersionsAndPrivateDataAtEveryBoundary() throws Exception {
+        assertThrows(IllegalArgumentException.class, () -> codec.readRecord("{"));
+        assertThrows(IllegalArgumentException.class, () -> codec.readKeyframe("[]"));
         JsonObject fixtures = fixture();
         JsonObject start = fixtures.get("start").asObject();
         assertThrows(IllegalArgumentException.class, () -> codec.readRecord(start.toString().replace("\"revision\":0", "\"revision\":0,\"revision\":0")));
@@ -78,11 +96,13 @@ class Format4RecordsTest {
             .add("reportList", new JsonObject().add("reports", new JsonArray()
                 .add(new JsonObject().add("reportId", "coinThrow").add("coach", "private-account").add("coinThrowHeads", true))
                 .add(new JsonObject().add("reportId", "receiveChoice").add("teamId", "private-source-team"))));
-        Format4Records.Captured capture = records.capture(before, after, 50, "ACTION", "away", request,
-            new JsonArray().add(nativeOutcome), new Format4Records.NativeSide("home-team", "home-account"),
+        Format4Records.MatchSides sides = new Format4Records.MatchSides(match,
+            new Format4Records.NativeSide("home-team", "home-account"),
             new Format4Records.NativeSide("private-source-team", "private-account"));
-        assertFalse(capture.record().contains("private-"));
-        JsonObject recorded = codec.readRecord(capture.record());
+        Format4Records.Captured capture = records.capture(new Format4Records.Baseline(before, 10),
+            after, 50, "ACTION", "away", request, new JsonArray().add(nativeOutcome), sides);
+        assertFalse(capture.encoded().record().contains("private-"));
+        JsonObject recorded = codec.readRecord(capture.encoded().record());
         assertEquals(match + ":away", recorded.get("actor").asObject().getString("teamId", null));
         assertEquals("heads", recorded.get("decision").asObject().getString("optionId", null));
         JsonArray publicReports = recorded.get("outcomes").asArray().get(0).asObject().get("reportList").asObject().get("reports").asArray();
@@ -90,7 +110,7 @@ class Format4RecordsTest {
         assertEquals("away", publicReports.get(0).asObject().getString("side", null));
         assertEquals(match + ":away", publicReports.get(1).asObject().getString("teamId", null));
         request.set("optionId", "tails");
-        assertEquals("heads", codec.readRecord(capture.record()).get("decision").asObject().getString("optionId", null));
+        assertEquals("heads", codec.readRecord(capture.encoded().record()).get("decision").asObject().getString("optionId", null));
     }
 
     @Test
@@ -104,10 +124,12 @@ class Format4RecordsTest {
             new AcceptedActionPresentation().addRerollSource(action, new ClientCommandUseReRoll(ReRolledActions.BLOCK, source));
             JsonObject decision = new JsonObject().add("operation", "action").add("logPresentation", new JsonObject()
                 .add("version", 1).add("action", action).add("movement", JsonValue.NULL));
-            Format4Records.Captured captured = records.capture(before, after, 50, "ACTION", "away", decision, new JsonArray(),
+            Format4Records.MatchSides sides = new Format4Records.MatchSides(after.getString("matchId", null),
                 new Format4Records.NativeSide("home-team", "home-account"), new Format4Records.NativeSide("away-team", "away-account"));
-            assertFalse(captured.record().contains("private-label"));
-            JsonObject accepted = codec.readRecord(captured.record()).get("decision").asObject()
+            Format4Records.Captured captured = records.capture(new Format4Records.Baseline(before, 10),
+                after, 50, "ACTION", "away", decision, new JsonArray(), sides);
+            assertFalse(captured.encoded().record().contains("private-label"));
+            JsonObject accepted = codec.readRecord(captured.encoded().record()).get("decision").asObject()
                 .get("logPresentation").asObject().get("action").asObject();
             assertEquals(source.getName(), accepted.getString("rerollSource", null));
         }
@@ -115,7 +137,7 @@ class Format4RecordsTest {
 
     @Test
     void actualSaveAndResumeKeepTheKeyframeRevisionAndSnapshotPatchBaseline() throws Exception {
-        try (BogrukEngineFixture fixture = new BogrukEngineFixture("Human", "Orc", 43, true, false, true)) {
+        try (BogrukEngineFixture fixture = new BogrukEngineFixture("Human", "Orc", 43, true, BogrukEngineFixture.Mode.FORMAT4)) {
             SetupSession session = fixture.session;
             CompactMatchWrite.Capture start = session.compactCapture();
             assertNotNull(start.keyframe());

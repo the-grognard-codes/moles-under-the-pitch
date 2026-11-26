@@ -163,7 +163,7 @@ Filed as [#661](https://github.com/the-grognard-codes/moles-under-the-pitch/issu
 **Blocked by:** ticket 20; ADR accepted.
 
 The maintainer approved using match-team and side IDs for actor identity in the
-[shared record](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/663).
+[shared record](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/663#issuecomment-7183944143).
 The internal account ID belongs in the private receipt. See the [implementation outcome](match-format-4-outcome.md).
 
 - Over complete headless matches with both rosters and several seeds, the browser's own reducer reproduces the server's independent public state at every revision.
@@ -193,6 +193,7 @@ The internal account ID belongs in the private receipt. See the [implementation 
 **Blocked by:** tickets 5 and 6.
 
 - Compare-and-swap uses the storage generation. Appends are contiguous and unique. Same-revision writes are covered.
+- Each format-4 status update uses the committed compare-and-swap generation of the write that owns it. Test ordered save and resume updates at the same gameplay revision. See [#664](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/664).
 - Receipts are private rows found by match, actor and request ID, with the fingerprint, accepted revision, code and any error details (decision 15). Tests cover two devices on one seat, a cold restart, the computer player's retry, a timed reaction for the same role, and a reused ID with different content. The limit of 256 save requests stays as it is.
 - The running digest is updated in the same transaction (decision 17).
 - Restore checks the generation and the newest 32 records, or all of them if fewer, against the snapshot's gameplay revision in one consistent read. Tests cover all records missing, the last one missing, a gap, and a generation ahead of the records. Older history isn't read.

@@ -729,5 +729,7 @@
     "swoopDirectionRoll": ["direction","directionRoll","outOfBounds","playerId"],
     "puntDistanceRoll": ["outOfBounds","roll"]
   },
-  "omittedReportFields": ["coach","teamName"]
+  "omittedReportFields": ["coach","teamName"],
+  "teamFields": ["teamId","choosingTeamId"],
+  "teamListFields": ["teamIdsAdditionalAssist","teamIdsReRolledCheeringFangs"]
 }

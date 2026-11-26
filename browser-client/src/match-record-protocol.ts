@@ -45,6 +45,7 @@ const schemas: Record<string, SchemaObject> = contract.schemas;
 const reportFields: Record<string, string[]> = contract.reportFields;
 const utf8 = new TextEncoder();
 const maxBytes = 8 * 1024 * 1024;
+const maxDepth = 24;
 const matchId = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
 const teamId = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}:(home|away)$/;
 const object = (value: unknown): value is Fields => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -58,22 +59,7 @@ const checked = (value: unknown, schema: Schema, path: string) => {
 
 function parse(json: string): unknown {
   if (json.length > maxBytes || utf8.encode(json).byteLength > maxBytes) throw invalid('encoding bounds');
-  // Check depth before entering the shared recursive duplicate-member decoder.
-  let depth = 0;
-  let quoted = false;
-  let escaped = false;
-  for (const char of json) {
-    if (quoted) {
-      if (escaped) escaped = false;
-      else if (char === '\\') escaped = true;
-      else if (char === '"') quoted = false;
-    } else if (char === '"') {
-      quoted = true;
-    } else if (char === '{' || char === '[') {
-      if (++depth > 24) throw invalid('encoding depth');
-    } else if (char === '}' || char === ']') depth--;
-  }
-  return parseUniqueJson(json, true);
+  return parseUniqueJson(json, { integersOnly: true, maxDepth });
 }
 
 function accepts(value: unknown, schema: Schema, path: string): boolean {
@@ -218,11 +204,16 @@ export function decodeMatchRecord(json: string): MatchRecord {
 function checkOutcomeTeams(outcome: MatchRecord['outcomes'][number], match: string) {
   const list = outcome.reportList as { reports: Fields[] } | null | undefined;
   if (!list) return;
+  const home = matchTeamId(match, 'home');
+  const away = matchTeamId(match, 'away');
+  const outsideMatch = (id: unknown) => id != null && id !== home && id !== away;
   for (const report of list.reports) {
-    const teams = [report.teamId, report.choosingTeamId, ...(report.teamIdsAdditionalAssist as string[] | null ?? []),
-      ...(report.teamIdsReRolledCheeringFangs as string[] | null ?? [])];
-    if (teams.some(id => id != null && id !== matchTeamId(match, 'home') && id !== matchTeamId(match, 'away')))
+    if (contract.teamFields.some(field => outsideMatch(report[field])))
       throw invalid('record.outcomes team identity');
+    for (const field of contract.teamListFields) {
+      const teams = report[field] as string[] | null | undefined;
+      if (teams?.some(outsideMatch)) throw invalid('record.outcomes team identity');
+    }
   }
 }
 

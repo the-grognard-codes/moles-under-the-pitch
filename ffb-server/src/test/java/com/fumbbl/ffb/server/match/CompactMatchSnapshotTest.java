@@ -918,7 +918,7 @@ class CompactMatchSnapshotTest {
     }
 
     private BogrukEngineFixture fixture(String home, String away, long seed) throws Exception {
-        BogrukEngineFixture fixture = new BogrukEngineFixture(home, away, seed, true, true);
+        BogrukEngineFixture fixture = new BogrukEngineFixture(home, away, seed, true, BogrukEngineFixture.Mode.MEASURED);
         fixture.session = SetupSession.startCompact(fixture.server, fixture.document, -2, true, true);
         fixture.seedRecoveryDice(seed);
         nativeState(fixture.session).getGame().getFieldModel().setWeather(Weather.NICE);
