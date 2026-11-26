@@ -44,7 +44,8 @@ test('protocol JSON retains __proto__ as an own property without changing the pr
   assert.equal(Object.getPrototypeOf(value.item), Object.prototype);
   assert.deepEqual(Object.getOwnPropertyDescriptor(value.item, '__proto__')?.value, { marker: true });
   assert.equal(Reflect.get(value.item, 'marker'), undefined);
-  assert.throws(() => decodeSavedTeam(JSON.stringify(response).replace('{', '{"__proto__":{},')));
+  const responseWithExtraProperty = { ...response, ['__proto__']: {} };
+  assert.throws(() => decodeSavedTeam(JSON.stringify(responseWithExtraProperty)));
 });
 
 test('protocol JSON counts only object and array nesting against the optional limit', () => {
