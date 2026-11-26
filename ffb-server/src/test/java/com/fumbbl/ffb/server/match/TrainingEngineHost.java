@@ -22,12 +22,17 @@ public final class TrainingEngineHost {
 		String directory = System.getProperty("ffb.stateSync.artifacts");
 		StateSyncFixtureCapture capture = directory == null ? null : new StateSyncFixtureCapture(Path.of(directory));
 		if (capture != null) StateSyncMoveTiming.install();
-		new TrainingEngineHost().run(args.length == 0 ? 4 : Integer.parseInt(args[0]), capture);
+		new TrainingEngineHost().run(args.length == 0 ? 4 : Integer.parseInt(args[0]), capture,
+			Boolean.getBoolean("ffb.format4.parity"));
 	}
 
-	private void run(int capacity, StateSyncFixtureCapture capture) throws Exception {
+	private void run(int capacity, StateSyncFixtureCapture capture, boolean format4) throws Exception {
+		if (format4 && (capture != null || capacity != 1)) throw new IllegalArgumentException("Format-4 parity needs an isolated match");
 		if (capacity < 1 || capacity > 32) throw new IllegalArgumentException("Capacity must be 1..32");
 		if (capture != null && capacity != 1) throw new IllegalArgumentException("Fixture capture requires capacity 1");
+		BogrukEngineFixture.Mode mode = format4 ? BogrukEngineFixture.Mode.FORMAT4
+			: capture == null ? BogrukEngineFixture.Mode.MOCKED : BogrukEngineFixture.Mode.MEASURED;
+		Format4ParityCapture parity = format4 ? new Format4ParityCapture() : null;
 		try (BufferedReader input = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
 			String line;
 			while ((line = input.readLine()) != null) {
@@ -41,11 +46,12 @@ public final class TrainingEngineHost {
 					String role = command.getString("role", "away");
 					if (matchId.isEmpty() || !("home".equals(role) || "away".equals(role)))
 						throw new IllegalArgumentException("Invalid match or role");
+					long workerStart = format4 ? System.nanoTime() : 0;
 					if ("create".equals(operation)) {
 						if (matches.size() >= capacity || matches.containsKey(matchId))
 							throw new IllegalArgumentException("Host capacity or duplicate match");
 						matches.put(matchId, new BogrukEngineFixture(command.getString("homeRoster", "Human"),
-							command.getString("awayRoster", "Orc"), command.getLong("seed", 42), true, capture != null));
+							command.getString("awayRoster", "Orc"), command.getLong("seed", 42), true, mode));
 						if (capture != null) capture.start(matches.get(matchId).session);
 						response = matches.get(matchId).reply(role);
 					} else if ("close".equals(operation)) {
@@ -60,7 +66,10 @@ public final class TrainingEngineHost {
 							response = capture == null ? fixture.apply(role, request) : measuredApply(capture, fixture, role, request);
 						} else throw new IllegalArgumentException("Unknown operation");
 					}
-					if ("home".equals(role) && matches.containsKey(matchId)) response.add("trainingMovement", matches.get(matchId).homeMovement());
+					BogrukEngineFixture active = matches.get(matchId);
+					if (active != null && parity != null && active.session.compactCapture() != null)
+						response.add("format4", parity.commit(active.session, workerStart));
+					if (active != null && "home".equals(role)) response.add("trainingMovement", active.homeMovement());
 				} catch (Exception failure) {
 					closeMatch(matchId);
 					failure.printStackTrace(System.err);

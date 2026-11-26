@@ -28,6 +28,14 @@ public final class PublicMatchView {
     }
 
     JsonObject recorded(JsonObject source, String role) {
+        JsonObject result = recordedFacts(source);
+        // The full-snapshot decoder still expects the legacy envelope and empty control fields.
+        if (source.get("projectionVersion") != null && source.get("projectionVersion").isNumber())
+            result.add("projectionVersion", source.get("projectionVersion"));
+        return result.add("callerRole", role).add("actions", new JsonArray()).add("prompt", JsonValue.NULL);
+    }
+
+    JsonObject recordedFacts(JsonObject source) {
         JsonObject result = fields.scalars(source, "matchId", "revision", "phase", "half", "drive", "turn", "homeTurn", "awayTurn", "turnMode",
             "homeScore", "awayScore", "weather", "actor", "decisionKind", "activePlayerId", "activePlayerAction",
             "homeTeamName", "awayTeamName", "homeRerolls", "awayRerolls", "stopReason");
@@ -57,10 +65,7 @@ public final class PublicMatchView {
         fields.object(source, result, "driveTracker",
             data -> fields.scalars(data, "version", "receivingRole", "phase", "secretWeapons", "knockouts", "event", "eventComplete"));
         fields.object(source, result, "blockContext", this::blockContext);
-        // The full-snapshot decoder still expects the legacy envelope and empty control fields.
-        if (source.get("projectionVersion") != null && source.get("projectionVersion").isNumber())
-            result.add("projectionVersion", source.get("projectionVersion"));
-        return result.add("callerRole", role).add("actions", new JsonArray()).add("prompt", JsonValue.NULL);
+        return result;
     }
 
     JsonObject blockContext(JsonObject source) {

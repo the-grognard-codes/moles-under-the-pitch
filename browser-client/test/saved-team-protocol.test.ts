@@ -34,6 +34,31 @@ test('duplicate JSON fields are rejected before JSON.parse could discard them', 
   assert.throws(() => decodeSavedTeam(JSON.stringify(response).replace('"code":"OK"', '"code":"OK","code":"CONFLICT"')));
 });
 
+test('protocol JSON accepts standard whitespace and rejects non-JSON whitespace outside strings', () => {
+  assert.deepEqual(parseUniqueJson(' \t\r\n{"label": "\u00a0"}\n'), { label: '\u00a0' });
+  assert.throws(() => parseUniqueJson('{\u00a0"label": "team"}'), /Expected key/);
+});
+
+test('protocol JSON retains __proto__ as an own property without changing the prototype', () => {
+  const value = parseUniqueJson('{"item":{"__proto__":{"marker":true}}}') as { item: object };
+  assert.equal(Object.getPrototypeOf(value.item), Object.prototype);
+  assert.deepEqual(Object.getOwnPropertyDescriptor(value.item, '__proto__')?.value, { marker: true });
+  assert.equal(Reflect.get(value.item, 'marker'), undefined);
+  const responseWithExtraProperty = { ...response, ['__proto__']: {} };
+  assert.throws(() => decodeSavedTeam(JSON.stringify(responseWithExtraProperty)));
+});
+
+test('protocol JSON counts only object and array nesting against the optional limit', () => {
+  const value = { values: ['"{[\\]}'] };
+  const source = JSON.stringify(value);
+  assert.deepEqual(parseUniqueJson(source, { maxDepth: 2 }), value);
+  assert.throws(() => parseUniqueJson(source, { maxDepth: 1 }), /nesting depth/);
+  assert.throws(() => parseUniqueJson('{"values":[{}]}', { maxDepth: 2 }), /nesting depth/);
+  assert.equal(parseUniqueJson('1', { maxDepth: 0, integersOnly: true }), 1);
+  assert.throws(() => parseUniqueJson('{"value":1e1}', { integersOnly: true }), /Expected JSON integer/);
+  assert.deepEqual(parseUniqueJson('{"value":1e1}'), { value: 10 });
+});
+
 test('duplicate account team names return a recognized recoverable rejection', () => {
   assert.equal(decodeSavedTeam(JSON.stringify({ ...response, code: 'TEAM_NAME_TAKEN', document: null, validation: null, versionStatus: null })).code, 'TEAM_NAME_TAKEN');
 });

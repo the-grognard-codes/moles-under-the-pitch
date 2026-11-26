@@ -968,7 +968,7 @@ class CompactMatchSnapshotTest {
     }
 
     private BogrukEngineFixture fixture(String home, String away, long seed) throws Exception {
-        BogrukEngineFixture fixture = new BogrukEngineFixture(home, away, seed, true, true);
+        BogrukEngineFixture fixture = new BogrukEngineFixture(home, away, seed, true, BogrukEngineFixture.Mode.MEASURED);
         fixture.session = SetupSession.startCompact(fixture.server, fixture.document, -2, true, true);
         fixture.seedRecoveryDice(seed);
         nativeState(fixture.session).getGame().getFieldModel().setWeather(Weather.NICE);
@@ -1063,6 +1063,8 @@ class CompactMatchSnapshotTest {
         JsonObject a = JsonObject.readFrom(expected), b = JsonObject.readFrom(actual);
         a.get("historyBoundary").asObject().remove("digest");
         b.get("historyBoundary").asObject().remove("digest");
+        a.remove("lastRecordTime");
+        b.remove("lastRecordTime");
         eraseWallTime(a);
         eraseWallTime(b);
         assertEquals(a, b, () -> "continuation at r" + a.getInt("revision", -1));

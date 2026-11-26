@@ -59,6 +59,7 @@ The snapshot holds everything needed to continue, and no history:
 - save/resume state with its bounded request window, and computer memory;
 - decision-limit and drive-tracker counters, the unfinished movement narrative, and the phase, announcement and block cursors;
 - counters for records and chat, and the running history digest.
+- the exact recorded view at the snapshot revision and the last record time. The drive tracker can project a pending native outcome during capture and retain an earlier drive event after the write. Keeping the captured view gives restore the same patch baseline as uninterrupted play. [Maintainer approval](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/695#discussion_r4704502529)
 
 Restore rebuilds the match from the snapshot alone, through the existing native restore path. It uses no event, record, receipt, chat or log to do so, and never reruns commands, dice, clocks or optional decisions. Before that, the repository admits the snapshot with the bounded tail check under "History integrity".
 
@@ -67,7 +68,7 @@ A command leaves memory only after the write that captured it is known to be dur
 ### Records, patches and keyframes
 
 A format-4 record holds domain facts only:
-- its revision, kind, actor, server time and stable account, match-team, player and side IDs;
+- its revision, kind, actor, server time and stable match-team, player and side IDs. The shared record identifies the actor by match-team and side. The internal account ID stays in the private receipt.
 - the accepted decision, reduced to an allowlist;
 - the ordered native outcomes (dice, movement, resolved effects), reduced to an allowlist and in canonical home orientation;
 - ADR 0007's ordered `presentation` markers;
@@ -229,7 +230,7 @@ ADR 0006 is unchanged: p99 ≤ 100 ms per healthy worker task, and 2,000 ms per 
 | Native model syncs are the source for reports, dice and movement | Keep |
 | Canonical home orientation, with the originating revision | Keep |
 | Log lines and replay derive from records without running the engine | Keep |
-| Immutable account, match-team, player and side IDs; names resolve on read | Keep |
+| Immutable match-team, player and side IDs for the shared record. Internal account IDs stay in private receipts. Names resolve on read. | Keep with the [actor identity decision](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/663#issuecomment-7183944143) in #663 |
 | Server UTC epoch-millisecond clock | Keep |
 | Every accepted revision is indexed | Keep |
 | The server pages reads and enforces artifact limits | Keep paging. Replace the limits with limits per record, page and tail |

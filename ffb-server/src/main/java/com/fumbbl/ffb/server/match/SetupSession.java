@@ -87,13 +87,16 @@ public final class SetupSession {
 	public static final String CHAT_RUNTIME = "ffb-3.4.0-bb2025-r5.3";
 	public static final String STAGED_RUNTIME = "ffb-3.4.0-bb2025-r5.4";
 	public static final int STAGED_RECOVERY_VERSION = 7;
-	private static final int COMPACT_SNAPSHOT_VERSION = 1;
+	private static final int COMPACT_SNAPSHOT_VERSION = 2;
 	private static final int COMPACT_SNAPSHOT_DEPTH = 96;
 	private final SetupStaging staging;
 	private final boolean compact;
 	private int lastCapturedCommand;
 	private int capturedCommandCount;
 	private CompactMatchWrite.Capture compactCapture;
+	private final Format4Records format4;
+	private Format4Records.Baseline pendingFormat4;
+	private Format4Records.Baseline committedFormat4;
 	private CompactMatchWrite.History compactHistory;
 	private JsonObject unfinishedMovement;
 	private boolean compactWriting;
@@ -181,6 +184,7 @@ public final class SetupSession {
 	private SetupSession(FantasyFootballServer server, MatchDocument document, long engineId, boolean recoverable,
 		boolean defaultSetup, boolean saveResume, boolean transcriptV2, boolean routeV2, boolean chatV1, boolean compact) {
 		this.compact = compact;
+		format4 = compact ? new Format4Records() : null;
 		if (defaultSetup && !recoverable) throw new IllegalArgumentException("Default setup requires a versioned recovery lifetime");
 		if (saveResume && !recoverable) throw new IllegalArgumentException("Save/resume requires a versioned recovery lifetime");
 		if (transcriptV2 && !recoverable) throw new IllegalArgumentException("Transcript requires a versioned recovery lifetime");
@@ -297,6 +301,7 @@ public final class SetupSession {
 
 	private SetupSession(FantasyFootballServer server, MatchDocument document, JsonObject payload, boolean compact) {
 		this.compact = compact;
+		format4 = compact ? new Format4Records() : null;
 		this.document = document;
 		computerMember = new ComputerOpponentService(null).member(document);
 		matchId = document.matchId;
@@ -350,6 +355,8 @@ public final class SetupSession {
 				payload.remove("snapshotVersion");
 				lastCapturedCommand = takeSnapshotField(payload, "lastCapturedCommand").asInt();
 				compactHistory = new CompactMatchWrite.History(takeSnapshotField(payload, "historyBoundary").asObject());
+				committedFormat4 = format4.restoreBaseline(takeSnapshotField(payload, "recordedView").asObject(),
+					matchId, payload.getInt("revision", -2), takeSnapshotField(payload, "lastRecordTime"));
 				savedMovement = takeSnapshotField(payload, "unfinishedMovement");
 				savedSkillPolicy = takeSnapshotField(payload, "skillPolicy");
 				savedDrive = takeSnapshotField(payload, "driveTracker");
@@ -540,6 +547,10 @@ public final class SetupSession {
 				state.getGameLog().discardCapturedCommands(capturedCommandCount);
 				capturedCommandCount = 0;
 				compactHistory = boundary;
+				if (pendingFormat4 != null) {
+					committedFormat4 = pendingFormat4;
+					pendingFormat4 = null;
+				}
 				compactCapture = null;
 				durable = true;
 			}
@@ -568,6 +579,7 @@ public final class SetupSession {
 	}
 
 	private String compactSnapshot(CompactMatchWrite.History boundary) {
+		Format4Records.Baseline baseline = pendingFormat4 == null ? committedFormat4 : pendingFormat4;
 		JsonArray selections = new JsonArray();
 		kickoffSelection.forEach(selections::add);
 		JsonObject payload = new JsonObject().add("snapshotVersion", COMPACT_SNAPSHOT_VERSION)
@@ -577,7 +589,8 @@ public final class SetupSession {
 			.add("lastCapturedCommand", lastCapturedCommand).add("kickoffSelection", selections)
 			.add("decisionLimit", decisionLimit.snapshot()).add("driveTracker", driveTracker.exportSummary().json())
 			.add("unfinishedMovement", unfinishedMovement == null ? JsonValue.NULL : unfinishedMovement)
-			.add("skillPolicy", state.getOptionalSkillUse().snapshot()).add("historyBoundary", boundary.json());
+			.add("skillPolicy", state.getOptionalSkillUse().snapshot()).add("historyBoundary", boundary.json())
+			.add("recordedView", baseline.view()).add("lastRecordTime", baseline.at());
 		addContinuationFields(payload, null);
 		return new CanonicalJson().encode(payload, MAX_MATCH_ARTIFACT_BYTES, COMPACT_SNAPSHOT_DEPTH,
 			() -> new IllegalArgumentException("Compact snapshot exceeds encoding limits"));
@@ -1031,11 +1044,36 @@ public final class SetupSession {
 		return state;
 	}
 
-	private JsonObject clockProjection() {
+	/** The compact store supplies the generation of the write that owns this status. */
+	String format4Status(long generation, long sampledAt) {
+		requireCompactSession();
+		JsonObject save = saveResume ? saveResumeState.publicJson().remove("proposalId") : null;
+		boolean paused = saveResume && (saveResumeState.suspended() || saveResumeState.abandoned);
+		JsonObject clock = clockProjection(sampledAt);
+		clock.add("running", !paused && !clock.get("activeRole").isNull());
+		JsonObject reaction = reactiveDecision.publicJson(sampledAt);
+		if (reaction != null) {
+			reaction.remove("id").remove("serverNow").add("running", !paused);
+			if (saveResume && saveResumeState.suspended()) {
+				long remaining = Math.max(0L, reaction.getLong("expiresAt", 0L) - saveResumeState.suspendedAt);
+				reaction.set("expiresAt", Math.addExact(sampledAt, remaining));
+			}
+		}
+		JsonObject status = new JsonObject().add("formatVersion", 4).add("matchId", matchId)
+			.add("revision", revision).add("generation", generation).add("sampledAt", sampledAt)
+			.add("saveResume", save == null ? JsonValue.NULL : save).add("clock", clock)
+			.add("reaction", reaction == null ? JsonValue.NULL : reaction);
+		Format4Json codec = new Format4Json();
+		return codec.encode(codec.validateStatus(status));
+	}
+
+	private JsonObject clockProjection() { return clockProjection(System.currentTimeMillis()); }
+
+	private JsonObject clockProjection(long sampledAt) {
 		Game game = state.getGame();
 		long started = state.getTurnTimeStarted();
 		boolean running = !isComplete() && started > 0 && (game.isTurnTimeEnabled() || reactiveDecision.pending());
-		long now = saveResume && saveResumeState.suspended() ? saveResumeState.suspendedAt : System.currentTimeMillis();
+		long now = saveResume && saveResumeState.suspended() ? saveResumeState.suspendedAt : sampledAt;
 		long elapsed = running ? Math.max(0L, now - started) : Math.max(0L, game.getTurnTime());
 		long excess = Math.max(0L, elapsed - TURN_ALLOWANCE_MS);
 		boolean home = clockOwnerHome(homeTurnEndingBeforeStarOfTheShow());
@@ -1129,7 +1167,9 @@ public final class SetupSession {
 			pendingRoute = proposed;
 		} else if ("action".equals(operation)) {
             Action selected = offeredAction(role, request);
-            logPresentation.set("action", narrative.action(game, selected));
+            JsonObject acceptedAction = narrative.action(game, selected);
+            if (compact) narrative.addRerollSource(acceptedAction, selected.command);
+            logPresentation.set("action", acceptedAction);
             if ("move".equals(selected.kind) || "jump".equals(selected.kind)) {
                 String movingId = game.getActingPlayer().getPlayerId();
                 movement = narrative.movement(revision, movingId, game.getFieldModel().getPlayerCoordinate(game.getPlayerById(movingId)));
@@ -1915,7 +1955,15 @@ public final class SetupSession {
                 unfinishedMovement = new AcceptedActionPresentation().unfinishedMovement(decision);
                 lastCapturedCommand = capture.lastCommandNr;
                 capturedCommandCount = state.getGameLog().size();
-                compactCapture = new CompactMatchWrite.Capture(revision, lastCapturedCommand, ordered(nativeOutcomes).toString());
+                Game game = state.getGame();
+                Format4Records.MatchSides sides = new Format4Records.MatchSides(matchId,
+                    new Format4Records.NativeSide(game.getTeamHome().getId(), game.getTeamHome().getCoach()),
+                    new Format4Records.NativeSide(game.getTeamAway().getId(), game.getTeamAway().getCoach()));
+                Format4Records.Captured captured = format4.capture(committedFormat4, format4.view(snapshot),
+                    System.currentTimeMillis(), kind, role, decision, nativeOutcomes, sides);
+                pendingFormat4 = captured.baseline();
+                compactCapture = new CompactMatchWrite.Capture(revision, lastCapturedCommand,
+                    ordered(nativeOutcomes).toString(), captured.encoded());
             } else {
                 JsonValue accepted = JsonValue.NULL;
                 if (decision.isObject()) {

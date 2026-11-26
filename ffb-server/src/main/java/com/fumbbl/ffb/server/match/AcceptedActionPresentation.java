@@ -2,8 +2,11 @@ package com.fumbbl.ffb.server.match;
 
 import com.fumbbl.ffb.FieldCoordinate;
 import com.fumbbl.ffb.FieldCoordinateBounds;
+import com.fumbbl.ffb.ReRollSource;
 import com.fumbbl.ffb.model.Game;
 import com.fumbbl.ffb.model.Player;
+import com.fumbbl.ffb.net.commands.ClientCommand;
+import com.fumbbl.ffb.net.commands.ClientCommandUseReRoll;
 import com.fumbbl.ffb.server.match.CoreTurnActions.Action;
 
 import com.eclipsesource.json.JsonObject;
@@ -24,6 +27,13 @@ final class AcceptedActionPresentation {
             : square(action.targetSquare);
         return new JsonObject().add("kind", action.kind).add("label", action.label)
             .add("playerId", playerId == null ? JsonValue.NULL : JsonValue.valueOf(playerId)).add("target", target);
+    }
+
+    void addRerollSource(JsonObject action, ClientCommand command) {
+        if (command instanceof ClientCommandUseReRoll reroll) {
+            ReRollSource source = reroll.getReRollSource();
+            action.add("rerollSource", source == null ? JsonValue.NULL : JsonValue.valueOf(source.getName()));
+        }
     }
 
     JsonObject movement(int revision, String playerId, FieldCoordinate origin) {

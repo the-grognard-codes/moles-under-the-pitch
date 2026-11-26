@@ -37,6 +37,12 @@ import static org.mockito.Mockito.withSettings;
 /** Real BB2025 engine and synthetic exhibition rosters; only external server services are mocked. */
 final class BogrukEngineFixture implements AutoCloseable {
 
+	enum Mode {
+		MOCKED, MEASURED, FORMAT4;
+
+		boolean realCommunication() { return this != MOCKED; }
+	}
+
 	private static final String DEFAULT_TEAM_PREFIX = "Acceptance ";
 
 	final FantasyFootballServer server;
@@ -53,11 +59,11 @@ final class BogrukEngineFixture implements AutoCloseable {
 	}
 
 	BogrukEngineFixture(String homeRoster, String awayRoster, long seed, boolean simulation) throws Exception {
-		this(homeRoster, awayRoster, seed, simulation, false);
+		this(homeRoster, awayRoster, seed, simulation, Mode.MOCKED);
 	}
 
-	BogrukEngineFixture(String homeRoster, String awayRoster, long seed, boolean simulation, boolean measure) throws Exception {
-		this(homeRoster, awayRoster, seed, "00000000-0000-0000-0000-000000000021", DEFAULT_TEAM_PREFIX, simulation, measure);
+	BogrukEngineFixture(String homeRoster, String awayRoster, long seed, boolean simulation, Mode mode) throws Exception {
+		this(homeRoster, awayRoster, seed, "00000000-0000-0000-0000-000000000021", DEFAULT_TEAM_PREFIX, simulation, mode);
 	}
 
 	BogrukEngineFixture(String homeRoster, String awayRoster, long seed, String id) throws Exception {
@@ -65,15 +71,15 @@ final class BogrukEngineFixture implements AutoCloseable {
 	}
 
 	BogrukEngineFixture(String homeRoster, String awayRoster, long seed, String id, String teamPrefix) throws Exception {
-		this(homeRoster, awayRoster, seed, id, teamPrefix, false, false);
+		this(homeRoster, awayRoster, seed, id, teamPrefix, false, Mode.MOCKED);
 	}
 
 	private BogrukEngineFixture(String homeRoster, String awayRoster, long seed, String id, String teamPrefix,
-		boolean simulation, boolean measure) throws Exception {
+		boolean simulation, Mode mode) throws Exception {
 		this.simulation = simulation;
 		server = mock(FantasyFootballServer.class, simulation ? withSettings().stubOnly() : withSettings());
 		debugLog = mock(DebugLog.class, simulation ? withSettings().stubOnly() : withSettings());
-		communication = measure ? new ServerCommunication(server)
+		communication = mode.realCommunication() ? new ServerCommunication(server)
 			: mock(ServerCommunication.class, simulation ? withSettings().stubOnly() : withSettings());
 		ComputerOpponentService computers = new ComputerOpponentService(null);
 		FrozenTeam home = frozen(homeRoster, "home", "00000000-0000-0000-0000-000000000011", teamPrefix);
@@ -95,9 +101,10 @@ final class BogrukEngineFixture implements AutoCloseable {
 		when(server.getDebugLog()).thenReturn(debugLog);
 		when(server.getCommunication()).thenReturn(communication);
 		dice = new Random(seed);
-		session = SetupSession.startRecoverable(server, document, -2, true, true);
+		session = mode == Mode.FORMAT4 ? SetupSession.startCompact(server, document, -2, true, true)
+			: SetupSession.startRecoverable(server, document, -2, true, true);
 		session.recordPlayerActivity("home", System.currentTimeMillis());
-		if (measure) seedRecoveryDice(seed);
+		if (mode.realCommunication()) seedRecoveryDice(seed);
 		else pinDice();
 	}
 

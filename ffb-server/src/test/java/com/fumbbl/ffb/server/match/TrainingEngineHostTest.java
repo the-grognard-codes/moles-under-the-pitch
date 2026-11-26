@@ -66,7 +66,7 @@ class TrainingEngineHostTest {
 
 	@Test
 	void captureWritesEachTerminalArtifactOnce(@TempDir Path directory) throws Exception {
-		try (BogrukEngineFixture fixture = new BogrukEngineFixture("Human", "Orc", 43, true, true)) {
+		try (BogrukEngineFixture fixture = new BogrukEngineFixture("Human", "Orc", 43, true, BogrukEngineFixture.Mode.MEASURED)) {
 			StateSyncFixtureCapture capture = new StateSyncFixtureCapture(directory);
 			capture.start(fixture.session);
 			fixture.session.endForSizeLimit(System.currentTimeMillis());
