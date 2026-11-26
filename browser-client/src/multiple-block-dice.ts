@@ -1,6 +1,29 @@
 import { blockFaceLabel } from './dice-presentation.ts';
 import type { DiceMoment } from './dice-presentation.ts';
+import { playbackBeats } from './pitch-playback.ts';
+import type { TranscriptRecord } from './transcript-protocol.ts';
 import type { SetupState } from './setup-protocol.ts';
+
+export function isBlockPoolFor(moment: DiceMoment, target: string | null): boolean {
+  return target !== null && moment.subjectId === target && moment.selected === null
+    && moment.faces.length > 0 && moment.faces.every(face => blockFaceLabel(face));
+}
+
+/** Restore a target's reported pool when a choice becomes active without rolling again. */
+export function multipleBlockRoll(view: SetupState, records: Record<number, TranscriptRecord>, target: string): DiceMoment | null {
+  for (let revision = view.revision; revision >= 0; revision--) {
+    const record = records[revision];
+    if (!record || record.state.matchId !== view.matchId || record.state.activePlayerAction !== 'multipleBlock'
+      || record.state.activePlayerId !== view.activePlayerId || record.state.half !== view.half
+      || record.state.drive !== view.drive || record.state.homeTurn !== view.homeTurn || record.state.awayTurn !== view.awayTurn) break;
+    const beats = playbackBeats(record);
+    for (let index = beats.length - 1; index >= 0; index--) {
+      const beat = beats[index];
+      if (beat.kind === 'dice' && isBlockPoolFor(beat.dice, target)) return beat.dice;
+    }
+  }
+  return null;
+}
 
 /** Presentation history for one Multiple Block activation; native reports remain untouched. */
 export class MultipleBlockDiceReveals {

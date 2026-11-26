@@ -50,6 +50,35 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 class SetupSessionMovementTest {
+    @Test void declaredPassingGuidanceIsSharedWithBothCoachesSpectatorAndReplay() throws Exception {
+        BallFixture ball = new BallFixture(false, 12, 8, 0);
+        JsonObject ready = ball.ready();
+        JsonObject declaration = offered(ready, "declarePass", ball.source.getId());
+        SetupSession session = ball.fixture.session;
+        JsonObject actor = session.apply(ball.role, ball.fixture.request("action", "public-pass", ready)
+            .add("actionId", declaration.get("id"))).get("state").asObject();
+        int revision = actor.getInt("revision", -1);
+        String waitingRole = "home".equals(ball.role) ? "away" : "home";
+        JsonObject waiting = session.reply("waiting", "ACCEPTED", false, waitingRole).get("state").asObject();
+        JsonObject spectator = session.spectatorView();
+        JsonObject replay = session.transcriptPage(revision, 1).get("records").asArray().get(0).asObject().get("state").asObject();
+
+        assertFalse(actor.get("actions").asArray().isEmpty());
+        assertFalse(actor.get("passing").asObject().get("ranges").asArray().isEmpty());
+        CanonicalJson canonical = new CanonicalJson();
+        for (JsonObject observer : List.of(waiting, spectator, replay)) {
+            for (String field : List.of("actor", "decisionKind", "players", "ballState", "phase", "passing"))
+                assertEquals(canonical.encode(actor.get(field), 65536), canonical.encode(observer.get(field), 65536), field);
+            assertTrue(observer.get("actions").asArray().isEmpty());
+            assertTrue(observer.get("prompt").isNull());
+            for (String privateField : List.of("playerActionMenu", "movementForecast", "blockPreview", "threats", "savedFormations", "computer"))
+                assertFalse(observer.names().contains(privateField), privateField);
+        }
+        JsonObject inspected = session.movementRange(waitingRole, revision, ball.source.getId());
+        assertEquals(ball.source.getId(), inspected.getString("playerId", null));
+        assertFalse(inspected.get("full").asArray().isEmpty());
+    }
+
     @Test void explicitlyDeclaredPassMovesThenThrowsToTheReviewedSquare() throws Exception {
         JsonArray journeys = new JsonArray();
         for (int mode = 0; mode < 3; mode++) {
@@ -1396,9 +1425,16 @@ class SetupSessionMovementTest {
             return advanceToTurn("receive", view -> view.get("actions").asArray().get(0).asObject());
         }
 
+        static JsonObject actingView(SetupSession session, JsonObject state) {
+            String actor = state.getString("actor", null);
+            return actor.equals(state.getString("callerRole", null)) ? state
+                : session.reply("load", "ACCEPTED", false, actor).get("state").asObject();
+        }
+
         JsonObject advanceToTurn(String receiveOption, Function<JsonObject, JsonObject> selectAction) {
             JsonObject view = session.reply("load", "ACCEPTED", false, "home").get("state").asObject();
             for (int index = 0; index < 100; index++) {
+                view = actingView(session, view);
                 JsonObject endTurn = null;
                 for (JsonValue item : view.get("actions").asArray())
                     if ("endTurn".equals(item.asObject().getString("kind", null))) endTurn = item.asObject();

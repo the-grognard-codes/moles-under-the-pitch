@@ -1,10 +1,23 @@
 import type { SetupState } from './setup-protocol.ts';
 
+const interruptsKickoff = new Set(['coin', 'receive', 'followUp', 'blockDie', 'rerollDie', 'reroll', 'skill', 'push',
+  'apothecary', 'interception', 'argueTheCall', 'bribe']);
+const legacyInterruptsKickoff = new Set(['followUp', 'blockDie', 'reroll', 'skill', 'push', 'apothecary', 'interception', 'argueTheCall', 'bribe']);
+
+export function waitingMessage(view: SetupState): string {
+  if (view.callerRole === 'spectator') return 'Watching match · coach decisions appear here when resolved.';
+  if (view.actor !== view.callerRole) return 'Waiting for the other participant.';
+  if (view.decisionKind === 'engine' || view.decisionKind === undefined && view.phase === 'PLAY' && view.actions.length === 0)
+    return 'Waiting for an engine decision. Reconnect if the match appears stuck.';
+  return 'Waiting for the next server decision.';
+}
+
 export type CurrentGameStep = { title: string; instruction: string; progress?: string };
 /** Broadcast only drive setup and kickoff instructions from the accepted public state. */
 export function currentGameStep(view: SetupState): CurrentGameStep | null {
   if (view.phase === 'FULL_TIME' || view.saveResume?.status === 'SUSPENDED' || view.saveResume?.status === 'RESUME_PENDING'
-    || view.prompt || view.actions.some(action => ['followUp', 'blockDie', 'reroll', 'skill', 'push', 'apothecary', 'interception', 'argueTheCall', 'bribe'].includes(action.kind)))
+    || (view.decisionKind === undefined ? view.prompt || view.actions.some(action => legacyInterruptsKickoff.has(action.kind))
+      : interruptsKickoff.has(view.decisionKind)))
     return null;
   const kickoff = view.kickoff;
   const event = kickoff?.event ?? (view.turnMode === 'BLITZ' ? 'CHARGE' : view.turnMode);
@@ -13,7 +26,8 @@ export function currentGameStep(view: SetupState): CurrentGameStep | null {
     ? kickoff.completed + ' moved · maximum ' + kickoff.allowed + ' · ' + Math.max(0, kickoff.allowed - kickoff.completed) + ' remaining'
     : kickoff.selected + ' selected · maximum ' + kickoff.allowed : undefined;
   const actor = event === 'TOUCHBACK'
-    ? view.actions.find(action => action.kind === 'touchback')?.actor ?? (view.actor === 'home' ? 'away' : 'home')
+    ? view.decisionKind === 'touchback' ? view.actor
+      : view.actions.find(action => action.kind === 'touchback')?.actor ?? (view.actor === 'home' ? 'away' : 'home')
     : kickoff?.actor ?? view.actor;
   const waiting = view.callerRole !== actor ? ' Waiting for the ' + actor + ' coach.' : '';
   if (event === 'QUICK_SNAP') return { title: 'Quick Snap!',
@@ -29,7 +43,8 @@ export function currentGameStep(view: SetupState): CurrentGameStep | null {
       : 'Kicking team to select ' + allowance + ' to redeploy, then confirm their setup.') + waiting, progress };
   if (event === 'TOUCHBACK') return { title: 'Touchback!', instruction: 'Receiving coach: assign the ball to an eligible player.' + waiting };
   if (view.phase === 'SETUP') return { title: 'Team setup', instruction: 'Set up the ' + view.actor + ' team, then confirm.' + waiting };
-  if (view.phase === 'READY_FOR_KICKOFF' || view.actions.some(action => action.kind === 'kickoff'))
+  if (view.phase === 'READY_FOR_KICKOFF' || view.decisionKind === 'kickoff'
+    || view.decisionKind === undefined && view.actions.some(action => action.kind === 'kickoff'))
     return { title: 'Kickoff!', instruction: 'Kicking coach: click the kick location on the pitch.' + waiting };
   return null;
 }

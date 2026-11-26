@@ -1,6 +1,7 @@
 import type { MatchDecision } from './match-decision.ts';
 import { blockFace, reportedDice } from './dice-presentation.ts';
 import type { PresentedRoll } from './dice-presentation.ts';
+import type { LogBlock } from './log-presentation.ts';
 import type { TranscriptRecord } from './transcript-protocol.ts';
 
 /** Keep actual block outcomes separate from the current native Pro test report. */
@@ -24,10 +25,19 @@ export function withProTest(decision: MatchDecision | null, records: TranscriptR
   let originalRolls: PresentedRoll[] | undefined;
   let uphill: boolean | undefined;
   {
-    const block = decision.options.some(option => option.id.includes(':block-') || option.dieKind === 'block');
+    const options = decision.options.flatMap(option => [option, ...(option.choices ?? [])]);
+    const block = options.some(option => option.id.includes(':block-') || option.dieKind === 'block');
+    const offeredTargets = new Set(options.flatMap(option => option.targetPlayerId ? [option.targetPlayerId] : []));
+    const target = offeredTargets.size === 1 ? offeredTargets.values().next().value
+      : current?.state.blockContext?.activeTargetPlayerId;
+    const multiple = current?.state.activePlayerAction === 'multipleBlock';
     for (let index = records.length - 1; index >= 0; index--) {
       if (records[index].revision > revision) continue;
+      const state = records[index].state;
+      if (multiple && (state.activePlayerAction !== 'multipleBlock' || state.activePlayerId !== current?.state.activePlayerId
+        || state.half !== current.state.half || state.drive !== current.state.drive || state.homeTurn !== current.state.homeTurn || state.awayTurn !== current.state.awayTurn)) break;
       const original = reports(records[index]).filter(report => block ? report.reportId === 'blockRoll'
+        && (!multiple || target && (report.defenderId ?? (report.logBlock as LogBlock | undefined)?.defenderId) === target)
         : report.reportId !== 'reRoll' && reportedDice(report)?.faces.length === 1
           && reportedDice(report)?.rolls?.[0]?.kind === 'd6').at(-1);
       if (!original) continue;

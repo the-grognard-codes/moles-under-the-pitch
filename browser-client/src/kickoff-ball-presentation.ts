@@ -5,11 +5,12 @@ export const kickoffBallState: BallState = { version: 1, inPlay: true, moving: t
 
 /** Kickoff shows the ball before native possession considers it in play. */
 export function pitchBallState(view: SetupState): BallState | undefined {
-  return view.kickPreview || view.driveTracker?.phase === 'KICKOFF' || view.actions.some(action => action.kind === 'kickSkill')
+  return view.kickPreview || view.driveTracker?.phase === 'KICKOFF' || view.decisionKind === 'kickSkill'
+    || view.decisionKind === undefined && view.actions.some(action => action.kind === 'kickSkill')
     ? kickoffBallState : view.ballState;
 }
 
-/** Legal actions can be visible to both coaches; only their owner places the kick. */
+/** Only the coach offered the kickoff can select a placement. */
 export function kickoffPlacementTarget(view: SetupState, actions: SetupAction[], pinned: SetupAction | undefined,
   hover: Point | null): Point | null {
   if (view.phase !== 'READY_FOR_KICKOFF' || view.callerRole === 'spectator' || view.actor !== view.callerRole) return null;

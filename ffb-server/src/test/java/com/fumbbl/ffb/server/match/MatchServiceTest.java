@@ -549,10 +549,15 @@ class MatchServiceTest {
 			assertEquals(metadata, result.get("result"));
 			assertEquals(JsonValue.NULL, result.get("event"));
 			request.set("operation", "replay").add("index", 0);
+			PublicMatchView projection = new PublicMatchView();
 			for (int index = 0; index <= finalRevision; index++) {
 				JsonObject replay = endpoint.handle(service, "home", request.set("index", index));
 				assertEquals(metadata, replay.get("result"));
-				assertEquals(storedEvents.get(index), replay.get("event"));
+				JsonObject storedEvent = storedEvents.get(index).asObject();
+				JsonObject event = replay.get("event").asObject();
+				assertEquals(index, event.getInt("revision", -1));
+				assertEquals(storedEvent.get("kind"), event.get("kind"));
+				assertEquals(projection.recorded(storedEvent.get("state").asObject(), "home"), event.get("state"));
 			}
 
 			MatchHistory history = service.resultHistory("away", id);

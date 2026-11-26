@@ -33,6 +33,13 @@ try {
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/hud-test`);
   await page.locator('.coach-match').waitFor();
   await page.evaluate(() => document.fonts.ready);
+  await page.evaluate(state => {
+    const { playerActionMenu, movementForecast, blockPreview, threats, ...shared } = state;
+    window.publishHud({ ...shared, callerRole: 'spectator', decisionKind: 'turn', actions: [], prompt: null });
+  }, state);
+  await page.getByText('Watching match · coach decisions appear here when resolved.', { exact: true }).waitFor();
+  assert.equal(await page.getByText(/Reconnect if the match appears stuck/).count(), 0);
+  await page.evaluate(state => window.publishHud(state), state);
   await page.getByRole('button', { name: 'Debug', exact: true }).click();
   assert.equal(await page.getByRole('region', { name: 'Match debug' }).isVisible(), true);
   const offered = page.getByLabel('Server action', { exact: true });

@@ -1,5 +1,6 @@
 package com.fumbbl.ffb.test;
 
+import com.eclipsesource.json.JsonObject;
 import com.fumbbl.ffb.net.commands.ServerCommandModelSync;
 import com.fumbbl.ffb.server.GameState;
 import com.fumbbl.ffb.server.match.SetupSession;
@@ -18,6 +19,11 @@ final class SetupSessionFixtureState extends GameState {
     }
 
 
+
+    static JsonObject actingView(SetupSession session) {
+        String actor = session.spectatorView().getString("actor", null);
+        return session.reply("inspect", "ACCEPTED", false, actor).get("state").asObject();
+    }
 
     void attachTo(SetupSession session) throws ReflectiveOperationException {
         Field presentation = SetupSession.class.getDeclaredField("blockPresentation");

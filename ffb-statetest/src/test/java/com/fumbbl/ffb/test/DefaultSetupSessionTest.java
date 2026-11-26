@@ -146,7 +146,7 @@ class DefaultSetupSessionTest {
 		return (MatchDocument) field.get(new SetupSessionTest().session(count));
 	}
 	private JsonObject payload(SetupSession session) { return JsonObject.readFrom(session.recoveryArtifact()).get("payload").asObject(); }
-	private JsonObject view(SetupSession session) { return session.reply("inspect", "ACCEPTED", false, "home").get("state").asObject(); }
+	private JsonObject view(SetupSession session) { return SetupSessionFixtureState.actingView(session); }
 	private JsonObject request(JsonObject view, String operation) { return new JsonObject().add("requestId", UUID.randomUUID().toString()).add("operation", operation).add("expectedRevision", view.get("revision")); }
 	private JsonObject choice(JsonObject view) { return request(view, "choice").add("promptId", view.get("prompt").asObject().get("id")).add("optionId", view.get("prompt").asObject().get("options").asArray().get(0)); }
 	private void choose(SetupSession session) { JsonObject view = view(session); assertEquals("ACCEPTED", session.apply(view.getString("actor", null), choice(view)).getString("code", null)); }

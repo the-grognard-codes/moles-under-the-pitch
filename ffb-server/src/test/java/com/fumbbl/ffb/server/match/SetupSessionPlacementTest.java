@@ -624,13 +624,14 @@ class SetupSessionPlacementTest {
         JsonObject setup() {
             JsonObject state = session.reply("load", "ACCEPTED", false, "home").get("state").asObject();
             while (!"SETUP".equals(state.getString("phase", null))) {
+                state = SetupSessionMovementTest.Fixture.actingView(session, state);
                 JsonObject prompt = state.get("prompt").asObject();
                 JsonObject choice = request("choice", "choice-" + ++sequence, state)
                     .add("promptId", prompt.get("id"))
                     .add("optionId", "coin".equals(prompt.getString("kind", null)) ? "heads" : "receive");
                 state = session.apply(state.getString("actor", null), choice).get("state").asObject();
             }
-            return state;
+            return SetupSessionMovementTest.Fixture.actingView(session, state);
         }
 
 
@@ -655,6 +656,7 @@ class SetupSessionPlacementTest {
         }
 
         JsonObject actionOrNull(JsonObject view, String prefix) {
+            view = SetupSessionMovementTest.Fixture.actingView(session, view);
             for (JsonValue option : view.get("actions").asArray()) {
                 JsonObject action = option.asObject();
                 if (action.getString("id", "").split(":", 2)[1].startsWith(prefix)) return action;
@@ -671,7 +673,7 @@ class SetupSessionPlacementTest {
         JsonObject submit(JsonObject view, String id, JsonObject action) {
             JsonObject result = session.apply(view.getString("actor", null), request("action", id, view).add("actionId", action.get("id")));
             assertEquals("ACCEPTED", result.getString("code", null), id);
-            return result.get("state").asObject();
+            return SetupSessionMovementTest.Fixture.actingView(session, result.get("state").asObject());
         }
 
         JsonObject request(String operation, String id, JsonObject state) {

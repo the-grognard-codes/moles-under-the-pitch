@@ -14,6 +14,7 @@ import com.fumbbl.ffb.server.match.JdbcV2PrincipalDirectory;
 import com.fumbbl.ffb.server.match.MatchRepository;
 import com.fumbbl.ffb.server.match.MatchService;
 import com.fumbbl.ffb.server.match.SetupApplication;
+import com.fumbbl.ffb.server.match.PublicMatchView;
 import com.fumbbl.ffb.server.match.SetupSession;
 import com.fumbbl.ffb.server.match.V2MatchAccess;
 import com.fumbbl.ffb.server.match.V2PreparationService;
@@ -70,9 +71,10 @@ class V2RuntimeIntegrationTest {
 		accepted(send(adapter, away, request("preparedMatch").add("operation", "activate").add("matchId", match).add("expectedRevision", 2)));
 		assertEquals("preparationChanged", home.last.getString("type", null));
 		JsonObject initial = send(adapter, home, load(match)).get("state").asObject();
-		accepted(send(adapter, away, load(match)));
+		JsonObject awayInitial = send(adapter, away, load(match)).get("state").asObject();
+		if ("away".equals(initial.getString("actor", null))) initial = awayInitial;
 		JsonObject watched = send(adapter, viewer, request("watch").add("matchId", match)); accepted(watched);
-		assertEquals(initial.set("callerRole", "spectator"), watched.get("state"));
+		assertSpectatorParity(initial, watched.get("state").asObject());
 		JsonObject spectatorChat = request("matchChat").add("operation", "send").add("matchId", match).add("text", "Watching live");
 		JsonObject posted = send(adapter, viewer, spectatorChat); accepted(posted);
 		assertEquals("spectator", posted.get("page").asObject().get("messages").asArray().get(0).asObject().getString("role", null));
@@ -91,13 +93,13 @@ class V2RuntimeIntegrationTest {
 		Peer actor = "home".equals(initial.getString("actor", null)) ? home : away;
 		JsonObject changed = send(adapter, actor, choice); accepted(changed);
 		JsonObject state = changed.get("state").asObject();
-		assertEquals(JsonObject.readFrom(state.toString()).set("callerRole", "spectator"), viewer.last.get("state"));
+		assertSpectatorParity(state, viewer.last.get("state").asObject());
 		String after = recovery.find(match).json;
 		BrowserV2Adapter recreated = runtime(connections, run);
 		Peer restoredViewer = new Peer(), restoredActor = new Peer();
 		authenticate(recreated, restoredViewer, "viewer");
 		JsonObject restored = send(recreated, restoredViewer, request("watch").add("matchId", match)); accepted(restored);
-		assertEquals(JsonObject.readFrom(state.toString()).set("callerRole", "spectator"), restored.get("state"));
+		assertSpectatorParity(state, restored.get("state").asObject());
 		JsonObject chatAfterRestart = send(recreated, restoredViewer, request("matchChat").add("operation", "load")
 			.add("matchId", match).add("from", 0).add("limit", 32));
 		accepted(chatAfterRestart);
@@ -107,9 +109,10 @@ class V2RuntimeIntegrationTest {
 		assertEquals(after, recovery.find(match).json);
 		// Reach actual setup, persist the default formation, then reconstruct a fresh runtime.
 		Peer restoredOther = new Peer(); authenticate(recreated, restoredOther, actor == home ? "away" : "home");
-		JsonObject receive = request("setup").add("operation", "choice").add("matchId", match)
-			.add("expectedRevision", state.get("revision")).add("promptId", state.get("prompt").asObject().get("id")).add("optionId", "receive");
 		Peer receiver = state.getString("actor", null).equals(initial.getString("actor", null)) ? restoredActor : restoredOther;
+		JsonObject receiveView = send(recreated, receiver, load(match)).get("state").asObject();
+		JsonObject receive = request("setup").add("operation", "choice").add("matchId", match)
+			.add("expectedRevision", receiveView.get("revision")).add("promptId", receiveView.get("prompt").asObject().get("id")).add("optionId", "receive");
 		JsonObject deployed = send(recreated, receiver, receive); accepted(deployed);
 		JsonObject deployedState = deployed.get("state").asObject();
 		assertEquals("SETUP", deployedState.getString("phase", null));
@@ -119,7 +122,7 @@ class V2RuntimeIntegrationTest {
 		String deployedArtifact = recovery.find(match).json;
 		BrowserV2Adapter finalRuntime = runtime(connections, run); Peer finalViewer = new Peer(); authenticate(finalRuntime, finalViewer, "viewer");
 		JsonObject finalState = send(finalRuntime, finalViewer, request("watch").add("matchId", match)); accepted(finalState);
-		assertEquals(JsonObject.readFrom(deployedState.toString()).set("callerRole", "spectator"), finalState.get("state"));
+		assertSpectatorParity(deployedState, finalState.get("state").asObject());
 		assertEquals(deployedArtifact, recovery.find(match).json);
 		System.out.println("V2 native integration PASS: match=" + match + ", revision=" + deployedState.getInt("revision", -1) + ", preparation-notification/default-setup/recovery/exact-retry=true");
 	}
@@ -187,6 +190,8 @@ class V2RuntimeIntegrationTest {
 		for (int index = 0; index < 160 && !session.isComplete(); index++) {
 			JsonObject next = request("setup").add("matchId", match);
 			String role = view.getString("actor", null);
+			if (!role.equals(view.getString("callerRole", null)))
+				view = send(adapter, "home".equals(role) ? home : away, load(match)).get("state").asObject();
 			if (!view.get("prompt").isNull()) {
 				JsonObject prompt = view.get("prompt").asObject();
 				next.add("operation", "choice").add("expectedRevision", view.get("revision"))
@@ -268,6 +273,14 @@ class V2RuntimeIntegrationTest {
 
 	private void authenticate(BrowserV2Adapter adapter, Peer peer, String identity) { accepted(send(adapter, peer, request("authenticate").add("bearer", identity))); }
 	private JsonObject request(String type) { return new JsonObject().add("version", 2).add("type", type).add("requestId", UUID.randomUUID().toString()); }
+	private void assertSpectatorParity(JsonObject coach, JsonObject spectator) {
+		assertTrue(spectator.get("prompt").isNull());
+		assertTrue(spectator.get("actions").asArray().isEmpty());
+		assertEquals("spectator", spectator.getString("callerRole", null));
+		PublicMatchView projection = new PublicMatchView();
+		assertEquals(projection.live(coach, "spectator"), projection.live(spectator, "spectator"));
+	}
+
 	private JsonObject load(String match) { return request("setup").add("operation", "load").add("matchId", match); }
 	private JsonObject send(BrowserV2Adapter adapter, Peer peer, JsonObject request) {
 		adapter.receive(peer, request.toString()); return peer.responses.get(request.getString("requestId", null));

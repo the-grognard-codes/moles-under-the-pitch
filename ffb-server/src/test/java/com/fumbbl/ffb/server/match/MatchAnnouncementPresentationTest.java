@@ -116,12 +116,18 @@ class MatchAnnouncementPresentationTest {
             assertEquals(0L, bank.get("awayUsedMs").asLong());
         }
 
-        JsonArray scoringOutcomes = nativeOutcomes(fixture.session, paused.getInt("revision", -1));
+        int revision = paused.getInt("revision", -1);
+        JsonArray scoringOutcomes = recordedNativeOutcomes(fixture.session, revision);
         int announcement = announcementIndex(scoringOutcomes, "touchdown");
         int score = changeIndex(scoringOutcomes, "teamResultSetScore", null);
         int offer = changeIndex(scoringOutcomes, "gameSetDialogParameter", "skillUse");
         assertTrue(score >= 0 && score <= announcement && announcement < offer, scoringOutcomes.toString());
-        JsonObject touchdown = events(scoringOutcomes).stream()
+        JsonArray publicOutcomes = nativeOutcomes(fixture.session, revision);
+        assertEquals(announcement, announcementIndex(publicOutcomes, "touchdown"));
+        assertEquals(-1, changeIndex(publicOutcomes, "gameSetDialogParameter", "skillUse"));
+        assertEquals(-1, changeIndex(publicOutcomes, "teamResultSetScore", null));
+        assertEquals("skill", paused.getString("decisionKind", null));
+        JsonObject touchdown = events(publicOutcomes).stream()
             .filter(event -> "touchdown".equals(event.getString("kind", null))).findFirst().orElseThrow();
         assertEquals(scoringRole, touchdown.getString("team", null));
         assertEquals(scoringTurn, touchdown.getInt("turn", -1));
@@ -222,7 +228,7 @@ class MatchAnnouncementPresentationTest {
         }
 
         JsonObject scored = applyAction(fixture, ready, "score-with-weapon", action(ready, "endTurn").getString("id", null));
-        JsonArray scoringOutcomes = nativeOutcomes(fixture.session, scored.getInt("revision", -1));
+        JsonArray scoringOutcomes = recordedNativeOutcomes(fixture.session, scored.getInt("revision", -1));
         int touchdown = announcementIndex(scoringOutcomes, "touchdown");
         assertTrue(touchdown >= 0 && touchdown < changeIndex(scoringOutcomes, "gameSetDialogParameter", "skillUse"));
         assertEquals(ready.get("drive"), scored.get("drive"));
@@ -379,7 +385,7 @@ class MatchAnnouncementPresentationTest {
         }
         current = fixture.session.reply("load", "ACCEPTED", false, current.getString("actor", null)).get("state").asObject();
         String boundary = ending.equals("lastTurnTurnover") ? "turnover" : "touchdown";
-        JsonArray outcomes = nativeOutcomes(fixture.session, current.getInt("revision", -1));
+        JsonArray outcomes = recordedNativeOutcomes(fixture.session, current.getInt("revision", -1));
         int selection = changeIndex(outcomes, "gameSetDialogParameter", "playerChoice");
         assertTrue(selection >= 0, outcomes.toString());
         if (ending.equals("voluntaryEnd")) {
@@ -826,10 +832,15 @@ class MatchAnnouncementPresentationTest {
     }
 
     private void assertDecisionOffered(SetupSession session, JsonObject view, String dialogId) {
-        JsonArray outcomes = nativeOutcomes(session, view.getInt("revision", -1));
+        JsonArray outcomes = recordedNativeOutcomes(session, view.getInt("revision", -1));
         assertTrue(changeIndex(outcomes, "gameSetDialogParameter", dialogId) >= 0, outcomes.toString());
         assertEquals(-1, announcementIndex(outcomes, "touchdown"));
         assertEquals(-1, announcementIndex(outcomes, "turnover"));
+    }
+
+    private JsonArray recordedNativeOutcomes(SetupSession session, int revision) {
+        return session.recoveryCheckpointPayload().get("transcript").asObject().get("records").asArray()
+            .get(revision).asObject().get("native").asArray();
     }
 
     private JsonArray nativeOutcomes(SetupSession session, int revision) {

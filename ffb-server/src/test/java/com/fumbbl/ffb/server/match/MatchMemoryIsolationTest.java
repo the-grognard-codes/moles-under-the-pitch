@@ -83,6 +83,9 @@ class MatchMemoryIsolationTest {
 		JsonObject view = response.get("state").asObject();
 		int sequence = 0;
 		for (; sequence < 160 && !"FULL_TIME".equals(view.getString("phase", null)); sequence++) {
+			String actor = view.getString("actor", null);
+			if (!actor.equals(view.getString("callerRole", null)))
+				view = application.handle(actor, load(fixture.document.matchId)).get("state").asObject();
 			JsonObject request = fixture.recordedDecision(view, "growth-" + sequence, sequence);
 			response = application.handle(view.getString("actor", null), request);
 			assertEquals("ACCEPTED", response.getString("code", null), request::toString);

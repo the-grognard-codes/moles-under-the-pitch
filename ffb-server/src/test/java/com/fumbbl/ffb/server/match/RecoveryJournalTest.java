@@ -168,7 +168,7 @@ class RecoveryJournalTest {
 		for (int index = 0; index < 75 && !session.isComplete(); index++) {
 			String before = session.recoveryArtifact();
 			JsonObject ready = session.reply("read", "ACCEPTED", false, "home").get("state").asObject();
-			JsonObject request = next(fixture, ready, index);
+			JsonObject request = next(fixture, session, ready, index);
 			JsonObject response = session.apply(ready.getString("actor", null), request);
 			assertEquals("ACCEPTED", response.getString("code", null), response.toString()); accepted++;
 			String after = session.recoveryArtifact();
@@ -218,7 +218,7 @@ class RecoveryJournalTest {
 		RecoveryRepository.Record base = new RecoveryRepository.Record(fixture.document.matchId, 7, fixture.session.recoveryArtifact());
 		RecoveryJournal.Cursor cursor = journal.cursor(base);
 		JsonObject ready = fixture.session.reply("load", "ACCEPTED", false, "home").get("state").asObject();
-		fixture.session.apply(ready.getString("actor", null), next(fixture, ready, 0));
+		fixture.session.apply(ready.getString("actor", null), next(fixture, fixture.session, ready, 0));
 		RecoveryJournal.Change change = journal.change(fixture.session, cursor, 7);
 		RecoveryRepository.Record record = new RecoveryRepository.Record(base.matchId, 8, change.json);
 		assertCorrupt(() -> journal.restore(base.matchId, 8, 7, base.json, Collections.emptyList()));
@@ -230,7 +230,8 @@ class RecoveryJournalTest {
 	}
 
 	private void assertCorrupt(Runnable restore) { assertEquals("RECOVERY_CORRUPT", assertThrows(MatchService.Failure.class, restore::run).code); }
-	private JsonObject next(SetupSessionMovementTest.Fixture fixture, JsonObject view, int index) {
+	private JsonObject next(SetupSessionMovementTest.Fixture fixture, SetupSession session, JsonObject view, int index) {
+		view = SetupSessionMovementTest.Fixture.actingView(session, view);
 		JsonObject request = fixture.request("action", "journal-" + index, view);
 		if ("SETUP".equals(view.getString("phase", null))) return request.set("operation", "confirm");
 		if (!view.get("prompt").isNull()) {

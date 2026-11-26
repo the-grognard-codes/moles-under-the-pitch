@@ -58,6 +58,7 @@ class OnTheBallMovementTest {
                 scenario.state.getDiceRoller().setRecoveryRoll(sides -> dodgeTarget);
                 JsonObject paused = scenario.fixture.session.apply(scenario.role, scenario.fixture.request("movement", "dodge-route", accepted)
                     .add("playerId", scenario.attacker.getId()).add("kind", "move").add("waypoints", points)).get("state").asObject();
+                paused = SetupSessionMovementTest.Fixture.actingView(scenario.fixture.session, paused);
                 assertNotNull(Roundup5NativeActionsTest.action(paused, "reactiveSkill"), paused.toString());
                 assertFalse(JsonObject.readFrom(scenario.fixture.session.recoveryArtifact()).get("payload").asObject().get("pendingRoute").isNull());
                 JsonObject artifact = JsonObject.readFrom(scenario.fixture.session.recoveryArtifact());
@@ -114,6 +115,7 @@ class OnTheBallMovementTest {
                     .digest(payload.toString().getBytes(StandardCharsets.UTF_8))));
             }
             SetupSession recovered = new SetupSession(scenario.fixture.server, scenario.fixture.document, artifact.toString());
+            paused = SetupSessionMovementTest.Fixture.actingView(scenario.fixture.session, paused);
             JsonObject answer = byId(paused, "reaction-decline");
             JsonObject request = scenario.fixture.request("action", "holder-decline", paused).add("actionId", answer.get("id"));
             scenario.state.getDiceRoller().setRecoveryRoll(sides -> success ? 6 : 1);
@@ -150,6 +152,7 @@ class OnTheBallMovementTest {
                     .digest(payload.toString().getBytes(StandardCharsets.UTF_8))));
             }
             SetupSession recovered = new SetupSession(scenario.fixture.server, scenario.fixture.document, artifact.toString());
+            paused = SetupSessionMovementTest.Fixture.actingView(scenario.fixture.session, paused);
             JsonObject answer = byId(paused, "reaction-player:" + holder.getId());
             JsonObject request = scenario.fixture.request("action", "holder-use", paused).add("actionId", answer.get("id"));
             AtomicInteger originalRolls = new AtomicInteger(), restoredRolls = new AtomicInteger();

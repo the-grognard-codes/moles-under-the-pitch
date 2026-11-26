@@ -59,6 +59,7 @@ class JumpUpBlockPreviewTest {
             JsonObject keep = committed.get("actions").asArray().values().stream().map(JsonValue::asObject)
                 .filter(action -> action.getString("id", "").endsWith("block-reroll:none")).findFirst().orElse(null);
             if (keep != null) committed = scenario.apply(committed, keep);
+            committed = SetupSessionMovementTest.Fixture.actingView(scenario.fixture.session, committed);
             assertTrue(Roundup5NativeActionsTest.has(committed, "blockDie"), committed.toString());
             assertEquals(expected.getInt("dice", 0), ServerUtilBlock.findNrOfBlockDice(scenario.state, scenario.attacker, target, false, false));
             assertEquals(Math.abs(expected.getInt("dice", 0)), committed.get("actions").asArray().values().stream().map(JsonValue::asObject)

@@ -146,3 +146,28 @@ test('describes a server size stop without attributing a coach action', () => {
     state: { ...state(1, 4), phase: 'FULL_TIME', homeScore: 1, awayScore: 0 } };
   assert.ok(matchLogLines([terminal]).some(line => line.text === 'Match ended at the server memory limit. Score 1-0.'));
 });
+
+
+test('links identical Multiple Block pools to their own choices in either order', () => {
+  const multiple = (revision: number, reports: Record<string, unknown>[]): TranscriptRecord => ({
+    ...start, index: revision, revision, kind: 'ACTION',
+    state: { ...state(revision, 4), activePlayerAction: 'multipleBlock' },
+    native: [{ commandNr: revision, reportList: { reports } }],
+  });
+  const roll = (defenderId: string) => ({ reportId: 'blockRoll', defenderId, blockRoll: [4, 6], choosingTeamId: 'home' });
+  const choice = (defenderId: string, diceIndex: number) => ({
+    reportId: 'blockChoice', defenderId, blockRoll: [4, 6], diceIndex,
+    logBlock: { version: 1, attackerId: 'runner', defenderId, chooser: 'home' },
+  });
+  const dice = matchLogLines([
+    multiple(1, [roll('first'), roll('second')]), multiple(2, [choice('second', 1)]), multiple(3, [choice('first', 0)]),
+  ]).filter(line => line.dice);
+  assert.deepEqual(dice.map(line => [line.blockTargetId, line.dice?.selected]), [['first', 0], ['second', 1]]);
+  const reroll = [{ reportId: 'blockReRoll', defenderId: 'second', blockRoll: [1], blockRollAfterReroll: [4, 1],
+    rerolledIndexes: [1], reRollSource: 'Pro' }, { ...roll('second'), blockRoll: [4, 1] }];
+  const rerolled = matchLogLines([
+    multiple(1, [roll('first'), roll('second')]), multiple(2, reroll),
+    multiple(3, [choice('first', 0), { ...choice('second', 1), blockRoll: [4, 1] }]),
+  ]).filter(line => line.dice);
+  assert.deepEqual(rerolled.map(line => [line.blockTargetId, line.dice?.selected]), [['first', 0], ['second', null], ['second', 1]]);
+});

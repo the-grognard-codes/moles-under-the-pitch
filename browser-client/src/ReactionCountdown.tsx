@@ -7,7 +7,7 @@ import type { ReactionAnchor } from './reaction-clock.ts';
 const anchors = new Map<string, ReactionAnchor>();
 
 export function useReactionCountdown(reaction: Reaction, matchId: string) {
-  const key = `${matchId}:${reaction.id}:${reaction.expiresAt}`;
+  const key = `${matchId}:${reaction.id ?? reaction.actor}:${reaction.expiresAt}`;
   let anchor = anchors.get(key);
   if (!anchor) {
     anchor = reactionAnchor(reaction, performance.now()); anchors.set(key, anchor);

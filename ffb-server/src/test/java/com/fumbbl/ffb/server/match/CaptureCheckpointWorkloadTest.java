@@ -31,6 +31,7 @@ class CaptureCheckpointWorkloadTest {
 		String id = fixture.document.matchId;
 		fixture.session.startSaveResumeRetention(System.currentTimeMillis());
 		for (int index = 0; index < 268; index++) {
+			view = SetupSessionMovementTest.Fixture.actingView(fixture.session, view);
 			JsonObject request = next(fixture, view, index, true);
 			JsonObject reply = fixture.session.apply(view.getString("actor", null), request);
 			assertEquals("ACCEPTED", reply.getString("code", null), request::toString);
@@ -49,6 +50,7 @@ class CaptureCheckpointWorkloadTest {
 		}
 		SetupApplication application = new SetupApplication(fixture.server, matches, recovery);
 		for (int index = 268; index < 275; index++) {
+			view = actingView(application, fixture, view, index);
 			JsonObject request = next(fixture, view, index, true);
 			JsonObject accepted = application.handle(view.getString("actor", null), request);
 			assertEquals("ACCEPTED", accepted.getString("code", null));
@@ -57,6 +59,7 @@ class CaptureCheckpointWorkloadTest {
 		assertEquals(7, recovery.entries.size());
 		assertEquals(275, view.getInt("revision", -1));
 		long committed = recovery.generation;
+		view = actingView(application, fixture, view, 275);
 		String role = view.getString("actor", null);
 		JsonObject action = next(fixture, view, 275, true);
 		JsonObject load = fixture.request("load", "cold-load", view).remove("expectedRevision");
@@ -118,6 +121,7 @@ class CaptureCheckpointWorkloadTest {
 			int compactions = 0;
 			JsonArray samples = new JsonArray();
 			for (int index = 0; index < 36; index++) {
+				view = actingView(application, fixture, view, index);
 				JsonObject request = next(fixture, view, index, false);
 				String browserFixture = System.getProperty("capture.browserFixture", System.getenv("CAPTURE_BROWSER_FIXTURE"));
 				if (browserFixture != null && repeat == 0 && "PLAY".equals(view.getString("phase", null))
@@ -185,6 +189,15 @@ class CaptureCheckpointWorkloadTest {
 			if (generation != expected) return false;
 			base = next; generation = next.generation; entries.clear(); saves++; return true;
 		}
+	}
+
+	private JsonObject actingView(SetupApplication application, SetupSessionMovementTest.Fixture fixture, JsonObject view, int index) {
+		String actor = view.getString("actor", null);
+		if (actor.equals(view.getString("callerRole", null))) return view;
+		JsonObject load = fixture.request("load", "capture-view-" + index, view).remove("expectedRevision");
+		JsonObject response = application.handle(actor, load);
+		assertEquals("ACCEPTED", response.getString("code", null), load::toString);
+		return response.get("state").asObject();
 	}
 
 	private JsonObject next(SetupSessionMovementTest.Fixture fixture, JsonObject view, int index, boolean usePlayers) {
