@@ -1,5 +1,13 @@
 [
   {
+    "number": 693,
+    "title": "Give Star of the Show re-rolls to the scoring team",
+    "summary": "When a coach accepts Star of the Show, the scorer's team gets one extra re-roll for the next drive, even if the touchdown came during the opponent's turn.",
+    "category": "Gameplay",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/693",
+    "mergedAt": "2026-11-26T06:14:50Z"
+  },
+  {
     "number": 692,
     "title": "Show halftime after cleanup decisions",
     "summary": "The halftime announcement waits for first-half choices such as Star of the Show, Argue the Call, and Bribes. Second-half setup follows.",
