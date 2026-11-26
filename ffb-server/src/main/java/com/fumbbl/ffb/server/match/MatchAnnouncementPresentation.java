@@ -32,6 +32,7 @@ import java.util.function.Function;
 final class MatchAnnouncementPresentation {
     private static final List<String> LEGACY_CHECKPOINT_FIELDS = List.of("voluntary", "confirmed", "reason", "lastTurn", "pending");
     private static final List<String> KICKOFF_CHECKPOINT_FIELDS = List.of("lastWeather", "pendingKickoff", "deferredWeather");
+    private static final String PENDING_HALF_TIME_FIELD = "pendingHalfTime";
     private final MatchSplashRules rules = new MatchSplashRules();
     private final Map<Integer, JsonArray> syncs = new LinkedHashMap<>();
     private JsonArray pending = new JsonArray();
@@ -42,6 +43,7 @@ final class MatchAnnouncementPresentation {
     private String lastWeather;
     private JsonObject pendingKickoff;
     private JsonObject deferredWeather;
+    private JsonObject pendingHalfTime;
 
     void kickoff(Game game, KickoffResult result) {
         KickoffPresentation kickoff = rules.kickoffPresentation(result);
@@ -62,6 +64,7 @@ final class MatchAnnouncementPresentation {
     }
 
     void finished(Game game) {
+        pendingHalfTime = null;
         GameResult result = game.getGameResult();
         TeamResult homeResult = result.getTeamResultHome();
         TeamResult awayResult = result.getTeamResultAway();
@@ -110,7 +113,7 @@ final class MatchAnnouncementPresentation {
         if (game.getTurnMode() == TurnMode.REGULAR && reason == null) reason = confirmedReason;
     }
 
-    void end(Game game, Player<?> scorer, boolean halfEnded) {
+    void end(Game game, Player<?> scorer, boolean lastTurnOfHalf) {
         // Kickoff bonus actions and setup are not normal numbered team turns.
         if (scorer != null) {
             boolean home = game.getTeamHome().hasPlayer(scorer);
@@ -120,10 +123,19 @@ final class MatchAnnouncementPresentation {
             pending.add(event("turnover", game, game.isHomePlaying(),
                 reason == null ? "A rules-triggered turnover ended the turn." : reason));
         }
-        if (halfEnded && game.getHalf() == 1) pending.add(event("halfTime", game, game.isHomePlaying(), score(game)));
+        if (lastTurnOfHalf && game.getHalf() == 1) {
+            pendingHalfTime = event("halfTime", game, game.isHomePlaying(), score(game));
+        }
         voluntary = false;
         confirmed = false;
         reason = null;
+    }
+
+    void halfEnd() {
+        if (pendingHalfTime != null) {
+            pending.add(pendingHalfTime);
+            pendingHalfTime = null;
+        }
     }
 
     void playable(Game game) {
@@ -180,15 +192,19 @@ final class MatchAnnouncementPresentation {
     void recorded() { syncs.clear(); pending = new JsonArray(); }
 
     JsonObject checkpoint() {
-        return new JsonObject().add("voluntary", voluntary).add("confirmed", confirmed).add("reason", nullable(reason))
+        JsonObject saved = new JsonObject().add("voluntary", voluntary).add("confirmed", confirmed).add("reason", nullable(reason))
             .add("lastTurn", nullable(lastTurn)).add("pending", pending)
             .add("lastWeather", nullable(lastWeather)).add("pendingKickoff", pendingKickoff == null ? JsonValue.NULL : pendingKickoff)
             .add("deferredWeather", deferredWeather == null ? JsonValue.NULL : deferredWeather);
+        // Keep the older checkpoint shape when there is no halftime event to resume.
+        if (pendingHalfTime != null) saved.add(PENDING_HALF_TIME_FIELD, pendingHalfTime);
+        return saved;
     }
 
     void restore(JsonObject saved) {
+        JsonValue halfTime = saved.get(PENDING_HALF_TIME_FIELD);
         boolean legacy = saved.size() == LEGACY_CHECKPOINT_FIELDS.size();
-        boolean current = saved.size() == LEGACY_CHECKPOINT_FIELDS.size() + KICKOFF_CHECKPOINT_FIELDS.size()
+        boolean current = saved.size() == LEGACY_CHECKPOINT_FIELDS.size() + KICKOFF_CHECKPOINT_FIELDS.size() + (halfTime == null ? 0 : 1)
             && saved.names().containsAll(KICKOFF_CHECKPOINT_FIELDS);
         if (!saved.names().containsAll(LEGACY_CHECKPOINT_FIELDS) || !(legacy || current))
             throw new IllegalArgumentException("Invalid match announcement checkpoint fields");
@@ -201,6 +217,8 @@ final class MatchAnnouncementPresentation {
             lastWeather = legacy ? null : readNullable(saved, "lastWeather", JsonValue::asString);
             pendingKickoff = legacy ? null : readNullable(saved, "pendingKickoff", JsonValue::asObject);
             deferredWeather = legacy ? null : readNullable(saved, "deferredWeather", JsonValue::asObject);
+            // Older saves already recorded halftime when settling the first half's final turn.
+            pendingHalfTime = halfTime == null ? null : halfTime.asObject();
         } catch (UnsupportedOperationException invalid) {
             throw new IllegalArgumentException("Invalid match announcement checkpoint field type", invalid);
         }

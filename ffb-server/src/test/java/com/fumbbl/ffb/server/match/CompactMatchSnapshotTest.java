@@ -618,6 +618,56 @@ class CompactMatchSnapshotTest {
         ((RosterPlayer) player).addSkill(skills.forName(name));
     }
 
+    @Test
+    void restoresDeferredHalftimeFromCompactSnapshotAndCapturesItOnce() throws Exception {
+        try (BogrukEngineFixture fixture = fixture("Human", "Orc", 47)) {
+            SetupSession session = fixture.session;
+            String role = advanceToTurn(fixture).getString("actor", null);
+            Game game = nativeState(session).getGame();
+            game.getTurnDataHome().setTurnNr(8);
+            game.getTurnDataAway().setTurnNr(8);
+            Player<?> scorer = game.getActingTeam().getPlayers()[0];
+            UtilBox.putAllPlayersIntoBox(game);
+            int endZone = game.isHomePlaying() ? 25 : 0;
+            place(game, scorer, endZone, 7);
+            game.getFieldModel().setBallCoordinate(new FieldCoordinate(endZone, 7));
+            game.getFieldModel().setBallInPlay(true);
+            game.getFieldModel().setBallMoving(false);
+            grant(game, scorer, "Star of the Show");
+
+            applyChoice(session, role, "endTurn", "");
+            assertEquals(List.of("touchdown"), announcementKinds(session.compactCapture()));
+            String paused = commit(session, 0);
+            SetupSession restored = restoreAndCompare(fixture, session, paused);
+            JsonObject decline = offeredActions(view(restored, role), "skill")
+                .filter(option -> option.getString("id", "").endsWith(":false")).findFirst().orElseThrow();
+            JsonObject request = request(restored, "action", "decline-star-at-halftime").add("actionId", decline.get("id"));
+            restored.apply(role, request);
+            assertEquals(StepId.SETUP, nativeState(restored).getCurrentStep().getId());
+            assertEquals(List.of("halfTime"), announcementKinds(restored.compactCapture()));
+
+            String accepted = commit(restored, 0);
+            SetupSession afterAcceptance = SetupSession.restoreCompactSnapshot(fixture.server, accepted);
+            MatchService.Failure stale = assertThrows(MatchService.Failure.class, () -> afterAcceptance.apply(role, request));
+            assertEquals("STALE_REVISION", stale.code);
+            assertNull(afterAcceptance.compactCapture());
+            assertEquals(accepted, commit(afterAcceptance, 0));
+
+            JsonObject oldSnapshot = JsonObject.readFrom(paused);
+            // Older writers already placed halftime in history, outside the snapshot.
+            oldSnapshot.get("matchAnnouncements").asObject().remove("pendingHalfTime");
+            SetupSession olderSave = SetupSession.restoreCompactSnapshot(fixture.server, oldSnapshot.toString());
+            olderSave.apply(role, request);
+            assertEquals(StepId.SETUP, nativeState(olderSave).getCurrentStep().getId());
+            assertTrue(announcementKinds(olderSave.compactCapture()).isEmpty());
+        }
+    }
+
+    private List<String> announcementKinds(CompactMatchWrite.Capture capture) {
+        return RecordedMatchAnnouncements.events(JsonArray.readFrom(capture.nativeOutcomes())).stream()
+            .map(event -> event.getString("kind", null)).toList();
+    }
+
     private void applyChoice(SetupSession session, String role, String kind, String suffix) {
         JsonObject current = view(session, role);
         if ("confirm".equals(kind)) {
