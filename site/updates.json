@@ -1,5 +1,13 @@
 [
   {
+    "number": 692,
+    "title": "Show halftime after cleanup decisions",
+    "summary": "The halftime announcement waits for first-half choices such as Star of the Show, Argue the Call, and Bribes. Second-half setup follows.",
+    "category": "Gameplay",
+    "url": "https://github.com/the-grognard-codes/moles-under-the-pitch/pull/692",
+    "mergedAt": "2026-11-26T05:24:46Z"
+  },
+  {
     "number": 689,
     "title": "Show match choices to the coach who can act",
     "summary": "Waiting coaches and spectators see who can act and can still follow the shared pitch, dice, and replay. Both Multiple Block rolls are visible, and the current target's dice stay on screen while the coach decides.",
