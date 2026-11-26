@@ -1422,7 +1422,11 @@ class SetupSessionMovementTest {
         }
 
         JsonObject advanceToTurn() {
-            return advanceToTurn("receive", view -> view.get("actions").asArray().get(0).asObject());
+            return advanceToTurn("receive");
+        }
+
+        JsonObject advanceToTurn(String receiveOption) {
+            return advanceToTurn(receiveOption, view -> view.get("actions").asArray().get(0).asObject());
         }
 
         static JsonObject actingView(SetupSession session, JsonObject state) {

@@ -546,8 +546,8 @@ public class StepEndTurn extends AbstractStep {
 			}
 
 			if ((fNewHalf || fTouchdown) && useStarOfTheShow) {
-				TurnData scoringTurnData = game.getTeamHome().getPlayerById(touchdownPlayerId) != null
-					? game.getTurnDataHome() : game.getTurnDataAway();
+				Player<?> scorer = game.getPlayerById(touchdownPlayerId);
+				TurnData scoringTurnData = game.getTeamHome().hasPlayer(scorer) ? game.getTurnDataHome() : game.getTurnDataAway();
 				scoringTurnData.setReRolls(scoringTurnData.getReRolls() + 1);
 				scoringTurnData.setReRollShowStarOneDrive(scoringTurnData.getReRollShowStarOneDrive() + 1);
 				getResult().addReport(new ReportShowStarReRoll(touchdownPlayerId));

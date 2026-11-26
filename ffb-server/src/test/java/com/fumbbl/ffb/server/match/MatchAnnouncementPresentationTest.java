@@ -52,39 +52,59 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MatchAnnouncementPresentationTest {
+    private static final int STARTING_TEAM_RE_ROLLS = 2;
+
+    private enum Scorer { HOME, AWAY }
+    private enum ScoringTurn { OWN, OPPONENTS }
+    private enum Boundary { MID_HALF, HALFTIME }
+    private enum StarResponse { ACCEPT, DECLINE }
+
     @Test void acceptingStarAfterOwnTurnScoreKeepsOneTouchdown() throws Exception {
-        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(false, false, false, true);
+        verifyStarAfterRecoveredTouchdown(Scorer.AWAY, ScoringTurn.OWN, Boundary.MID_HALF, StarResponse.ACCEPT);
     }
 
     @Test void decliningStarAfterOffTurnScoreKeepsOneTouchdown() throws Exception {
-        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(true, true, false, false);
+        verifyStarAfterRecoveredTouchdown(Scorer.HOME, ScoringTurn.OPPONENTS, Boundary.MID_HALF, StarResponse.DECLINE);
     }
 
     @Test void lastTurnScorePrecedesStarAndAdvancesOneDrive() throws Exception {
-        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(false, false, true, false);
+        verifyStarAfterRecoveredTouchdown(Scorer.AWAY, ScoringTurn.OWN, Boundary.HALFTIME, StarResponse.DECLINE);
+    }
+
+    @Test void decliningStarAfterOffTurnScoreAtHalftimeAddsNoReRoll() throws Exception {
+        verifyStarAfterRecoveredTouchdown(Scorer.AWAY, ScoringTurn.OPPONENTS, Boundary.HALFTIME, StarResponse.DECLINE);
+    }
+
+    @Test void acceptingStarAfterHomeOwnTurnScoreAtHalftimeAddsOneReRoll() throws Exception {
+        verifyStarAfterRecoveredTouchdown(Scorer.HOME, ScoringTurn.OWN, Boundary.HALFTIME, StarResponse.ACCEPT);
     }
 
     @Test void offTurnStarCreditsHome() throws Exception {
-        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(true, true, false, true);
+        verifyStarAfterRecoveredTouchdown(Scorer.HOME, ScoringTurn.OPPONENTS, Boundary.MID_HALF, StarResponse.ACCEPT);
     }
 
     @Test void offTurnStarCreditsAway() throws Exception {
-        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(false, true, false, true);
+        verifyStarAfterRecoveredTouchdown(Scorer.AWAY, ScoringTurn.OPPONENTS, Boundary.MID_HALF, StarResponse.ACCEPT);
     }
 
     @Test void offTurnStarCreditsHomeAtHalftime() throws Exception {
-        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(true, true, true, true);
+        verifyStarAfterRecoveredTouchdown(Scorer.HOME, ScoringTurn.OPPONENTS, Boundary.HALFTIME, StarResponse.ACCEPT);
     }
 
     @Test void offTurnStarCreditsAwayAtHalftime() throws Exception {
-        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(false, true, true, true);
+        verifyStarAfterRecoveredTouchdown(Scorer.AWAY, ScoringTurn.OPPONENTS, Boundary.HALFTIME, StarResponse.ACCEPT);
     }
 
-    private void touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(boolean scorerHome, boolean offTurn,
-        boolean lastTurn, boolean useSkill) throws Exception {
-        SetupSessionMovementTest.Fixture fixture = fixture();
+    private void verifyStarAfterRecoveredTouchdown(Scorer scoringSide, ScoringTurn scoringTurnOwner,
+        Boundary boundary, StarResponse response) throws Exception {
+        boolean scorerHome = scoringSide == Scorer.HOME;
+        boolean offTurn = scoringTurnOwner == ScoringTurn.OPPONENTS;
+        boolean lastTurn = boundary == Boundary.HALFTIME;
+        boolean useSkill = response == StarResponse.ACCEPT;
+        SetupSessionMovementTest.Fixture fixture = fixture(STARTING_TEAM_RE_ROLLS);
         JsonObject ready = advanceToFirstTurn(fixture, scorerHome != offTurn);
         Game game = state(fixture.session).getGame();
+        assertStarReRolls(game, scorerHome, STARTING_TEAM_RE_ROLLS, 0);
         Team endingTeam = game.getActingTeam();
         Team scoringTeam = offTurn ? game.getOtherTeam(endingTeam) : endingTeam;
         Player<?> scorer = scoringTeam.getPlayers()[0];
@@ -97,6 +117,9 @@ class MatchAnnouncementPresentationTest {
         if (lastTurn) {
             game.getTurnDataHome().setTurnNr(scorerHome && offTurn ? 7 : 8);
             game.getTurnDataAway().setTurnNr(!scorerHome && offTurn ? 7 : 8);
+            // Spend a re-roll on each side so the assertion requires a halftime refill before the award.
+            game.getTurnDataHome().setReRolls(STARTING_TEAM_RE_ROLLS - 1);
+            game.getTurnDataAway().setReRolls(STARTING_TEAM_RE_ROLLS - 1);
         }
         if (offTurn) state(fixture.session).setTurnTimeStarted(System.currentTimeMillis() - 240_000);
         int scoringTurn = (scorerHome ? game.getTurnDataHome() : game.getTurnDataAway()).getTurnNr() + (offTurn ? 1 : 0);
@@ -159,7 +182,7 @@ class MatchAnnouncementPresentationTest {
         JsonObject recordCount = resumed.transcriptPage(0, 1);
         assertTrue(resumed.apply(scoringRole, request).getBoolean("duplicate", false));
         assertEquals(recordCount.get("total"), resumed.transcriptPage(0, 1).get("total"));
-        assertStarReRolls(continued, scorerHome, useSkill ? 1 : 0);
+        assertStarReRolls(continued, scorerHome, STARTING_TEAM_RE_ROLLS, useSkill ? 1 : 0);
         assertEquals(1, continued.getGameResult().getPlayerResult(restoredScorer).getTouchdowns());
         assertEquals(scorerHome ? 1 : 0, continued.getGameResult().getTeamResultHome().getScore());
         assertEquals(scorerHome ? 0 : 1, continued.getGameResult().getTeamResultAway().getScore());
@@ -242,9 +265,10 @@ class MatchAnnouncementPresentationTest {
         assertStarReRolls(state(starSession).getGame(), scorerHome, 0);
 
         SetupSession sendOffSession = new SetupSession(fixture.server, fixture.document, starSession.recoveryArtifact());
-        JsonObject setup = finishStarSendOff(fixture, sendOffSession, role, accept);
+        JsonObject setup = retryStarThenDeclineSendOff(fixture, sendOffSession, role, accept);
         assertEquals(lastTurn ? 2 : 1, setup.getInt("half", -1));
-        if (!lastTurn) assertEquals(sendOff.get("drive"), setup.get("drive"));
+        // Halftime currently advances the drive again after the send-off. The review tracks this separately.
+        assertEquals(sendOff.getInt("drive", -1) + (lastTurn ? 1 : 0), setup.getInt("drive", -1));
         assertEquals(scorerHome ? 1 : 0, setup.getInt("homeScore", -1));
         assertEquals(scorerHome ? 0 : 1, setup.getInt("awayScore", -1));
         Game continued = state(sendOffSession).getGame();
@@ -263,13 +287,29 @@ class MatchAnnouncementPresentationTest {
         JsonObject sendOff = offerSession.apply("home", accept).get("state").asObject();
         assertDecisionOffered(offerSession, sendOff, "argueTheCall");
         assertStarReRolls(state(offerSession).getGame(), true, 0);
-        finishStarSendOff(fixture, offerSession, "home", accept);
+        retryStarThenDeclineSendOff(fixture, offerSession, "home", accept);
         assertStarReRolls(state(offerSession).getGame(), true, 1);
 
         SetupSession sendOffSession = restoreCheckpoint(fixture, "/pre-690-star-send-off.json.gz");
         assertStarReRolls(state(sendOffSession).getGame(), true, 0);
-        finishStarSendOff(fixture, sendOffSession, "home", accept);
+        retryStarThenDeclineSendOff(fixture, sendOffSession, "home", accept);
         assertStarReRolls(state(sendOffSession).getGame(), true, 1);
+    }
+
+    @Test void preChangeStarOfferWithoutSendOffCreditsAwayOnce() throws Exception {
+        SetupSessionMovementTest.Fixture fixture = fixture(STARTING_TEAM_RE_ROLLS);
+        // Captured on fcf43d319 with an away scorer during home's turn and no Secret Weapons.
+        SetupSession resumed = restoreCheckpoint(fixture, "/pre-690-star-offer-unpaused.json.gz");
+        Game game = state(resumed).getGame();
+        assertStarReRolls(game, false, STARTING_TEAM_RE_ROLLS, 0);
+        JsonObject offer = resumed.reply("load", "ACCEPTED", false, "away").get("state").asObject();
+        JsonObject accept = fixture.request("action", "accept-unpaused-star", offer)
+            .add("actionId", actionWithSuffix(offer, "skill:true"));
+        JsonObject setup = resumed.apply("away", accept).get("state").asObject();
+        assertEquals("SETUP", setup.getString("phase", null));
+        assertEquals(offer.getInt("drive", -1) + 1, setup.getInt("drive", -1));
+        assertTrue(resumed.apply("away", accept).getBoolean("duplicate", false));
+        assertStarReRolls(game, false, STARTING_TEAM_RE_ROLLS, 1);
     }
 
     private JsonObject starAcceptanceRequest(SetupSessionMovementTest.Fixture fixture, JsonObject offer) {
@@ -287,7 +327,7 @@ class MatchAnnouncementPresentationTest {
         }
     }
 
-    private JsonObject finishStarSendOff(SetupSessionMovementTest.Fixture fixture, SetupSession sendOffSession,
+    private JsonObject retryStarThenDeclineSendOff(SetupSessionMovementTest.Fixture fixture, SetupSession sendOffSession,
         String role, JsonObject accept) {
         assertTrue(sendOffSession.apply(role, accept).getBoolean("duplicate", false));
         JsonObject argue = sendOffSession.reply("load", "ACCEPTED", false, role).get("state").asObject();
@@ -306,15 +346,19 @@ class MatchAnnouncementPresentationTest {
     }
 
     private void assertStarReRolls(Game game, boolean scorerHome, int expected) {
-        assertEquals(scorerHome ? expected : 0, game.getTurnDataHome().getReRolls(), "home team re-rolls");
-        assertEquals(scorerHome ? 0 : expected, game.getTurnDataAway().getReRolls(), "away team re-rolls");
+        assertStarReRolls(game, scorerHome, 0, expected);
+    }
+
+    private void assertStarReRolls(Game game, boolean scorerHome, int teamReRolls, int expected) {
+        assertEquals(teamReRolls + (scorerHome ? expected : 0), game.getTurnDataHome().getReRolls(), "home team re-rolls");
+        assertEquals(teamReRolls + (scorerHome ? 0 : expected), game.getTurnDataAway().getReRolls(), "away team re-rolls");
         assertEquals(scorerHome ? expected : 0, game.getTurnDataHome().getReRollShowStarOneDrive(), "home drive re-rolls");
         assertEquals(scorerHome ? 0 : expected, game.getTurnDataAway().getReRollShowStarOneDrive(), "away drive re-rolls");
     }
 
-    private JsonObject advanceToFirstTurn(SetupSessionMovementTest.Fixture fixture, boolean home) {
-        JsonObject ready = fixture.advanceToTurn(home ? "kick" : "receive", view -> view.get("actions").asArray().get(0).asObject());
-        assertEquals(home ? "home" : "away", ready.getString("actor", null));
+    private JsonObject advanceToFirstTurn(SetupSessionMovementTest.Fixture fixture, boolean homeActsFirst) {
+        JsonObject ready = fixture.advanceToTurn(homeActsFirst ? "kick" : "receive");
+        assertEquals(homeActsFirst ? "home" : "away", ready.getString("actor", null));
         return ready;
     }
 
@@ -868,7 +912,11 @@ class MatchAnnouncementPresentationTest {
     }
 
     private SetupSessionMovementTest.Fixture fixture() throws Exception {
-        SetupSessionMovementTest.Fixture fixture = new SetupSessionMovementTest.Fixture(0, true);
+        return fixture(0);
+    }
+
+    private SetupSessionMovementTest.Fixture fixture(int teamReRolls) throws Exception {
+        SetupSessionMovementTest.Fixture fixture = new SetupSessionMovementTest.Fixture(teamReRolls, true);
         state(fixture.session).getDiceRoller().setRecoveryRoll(sides -> 1);
         return fixture;
     }
