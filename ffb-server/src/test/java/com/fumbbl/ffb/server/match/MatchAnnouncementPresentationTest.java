@@ -33,6 +33,7 @@ import com.eclipsesource.json.JsonArray;
 import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonValue;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
@@ -52,32 +53,43 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MatchAnnouncementPresentationTest {
     @Test void acceptingStarAfterOwnTurnScoreKeepsOneTouchdown() throws Exception {
-        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(false, false, true);
+        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(false, false, false, true);
     }
 
     @Test void decliningStarAfterOffTurnScoreKeepsOneTouchdown() throws Exception {
-        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(true, false, false);
+        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(true, true, false, false);
     }
 
     @Test void lastTurnScorePrecedesStarAndAdvancesOneDrive() throws Exception {
-        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(false, true, false);
+        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(false, false, true, false);
     }
 
-    @Test void offTurnScoreCanEndTheHalfBeforeStar() throws Exception {
-        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(true, true, true);
+    @Test void offTurnStarCreditsHome() throws Exception {
+        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(true, true, false, true);
     }
 
-    private void touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(boolean offTurn, boolean lastTurn, boolean useSkill)
-        throws Exception {
+    @Test void offTurnStarCreditsAway() throws Exception {
+        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(false, true, false, true);
+    }
+
+    @Test void offTurnStarCreditsHomeAtHalftime() throws Exception {
+        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(true, true, true, true);
+    }
+
+    @Test void offTurnStarCreditsAwayAtHalftime() throws Exception {
+        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(false, true, true, true);
+    }
+
+    private void touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(boolean scorerHome, boolean offTurn,
+        boolean lastTurn, boolean useSkill) throws Exception {
         SetupSessionMovementTest.Fixture fixture = fixture();
-        JsonObject ready = fixture.advanceToTurn();
+        JsonObject ready = advanceToFirstTurn(fixture, scorerHome != offTurn);
         Game game = state(fixture.session).getGame();
         Team endingTeam = game.getActingTeam();
         Team scoringTeam = offTurn ? game.getOtherTeam(endingTeam) : endingTeam;
         Player<?> scorer = scoringTeam.getPlayers()[0];
         Player<?> endingPlayer = endingTeam.getPlayers()[1];
         int previousTurnsPlayed = game.getGameResult().getPlayerResult(endingPlayer).getTurnsPlayed();
-        boolean scorerHome = game.getTeamHome() == scoringTeam;
         String scoringRole = scorerHome ? "home" : "away";
         var starOfTheShow = game.getRules().getSkillFactory().forName("Star of the Show");
         ((RosterPlayer) scorer).addSkill(starOfTheShow);
@@ -141,6 +153,7 @@ class MatchAnnouncementPresentationTest {
         JsonObject recordCount = resumed.transcriptPage(0, 1);
         assertTrue(resumed.apply(scoringRole, request).getBoolean("duplicate", false));
         assertEquals(recordCount.get("total"), resumed.transcriptPage(0, 1).get("total"));
+        assertStarReRolls(continued, scorerHome, useSkill ? 1 : 0);
         assertEquals(1, continued.getGameResult().getPlayerResult(restoredScorer).getTouchdowns());
         assertEquals(scorerHome ? 1 : 0, continued.getGameResult().getTeamResultHome().getScore());
         assertEquals(scorerHome ? 0 : 1, continued.getGameResult().getTeamResultAway().getScore());
@@ -149,15 +162,8 @@ class MatchAnnouncementPresentationTest {
 
     @Test void preChangeCheckpointResumesTheUnscoredTouchdownExactlyOnce() throws Exception {
         SetupSessionMovementTest.Fixture fixture = fixture();
-        String checkpoint;
         // Captured from 4db2c4aee with the fixture's own-turn scorer and an open Star of the Show offer.
-        try (InputStream resource = getClass().getResourceAsStream("/pre-603-star-checkpoint.json.gz")) {
-            assertNotNull(resource);
-            try (GZIPInputStream compressed = new GZIPInputStream(resource)) {
-                checkpoint = new String(compressed.readAllBytes(), StandardCharsets.UTF_8);
-            }
-        }
-        SetupSession resumed = new SetupSession(fixture.server, fixture.document, checkpoint);
+        SetupSession resumed = restoreCheckpoint(fixture, "/pre-603-star-checkpoint.json.gz");
         Game game = state(resumed).getGame();
         assertTrue(game.getDialogParameter() instanceof DialogSkillUseParameter);
         String scorerId = ((DialogSkillUseParameter) game.getDialogParameter()).getPlayerId();
@@ -177,12 +183,27 @@ class MatchAnnouncementPresentationTest {
         assertEquals(1, allEvents(resumed).stream().filter(event -> "touchdown".equals(event.getString("kind", null))).count());
     }
 
-    @Test void offTurnStarThenRestoredSendOffKeepsOneTouchdownAndDriveAdvance() throws Exception {
+    @Test void offTurnStarCreditsHomeAfterRestoredSendOff() throws Exception {
+        offTurnStarCreditsTheScorerAfterRestoredSendOff(true, false);
+    }
+
+    @Test void offTurnStarCreditsAwayAfterRestoredSendOff() throws Exception {
+        offTurnStarCreditsTheScorerAfterRestoredSendOff(false, false);
+    }
+
+    @Test void offTurnStarCreditsHomeAfterRestoredSendOffAtHalftime() throws Exception {
+        offTurnStarCreditsTheScorerAfterRestoredSendOff(true, true);
+    }
+
+    @Test void offTurnStarCreditsAwayAfterRestoredSendOffAtHalftime() throws Exception {
+        offTurnStarCreditsTheScorerAfterRestoredSendOff(false, true);
+    }
+
+    private void offTurnStarCreditsTheScorerAfterRestoredSendOff(boolean scorerHome, boolean lastTurn) throws Exception {
         SetupSessionMovementTest.Fixture fixture = fixture();
-        JsonObject ready = fixture.advanceToTurn();
+        JsonObject ready = advanceToFirstTurn(fixture, !scorerHome);
         Game game = state(fixture.session).getGame();
         Team scoringTeam = game.getOtherTeam(game.getActingTeam());
-        boolean scorerHome = scoringTeam == game.getTeamHome();
         String role = scorerHome ? "home" : "away";
         Player<?> scorer = scoringTeam.getPlayers()[0];
         Player<?> weapon = scoringTeam.getPlayers()[1];
@@ -195,6 +216,10 @@ class MatchAnnouncementPresentationTest {
         ((RosterPlayer) weapon).addSkill(game.getRules().getSkillFactory().forName("Secret Weapon"));
         place(game, weapon, 8, 6, PlayerState.STANDING);
         prepareScorer(game, scorer);
+        if (lastTurn) {
+            game.getTurnDataHome().setTurnNr(scorerHome ? 7 : 8);
+            game.getTurnDataAway().setTurnNr(scorerHome ? 8 : 7);
+        }
 
         JsonObject scored = applyAction(fixture, ready, "score-with-weapon", action(ready, "endTurn").getString("id", null));
         JsonArray scoringOutcomes = nativeOutcomes(fixture.session, scored.getInt("revision", -1));
@@ -204,12 +229,61 @@ class MatchAnnouncementPresentationTest {
 
         SetupSession starSession = new SetupSession(fixture.server, fixture.document, fixture.session.recoveryArtifact());
         JsonObject star = starSession.reply("load", "ACCEPTED", false, role).get("state").asObject();
-        JsonObject sendOff = starSession.apply(role, fixture.request("action", "accept-star-before-send-off", star)
-            .add("actionId", actionWithSuffix(star, "skill:true"))).get("state").asObject();
+        JsonObject accept = starAcceptanceRequest(fixture, star);
+        JsonObject sendOff = starSession.apply(role, accept).get("state").asObject();
         assertDecisionOffered(starSession, sendOff, "argueTheCall");
         assertEquals(ready.getInt("drive", -1) + 1, sendOff.getInt("drive", -1));
+        assertStarReRolls(state(starSession).getGame(), scorerHome, 0);
 
         SetupSession sendOffSession = new SetupSession(fixture.server, fixture.document, starSession.recoveryArtifact());
+        JsonObject setup = finishStarSendOff(fixture, sendOffSession, role, accept);
+        assertEquals(lastTurn ? 2 : 1, setup.getInt("half", -1));
+        if (!lastTurn) assertEquals(sendOff.get("drive"), setup.get("drive"));
+        assertEquals(scorerHome ? 1 : 0, setup.getInt("homeScore", -1));
+        assertEquals(scorerHome ? 0 : 1, setup.getInt("awayScore", -1));
+        Game continued = state(sendOffSession).getGame();
+        assertStarReRolls(continued, scorerHome, 1);
+        assertEquals(1, continued.getGameResult().getPlayerResult(continued.getPlayerById(scorer.getId())).getTouchdowns());
+        assertEquals(PlayerState.BANNED, continued.getFieldModel().getPlayerState(continued.getPlayerById(weapon.getId())).getBase());
+        assertEquals(1, allEvents(sendOffSession).stream().filter(event -> "touchdown".equals(event.getString("kind", null))).count());
+    }
+
+    @Test void preChangeStarOfferAndSendOffCheckpointsCreditTheScorerOnce() throws Exception {
+        SetupSessionMovementTest.Fixture fixture = fixture();
+        // Both checkpoints were captured on b485326b4 with a home scorer on away's last turn of the first half.
+        SetupSession offerSession = restoreCheckpoint(fixture, "/pre-690-star-offer.json.gz");
+        JsonObject offer = offerSession.reply("load", "ACCEPTED", false, "home").get("state").asObject();
+        JsonObject accept = starAcceptanceRequest(fixture, offer);
+        JsonObject sendOff = offerSession.apply("home", accept).get("state").asObject();
+        assertDecisionOffered(offerSession, sendOff, "argueTheCall");
+        assertStarReRolls(state(offerSession).getGame(), true, 0);
+        finishStarSendOff(fixture, offerSession, "home", accept);
+        assertStarReRolls(state(offerSession).getGame(), true, 1);
+
+        SetupSession sendOffSession = restoreCheckpoint(fixture, "/pre-690-star-send-off.json.gz");
+        assertStarReRolls(state(sendOffSession).getGame(), true, 0);
+        finishStarSendOff(fixture, sendOffSession, "home", accept);
+        assertStarReRolls(state(sendOffSession).getGame(), true, 1);
+    }
+
+    private JsonObject starAcceptanceRequest(SetupSessionMovementTest.Fixture fixture, JsonObject offer) {
+        return fixture.request("action", "accept-star-before-send-off", offer)
+            .add("actionId", actionWithSuffix(offer, "skill:true"));
+    }
+
+    private SetupSession restoreCheckpoint(SetupSessionMovementTest.Fixture fixture, String resourceName) throws IOException {
+        try (InputStream resource = getClass().getResourceAsStream(resourceName)) {
+            assertNotNull(resource, resourceName);
+            try (GZIPInputStream compressed = new GZIPInputStream(resource)) {
+                String checkpoint = new String(compressed.readAllBytes(), StandardCharsets.UTF_8);
+                return new SetupSession(fixture.server, fixture.document, checkpoint);
+            }
+        }
+    }
+
+    private JsonObject finishStarSendOff(SetupSessionMovementTest.Fixture fixture, SetupSession sendOffSession,
+        String role, JsonObject accept) {
+        assertTrue(sendOffSession.apply(role, accept).getBoolean("duplicate", false));
         JsonObject argue = sendOffSession.reply("load", "ACCEPTED", false, role).get("state").asObject();
         JsonObject declineArgue = fixture.request("action", "decline-argue-after-restore", argue)
             .add("actionId", actionWithSuffix(argue, "argue:no"));
@@ -219,15 +293,23 @@ class MatchAnnouncementPresentationTest {
             .add("actionId", actionWithSuffix(bribe, "bribe:no"));
         JsonObject setup = sendOffSession.apply(role, decline).get("state").asObject();
         assertEquals("SETUP", setup.getString("phase", null));
-        assertEquals(sendOff.get("drive"), setup.get("drive"));
-        assertEquals(scorerHome ? 1 : 0, setup.getInt("homeScore", -1));
-        assertEquals(scorerHome ? 0 : 1, setup.getInt("awayScore", -1));
         assertTrue(sendOffSession.apply(role, decline).getBoolean("duplicate", false));
+        assertTrue(sendOffSession.apply(role, accept).getBoolean("duplicate", false));
         assertEquals(setup.getInt("revision", -1) + 1, sendOffSession.transcriptPage(0, 1).getInt("total", -1));
-        Game continued = state(sendOffSession).getGame();
-        assertEquals(1, continued.getGameResult().getPlayerResult(continued.getPlayerById(scorer.getId())).getTouchdowns());
-        assertEquals(PlayerState.BANNED, continued.getFieldModel().getPlayerState(continued.getPlayerById(weapon.getId())).getBase());
-        assertEquals(1, allEvents(sendOffSession).stream().filter(event -> "touchdown".equals(event.getString("kind", null))).count());
+        return setup;
+    }
+
+    private void assertStarReRolls(Game game, boolean scorerHome, int expected) {
+        assertEquals(scorerHome ? expected : 0, game.getTurnDataHome().getReRolls(), "home team re-rolls");
+        assertEquals(scorerHome ? 0 : expected, game.getTurnDataAway().getReRolls(), "away team re-rolls");
+        assertEquals(scorerHome ? expected : 0, game.getTurnDataHome().getReRollShowStarOneDrive(), "home drive re-rolls");
+        assertEquals(scorerHome ? 0 : expected, game.getTurnDataAway().getReRollShowStarOneDrive(), "away drive re-rolls");
+    }
+
+    private JsonObject advanceToFirstTurn(SetupSessionMovementTest.Fixture fixture, boolean home) {
+        JsonObject ready = fixture.advanceToTurn(home ? "kick" : "receive", view -> view.get("actions").asArray().get(0).asObject());
+        assertEquals(home ? "home" : "away", ready.getString("actor", null));
+        return ready;
     }
 
     @Test void secretWeaponChoicesFollowTheTouchdown() throws Exception {

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Give the Star of the Show re-roll to the scoring team when it scores during the opponent's turn.
+
 - Record and announce touchdowns before offering Star of the Show.
 
 - Keep block, blitz, pass and hand-off previews responsive late in matches by skipping the native game log when copying the engine for a preview.
