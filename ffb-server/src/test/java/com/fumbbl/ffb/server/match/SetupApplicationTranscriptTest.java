@@ -24,6 +24,7 @@ class SetupApplicationTranscriptTest {
             null, null, new java.util.LinkedHashMap<>(), completed);
         MatchService matches = mock(MatchService.class);
         when(matches.load("home", id)).thenReturn(new MatchService.Result(document, false));
+        when(matches.openHistory(document)).thenCallRealMethod();
         SetupApplication application = new SetupApplication(mock(FantasyFootballServer.class), matches);
 
         JsonObject page = application.transcriptPage(id, 0, 8);

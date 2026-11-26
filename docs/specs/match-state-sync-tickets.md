@@ -146,6 +146,8 @@ Implementation: [#660](https://github.com/the-grognard-codes/moles-under-the-pit
 
 ### 4. One reader for match history
 
+Filed as [#661](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/661). [Implementation outcome](match-history-reader-outcome.md).
+
 **What it delivers:** A prefactor. Result metadata, the final state, the turn index, keyframes and record ranges are read through one bounded interface, backed by today's artifact.
 
 **Blocked by:** ADR accepted.

@@ -115,6 +115,25 @@ public final class MatchJson {
 		return frozen;
 	}
 
+	/** Rebuild the activated match's frozen inputs without preparation receipts. */
+	MatchDocument readFrozenMatch(String matchId, JsonObject frozen) {
+		boolean computerMatch = frozen.get("computer") != null;
+		if (computerMatch) exact(frozen, "home", "away", "homeOwner", "awayOwner", "computer");
+		else exact(frozen, "home", "away", "homeOwner", "awayOwner");
+		String id = uuid(JsonValue.valueOf(matchId));
+		String homeOwner = subject(frozen.get("homeOwner")), awayOwner = subject(frozen.get("awayOwner"));
+		JsonObject homeTeam = frozen.get("home").asObject(), awayTeam = frozen.get("away").asObject();
+		boolean named = homeTeam.get("teamName") != null;
+		MatchDocument.Member home = readMember(homeTeam, homeOwner, false, named);
+		MatchDocument.Member away = readMember(awayTeam, awayOwner, true, named);
+		if (homeOwner.equals(awayOwner) || !"home".equals(home.role) || !"away".equals(away.role)
+			|| !home.team.catalogVersion.equals(away.team.catalogVersion) || !home.team.presetId.equals(away.team.presetId)
+			|| !home.team.presetVersion.equals(away.team.presetVersion))
+			throw new IllegalArgumentException("Invalid frozen match");
+		MatchDocument document = new MatchDocument(id, 3, awayOwner, MatchDocument.Lifecycle.ACTIVATED, home, away);
+		return computerMatch ? computerIdentity(document, new ComputerCoach(frozen.get("computer").asObject())) : document;
+	}
+
 	private JsonObject envelope(MatchDocument document) {
 		JsonObject out = publicDocument(document).add("homeOwner", document.home.owner);
         if (document.home.team.formations != null) out.get("home").asObject().add("formations", new TeamFormations().encode(document.home.team.formations));

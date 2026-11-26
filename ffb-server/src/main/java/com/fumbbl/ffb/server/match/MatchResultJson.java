@@ -1,6 +1,5 @@
 package com.fumbbl.ffb.server.match;
 
-import com.eclipsesource.json.JsonArray;
 import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonValue;
 
@@ -23,21 +22,14 @@ public final class MatchResultJson {
                 || request.getInt("version", -1) != 1 || !"matchResult".equals(request.getString("type", null))
                 || id == null || !id.matches("[A-Za-z0-9_-]{1,100}")
                 || (!replay && !"load".equals(request.getString("operation", null)))) throw new IllegalArgumentException();
-            JsonObject artifact = JsonObject.readFrom(matches.result(owner, request.get("matchId").asString()).json());
-            JsonArray events = artifact.get("events").asArray();
+            MatchHistory history = matches.resultHistory(owner, request.get("matchId").asString());
             JsonValue event = JsonValue.NULL;
             if (replay) {
-                int index = request.get("index").asInt();
-                if (index < 0 || index >= events.size()) throw new IllegalArgumentException();
-                JsonObject entry = events.get(index).asObject();
+                JsonObject entry = history.replayEvent(request.get("index").asInt());
                 event = new PublicMatchFields().scalars(entry, "revision", "kind")
                     .add("state", new PublicMatchView().recorded(entry.get("state").asObject(), "home"));
             }
-            artifact.remove("events");
-            artifact.remove("transcript");
-            artifact.remove("chat");
-            artifact.add("eventCount", events.size());
-            return response(id, "ACCEPTED", artifact, event);
+            return response(id, "ACCEPTED", history.resultMetadata(), event);
         } catch (MatchService.Failure failure) { return response(id, failure.code, JsonValue.NULL, JsonValue.NULL); }
         catch (SQLException failure) {
             new MatchPersistenceLog().rejected("result-load", request.getString("matchId", null), id, failure);

@@ -13,6 +13,7 @@ import com.fumbbl.ffb.model.Game;
 import com.fumbbl.ffb.server.GameState;
 import com.fumbbl.ffb.server.IServerJsonOption;
 import com.fumbbl.ffb.server.InjuryResult;
+import com.fumbbl.ffb.server.factory.InjuryTypeServerFactory;
 import com.fumbbl.ffb.server.injury.injuryType.InjuryTypeServer;
 import com.fumbbl.ffb.server.model.DropPlayerContext;
 import com.fumbbl.ffb.server.net.ReceivedCommand;
@@ -99,7 +100,7 @@ public class StepFallDown extends AbstractStep {
 	@Override
 	public JsonObject toJsonValue() {
 		JsonObject jsonObject = super.toJsonValue();
-		IServerJsonOption.INJURY_TYPE_SERVER.addTo(jsonObject, fInjuryType);
+		InjuryTypeServerFactory.write(jsonObject, fInjuryType);
 		IServerJsonOption.COORDINATE_FROM.addTo(jsonObject, fCoordinateFrom);
 		return jsonObject;
 	}
@@ -109,7 +110,7 @@ public class StepFallDown extends AbstractStep {
 		super.initFrom(source, jsonValue);
 		JsonObject jsonObject = UtilJson.toJsonObject(jsonValue);
 		fCoordinateFrom = IServerJsonOption.COORDINATE_FROM.getFrom(source, jsonObject);
-		fInjuryType = (InjuryTypeServer<?>) IServerJsonOption.INJURY_TYPE_SERVER.getFrom(source, jsonObject);
+		fInjuryType = InjuryTypeServerFactory.restore(source, jsonObject);
 		return this;
 	}
 

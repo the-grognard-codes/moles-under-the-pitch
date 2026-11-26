@@ -18,6 +18,12 @@ The local Java sweep covered 991 server tests and 301 state tests. The remaining
 
 The 602 browser unit tests and all 98 computer-player tests passed, as did the browser production build. Headless Chrome verified block visibility and older replay, dice pinning across both coach roles and spectators, partial rerolls, native dice, push artwork, and the pass workflow.
 
+## Integration with main
+
+Completed setup and replay responses read through the bounded match-history interface from #661, then apply the public board allowlist. Compact sessions from #662 share the public decision projection and retain their separate capture and restore path. Their capture still omits the duplicate event history.
+
+Targeted Java checks passed for bounded result reads across artifact formats 1?3, both compact snapshot stress cases, terminal publication, restored touchback and save/resume, and touchdown ordering. The native ordering checks read the stored commands and the public checks verify the touchdown announcement and committed score. The browser typecheck, unit suite and headless match-log test passed after the integration.
+
 ## Rollout and diagnostics
 
 Deploy the browser, game server and computer player together because both clients use the strict full-snapshot decoder. The server still reads older checkpoints. A rollback to the earlier server may reject checkpoints written with the new decision kind and recipient-scoped actions. The production worker p99 under load at the ADR 0006 envelope remains unmeasured.

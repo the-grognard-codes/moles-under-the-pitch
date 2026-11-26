@@ -289,6 +289,7 @@ public class StepGoForIt extends AbstractStepWithReRoll {
 	public JsonObject toJsonValue() {
 		JsonObject jsonObject = super.toJsonValue();
 		IServerJsonOption.SECOND_GO_FOR_IT.addTo(jsonObject, fSecondGoForIt);
+		if (getGameState().usesCompactSnapshot()) jsonObject.add("ballAndChainRush", fBallandChainGfi);
 		IServerJsonOption.GOTO_LABEL_ON_FAILURE.addTo(jsonObject, fGotoLabelOnFailure);
 		IServerJsonOption.MOVE_START.addTo(jsonObject, moveStart);
 		IServerJsonOption.USING_MODIFIER_IGNORING_SKILL.addTo(jsonObject, usingModifierIgnoringSkill);
@@ -301,6 +302,8 @@ public class StepGoForIt extends AbstractStepWithReRoll {
 		super.initFrom(source, jsonValue);
 		JsonObject jsonObject = UtilJson.toJsonObject(jsonValue);
 		fSecondGoForIt = IServerJsonOption.SECOND_GO_FOR_IT.getFrom(source, jsonObject);
+		JsonValue ballAndChainRush = jsonObject.get("ballAndChainRush");
+		if (ballAndChainRush != null) fBallandChainGfi = ballAndChainRush.asBoolean();
 		fGotoLabelOnFailure = IServerJsonOption.GOTO_LABEL_ON_FAILURE.getFrom(source, jsonObject);
 		moveStart = IServerJsonOption.MOVE_START.getFrom(source, jsonObject);
 		usingModifierIgnoringSkill = IServerJsonOption.USING_MODIFIER_IGNORING_SKILL.getFrom(source, jsonObject);

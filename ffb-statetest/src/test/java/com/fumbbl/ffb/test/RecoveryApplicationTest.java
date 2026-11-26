@@ -1,6 +1,8 @@
 package com.fumbbl.ffb.test;
 
 import com.eclipsesource.json.JsonObject;
+import com.fumbbl.ffb.server.match.MatchHistory;
+import com.fumbbl.ffb.server.match.MatchJson;
 import com.fumbbl.ffb.server.match.MatchRepository;
 import com.fumbbl.ffb.server.match.MatchService;
 import com.fumbbl.ffb.server.match.RecoveryRepository;
@@ -91,7 +93,7 @@ class RecoveryApplicationTest {
 			assertEquals(0, application.lifecycleMetrics().getInt("residentSessions", -1));
 			RecoveryRepository.Record durable = recovery.find(id);
 			checkpointBytes = Math.max(checkpointBytes, durable.json.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
-			replayBytes = Math.max(replayBytes, matches.result("home", id).json().getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
+			replayBytes = Math.max(replayBytes, storedCompletion(matches, "home", id).getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
 			long reconnectStarted = System.nanoTime();
 			accepted(onWorker(() -> application.handle("away", load(id, "reconnect")))); reconnect.add(System.nanoTime() - reconnectStarted);
 			assertTrue(accepted(onWorker(() -> application.handle(role, last))).getBoolean("duplicate", false));
@@ -186,7 +188,7 @@ class RecoveryApplicationTest {
 			assertEquals(0, application.lifecycleMetrics().getInt("residentSessions", -1));
 			String checkpoint = fixture.recovery.rows.get(next.id).json;
 			checkpointBytes = Math.max(checkpointBytes, checkpoint.getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
-			replayBytes = Math.max(replayBytes, fixture.matches.result("home", next.id).json().getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
+			replayBytes = Math.max(replayBytes, storedCompletion(fixture.matches, "home", next.id).getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
 			int writes = fixture.recovery.writes;
 			assertTrue(accepted(application.handle(role, last)).getBoolean("duplicate", false));
 			long reconnectStarted = System.nanoTime();
@@ -289,7 +291,11 @@ class RecoveryApplicationTest {
 			JsonObject published = application.expireReactiveDecisions().get(fixture.id);
 			assertNotNull(published, "The timer publishes the durable final state without a client request");
 			assertEquals("FULL_TIME", published.getString("phase", null));
-			assertEquals(fixture.matches.result("home", fixture.id).json(), fixture.matches.result("away", fixture.id).json());
+			MatchHistory home = fixture.matches.resultHistory("home", fixture.id);
+			MatchHistory away = fixture.matches.resultHistory("away", fixture.id);
+			assertEquals(home.resultMetadata(), away.resultMetadata());
+			assertEquals(home.finalState(), away.finalState());
+			assertEquals(storedCompletion(fixture.matches, "home", fixture.id), storedCompletion(fixture.matches, "away", fixture.id));
 			assertEquals(checkpoint, fixture.recovery.rows.get(fixture.id));
 			assertEquals(0, application.lifecycleMetrics().getInt("residentSessions", -1));
 			reads = fixture.repository.reads;
@@ -348,7 +354,7 @@ class RecoveryApplicationTest {
 		assertNotNull(liveState.get("clock"));
 		assertTrue(liveState.get("clock").asObject().get("activeRole").isNull());
 
-		String completion = fixture.matches.result(role, fixture.id).json();
+		String completion = storedCompletion(fixture.matches, role, fixture.id);
 		String checkpoint = fixture.recovery.rows.get(fixture.id).json;
 		JsonObject legacy = JsonObject.readFrom(checkpoint);
 		JsonObject payload = legacy.get("payload").asObject();
@@ -384,8 +390,12 @@ class RecoveryApplicationTest {
 			assertEquals(liveState.get(field).toString(), loadedState.get(field).toString(),
 				"Completed load must preserve authoritative " + field + " projection");
 		assertFalse(loaded.getBoolean("duplicate", true));
-		assertEquals(completion, fixture.matches.result(role, fixture.id).json(), "Completed-load decoration cannot rewrite the frozen result or transcript");
+		assertEquals(completion, storedCompletion(fixture.matches, role, fixture.id), "Completed-load decoration cannot rewrite the frozen result or transcript");
 		assertEquals(legacy.toString(), fixture.recovery.rows.get(fixture.id).json, "A terminal read cannot rewrite the recovery checkpoint");
+	}
+
+	private String storedCompletion(MatchService matches, String role, String id) throws SQLException {
+		return new MatchJson().encode(matches.load(role, id).document).get("completion").toString();
 	}
 
 	@Test void ambiguousCompletionCommitReconcilesRetryAndBroadcastWithoutAnotherWrite() throws Exception {

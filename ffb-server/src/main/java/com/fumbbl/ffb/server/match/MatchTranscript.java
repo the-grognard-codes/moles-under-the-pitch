@@ -90,7 +90,11 @@ final class MatchTranscript {
     }
 
     private boolean systemSizeLimit(String kind, String actor, JsonValue decision) {
-        return "system".equals(actor) && "FULL_TIME".equals(kind) && decision != null && decision.isObject()
+        return "system".equals(actor) && "FULL_TIME".equals(kind) && isSizeLimitDecision(decision);
+    }
+
+    static boolean isSizeLimitDecision(JsonValue decision) {
+        return decision != null && decision.isObject()
             && "sizeLimit".equals(decision.asObject().getString("operation", null))
             && MatchStopReason.MATCH_SIZE_LIMIT.name().equals(decision.asObject().getString("reason", null));
     }
@@ -107,14 +111,6 @@ final class MatchTranscript {
 
     JsonObject pendingMovement() {
         return unfinishedMovement == null ? null : JsonObject.readFrom(unfinishedMovement.toString());
-    }
-
-    private JsonObject unfinishedMovement(JsonObject last) {
-        JsonValue decision = last.get("decision");
-        if (!decision.isObject() || decision.asObject().get("logPresentation") == null) return null;
-        JsonValue movement = decision.asObject().get("logPresentation").asObject().get("movement");
-        return movement.isObject() && !movement.asObject().getBoolean("complete", true)
-            ? JsonObject.readFrom(movement.toString()) : null;
     }
 
     private void validateBlock(JsonObject sync, JsonObject state) {
@@ -172,7 +168,7 @@ final class MatchTranscript {
         bytes += length;
         frozenBytes += new FrozenJsonSize().retainedBytes(json);
         lastRecordedAt = record.get("at").asLong();
-        unfinishedMovement = unfinishedMovement(record);
+        unfinishedMovement = new AcceptedActionPresentation().unfinishedMovement(record.get("decision"));
     }
 
     private static void exact(JsonObject object, String... fields) {

@@ -8,10 +8,18 @@ import com.fumbbl.ffb.PlayerAction;
 import com.fumbbl.ffb.PlayerState;
 import com.fumbbl.ffb.TurnMode;
 import com.fumbbl.ffb.Weather;
+import com.fumbbl.ffb.dialog.DialogSkillUseParameter;
+import com.fumbbl.ffb.factory.InducementTypeFactory;
+import com.fumbbl.ffb.inducement.Inducement;
 import com.fumbbl.ffb.kickoff.bb2025.KickoffResult;
 import com.fumbbl.ffb.mechanics.PassResult;
 import com.fumbbl.ffb.model.Game;
 import com.fumbbl.ffb.model.Player;
+import com.fumbbl.ffb.model.RosterPlayer;
+import com.fumbbl.ffb.model.Team;
+import com.fumbbl.ffb.model.TurnData;
+import com.fumbbl.ffb.option.GameOptionBoolean;
+import com.fumbbl.ffb.option.GameOptionId;
 import com.fumbbl.ffb.server.GameState;
 import com.fumbbl.ffb.server.factory.SequenceGeneratorFactory;
 import com.fumbbl.ffb.server.step.StepId;
@@ -25,20 +33,296 @@ import com.eclipsesource.json.JsonArray;
 import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonValue;
 
+import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.zip.GZIPInputStream;
 
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MatchAnnouncementPresentationTest {
+    @Test void acceptingStarAfterOwnTurnScoreKeepsOneTouchdown() throws Exception {
+        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(false, false, true);
+    }
+
+    @Test void decliningStarAfterOffTurnScoreKeepsOneTouchdown() throws Exception {
+        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(true, false, false);
+    }
+
+    @Test void lastTurnScorePrecedesStarAndAdvancesOneDrive() throws Exception {
+        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(false, true, false);
+    }
+
+    @Test void offTurnScoreCanEndTheHalfBeforeStar() throws Exception {
+        touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(true, true, true);
+    }
+
+    private void touchdownAndScorePrecedeStarOfTheShowAndSurviveRecovery(boolean offTurn, boolean lastTurn, boolean useSkill)
+        throws Exception {
+        SetupSessionMovementTest.Fixture fixture = fixture();
+        JsonObject ready = fixture.advanceToTurn();
+        Game game = state(fixture.session).getGame();
+        Team endingTeam = game.getActingTeam();
+        Team scoringTeam = offTurn ? game.getOtherTeam(endingTeam) : endingTeam;
+        Player<?> scorer = scoringTeam.getPlayers()[0];
+        Player<?> endingPlayer = endingTeam.getPlayers()[1];
+        int previousTurnsPlayed = game.getGameResult().getPlayerResult(endingPlayer).getTurnsPlayed();
+        boolean scorerHome = game.getTeamHome() == scoringTeam;
+        String scoringRole = scorerHome ? "home" : "away";
+        var starOfTheShow = game.getRules().getSkillFactory().forName("Star of the Show");
+        ((RosterPlayer) scorer).addSkill(starOfTheShow);
+        prepareScorer(game, scorer);
+        if (lastTurn) {
+            game.getTurnDataHome().setTurnNr(scorerHome && offTurn ? 7 : 8);
+            game.getTurnDataAway().setTurnNr(!scorerHome && offTurn ? 7 : 8);
+        }
+        if (offTurn) state(fixture.session).setTurnTimeStarted(System.currentTimeMillis() - 240_000);
+        int scoringTurn = (scorerHome ? game.getTurnDataHome() : game.getTurnDataAway()).getTurnNr() + (offTurn ? 1 : 0);
+        JsonObject paused = applyAction(fixture, ready, "score-with-star", action(ready, "endTurn").getString("id", null));
+        assertEquals(scoringRole, paused.getString("actor", null));
+        assertEquals(ready.getInt("drive", -1), paused.getInt("drive", -1));
+        assertEquals(scorerHome ? 1 : 0, paused.getInt("homeScore", -1));
+        assertEquals(scorerHome ? 0 : 1, paused.getInt("awayScore", -1));
+        assertTrue(game.getDialogParameter() instanceof DialogSkillUseParameter);
+        assertEquals(scorer.getId(), ((DialogSkillUseParameter) game.getDialogParameter()).getPlayerId());
+        if (offTurn) {
+            JsonObject clock = fixture.session.decorateSaveResumeState(paused).get("clock").asObject();
+            assertEquals(ready.get("actor"), clock.get("activeRole"));
+            assertEquals(600_000L, clock.get(scorerHome ? "homeReserveMs" : "awayReserveMs").asLong());
+            JsonObject bank = fixture.session.recoveryCheckpointPayload().get("clock").asObject();
+            assertEquals(0L, bank.get("homeUsedMs").asLong());
+            assertEquals(0L, bank.get("awayUsedMs").asLong());
+        }
+
+        int revision = paused.getInt("revision", -1);
+        JsonArray scoringOutcomes = recordedNativeOutcomes(fixture.session, revision);
+        int announcement = announcementIndex(scoringOutcomes, "touchdown");
+        int score = changeIndex(scoringOutcomes, "teamResultSetScore", null);
+        int offer = changeIndex(scoringOutcomes, "gameSetDialogParameter", "skillUse");
+        assertTrue(score >= 0 && score <= announcement && announcement < offer, scoringOutcomes.toString());
+        JsonArray publicOutcomes = nativeOutcomes(fixture.session, revision);
+        assertEquals(announcement, announcementIndex(publicOutcomes, "touchdown"));
+        assertEquals(-1, changeIndex(publicOutcomes, "gameSetDialogParameter", "skillUse"));
+        assertEquals(-1, changeIndex(publicOutcomes, "teamResultSetScore", null));
+        assertEquals("skill", paused.getString("decisionKind", null));
+        JsonObject touchdown = events(publicOutcomes).stream()
+            .filter(event -> "touchdown".equals(event.getString("kind", null))).findFirst().orElseThrow();
+        assertEquals(scoringRole, touchdown.getString("team", null));
+        assertEquals(scoringTurn, touchdown.getInt("turn", -1));
+
+        SetupSession resumed = new SetupSession(fixture.server, fixture.document, fixture.session.recoveryArtifact());
+        JsonObject recipient = resumed.reply("load", "ACCEPTED", false, scoringRole).get("state").asObject();
+        assertEquals(paused.get("revision"), recipient.get("revision"));
+        JsonObject request = fixture.request("action", "resolve-star", recipient).add("actionId",
+            actionWithSuffix(recipient, "skill:" + useSkill));
+        JsonObject after = resumed.apply(scoringRole, request).get("state").asObject();
+        assertEquals(ready.getInt("drive", -1) + 1, after.getInt("drive", -1));
+        assertEquals(lastTurn ? 2 : 1, after.getInt("half", -1));
+        Game continued = state(resumed).getGame();
+        Player<?> restoredScorer = continued.getPlayerById(scorer.getId());
+        assertEquals(useSkill, !restoredScorer.hasUnused(starOfTheShow));
+        assertEquals(useSkill, nativeOutcomes(resumed, after.getInt("revision", -1)).values().stream()
+            .flatMap(sync -> sync.asObject().get("reportList").asObject().get("reports").asArray().values().stream())
+            .anyMatch(report -> "showStarReRoll".equals(report.asObject().getString("reportId", null))));
+        assertEquals(previousTurnsPlayed + 1,
+            continued.getGameResult().getPlayerResult(continued.getPlayerById(endingPlayer.getId())).getTurnsPlayed());
+        if (!lastTurn) assertEquals(scoringTurn, (scorerHome ? continued.getTurnDataHome() : continued.getTurnDataAway()).getTurnNr());
+        if (offTurn) {
+            JsonObject bank = resumed.recoveryCheckpointPayload().get("clock").asObject();
+            long endingUsed = bank.get(scorerHome ? "awayUsedMs" : "homeUsedMs").asLong();
+            assertTrue(endingUsed >= 120_000 && endingUsed < 240_000, bank.toString());
+            assertEquals(0L, bank.get(scorerHome ? "homeUsedMs" : "awayUsedMs").asLong());
+        }
+
+        JsonObject recordCount = resumed.transcriptPage(0, 1);
+        assertTrue(resumed.apply(scoringRole, request).getBoolean("duplicate", false));
+        assertEquals(recordCount.get("total"), resumed.transcriptPage(0, 1).get("total"));
+        assertEquals(1, continued.getGameResult().getPlayerResult(restoredScorer).getTouchdowns());
+        assertEquals(scorerHome ? 1 : 0, continued.getGameResult().getTeamResultHome().getScore());
+        assertEquals(scorerHome ? 0 : 1, continued.getGameResult().getTeamResultAway().getScore());
+        assertEquals(1, allEvents(resumed).stream().filter(event -> "touchdown".equals(event.getString("kind", null))).count());
+    }
+
+    @Test void preChangeCheckpointResumesTheUnscoredTouchdownExactlyOnce() throws Exception {
+        SetupSessionMovementTest.Fixture fixture = fixture();
+        String checkpoint;
+        // Captured from 4db2c4aee with the fixture's own-turn scorer and an open Star of the Show offer.
+        try (InputStream resource = getClass().getResourceAsStream("/pre-603-star-checkpoint.json.gz")) {
+            assertNotNull(resource);
+            try (GZIPInputStream compressed = new GZIPInputStream(resource)) {
+                checkpoint = new String(compressed.readAllBytes(), StandardCharsets.UTF_8);
+            }
+        }
+        SetupSession resumed = new SetupSession(fixture.server, fixture.document, checkpoint);
+        Game game = state(resumed).getGame();
+        assertTrue(game.getDialogParameter() instanceof DialogSkillUseParameter);
+        String scorerId = ((DialogSkillUseParameter) game.getDialogParameter()).getPlayerId();
+        boolean scorerHome = game.getTeamHome().hasPlayer(game.getPlayerById(scorerId));
+        String role = scorerHome ? "home" : "away";
+        String scoreKey = scorerHome ? "homeScore" : "awayScore";
+        JsonObject offered = resumed.reply("load", "ACCEPTED", false, role).get("state").asObject();
+        assertEquals(0, offered.getInt(scoreKey, -1));
+        JsonObject request = fixture.request("action", "legacy-decline-star", offered)
+            .add("actionId", actionWithSuffix(offered, "skill:false"));
+        JsonObject continued = resumed.apply(role, request).get("state").asObject();
+        assertEquals(1, continued.getInt(scoreKey, -1));
+        assertEquals(offered.getInt("drive", -1) + 1, continued.getInt("drive", -1));
+        assertTrue(resumed.apply(role, request).getBoolean("duplicate", false));
+        assertEquals(continued.getInt("revision", -1) + 1, resumed.transcriptPage(0, 1).getInt("total", -1));
+        assertEquals(1, game.getGameResult().getPlayerResult(game.getPlayerById(scorerId)).getTouchdowns());
+        assertEquals(1, allEvents(resumed).stream().filter(event -> "touchdown".equals(event.getString("kind", null))).count());
+    }
+
+    @Test void offTurnStarThenRestoredSendOffKeepsOneTouchdownAndDriveAdvance() throws Exception {
+        SetupSessionMovementTest.Fixture fixture = fixture();
+        JsonObject ready = fixture.advanceToTurn();
+        Game game = state(fixture.session).getGame();
+        Team scoringTeam = game.getOtherTeam(game.getActingTeam());
+        boolean scorerHome = scoringTeam == game.getTeamHome();
+        String role = scorerHome ? "home" : "away";
+        Player<?> scorer = scoringTeam.getPlayers()[0];
+        Player<?> weapon = scoringTeam.getPlayers()[1];
+        game.getOptions().addOption(new GameOptionBoolean(GameOptionId.ARGUE_THE_CALL).setValue(true));
+        InducementTypeFactory inducements = game.getFactory(FactoryType.Factory.INDUCEMENT_TYPE);
+        TurnData scoringTurn = scorerHome ? game.getTurnDataHome() : game.getTurnDataAway();
+        scoringTurn.getInducementSet().addInducement(new Inducement(inducements.forName("bribes"), 1));
+        UtilBox.putAllPlayersIntoBox(game);
+        ((RosterPlayer) scorer).addSkill(game.getRules().getSkillFactory().forName("Star of the Show"));
+        ((RosterPlayer) weapon).addSkill(game.getRules().getSkillFactory().forName("Secret Weapon"));
+        place(game, weapon, 8, 6, PlayerState.STANDING);
+        prepareScorer(game, scorer);
+
+        JsonObject scored = applyAction(fixture, ready, "score-with-weapon", action(ready, "endTurn").getString("id", null));
+        JsonArray scoringOutcomes = recordedNativeOutcomes(fixture.session, scored.getInt("revision", -1));
+        int touchdown = announcementIndex(scoringOutcomes, "touchdown");
+        assertTrue(touchdown >= 0 && touchdown < changeIndex(scoringOutcomes, "gameSetDialogParameter", "skillUse"));
+        assertEquals(ready.get("drive"), scored.get("drive"));
+
+        SetupSession starSession = new SetupSession(fixture.server, fixture.document, fixture.session.recoveryArtifact());
+        JsonObject star = starSession.reply("load", "ACCEPTED", false, role).get("state").asObject();
+        JsonObject sendOff = starSession.apply(role, fixture.request("action", "accept-star-before-send-off", star)
+            .add("actionId", actionWithSuffix(star, "skill:true"))).get("state").asObject();
+        assertDecisionOffered(starSession, sendOff, "argueTheCall");
+        assertEquals(ready.getInt("drive", -1) + 1, sendOff.getInt("drive", -1));
+
+        SetupSession sendOffSession = new SetupSession(fixture.server, fixture.document, starSession.recoveryArtifact());
+        JsonObject argue = sendOffSession.reply("load", "ACCEPTED", false, role).get("state").asObject();
+        JsonObject declineArgue = fixture.request("action", "decline-argue-after-restore", argue)
+            .add("actionId", actionWithSuffix(argue, "argue:no"));
+        JsonObject bribe = sendOffSession.apply(role, declineArgue).get("state").asObject();
+        assertDecisionOffered(sendOffSession, bribe, "bribes");
+        JsonObject decline = fixture.request("action", "decline-bribe", bribe)
+            .add("actionId", actionWithSuffix(bribe, "bribe:no"));
+        JsonObject setup = sendOffSession.apply(role, decline).get("state").asObject();
+        assertEquals("SETUP", setup.getString("phase", null));
+        assertEquals(sendOff.get("drive"), setup.get("drive"));
+        assertEquals(scorerHome ? 1 : 0, setup.getInt("homeScore", -1));
+        assertEquals(scorerHome ? 0 : 1, setup.getInt("awayScore", -1));
+        assertTrue(sendOffSession.apply(role, decline).getBoolean("duplicate", false));
+        assertEquals(setup.getInt("revision", -1) + 1, sendOffSession.transcriptPage(0, 1).getInt("total", -1));
+        Game continued = state(sendOffSession).getGame();
+        assertEquals(1, continued.getGameResult().getPlayerResult(continued.getPlayerById(scorer.getId())).getTouchdowns());
+        assertEquals(PlayerState.BANNED, continued.getFieldModel().getPlayerState(continued.getPlayerById(weapon.getId())).getBase());
+        assertEquals(1, allEvents(sendOffSession).stream().filter(event -> "touchdown".equals(event.getString("kind", null))).count());
+    }
+
+    @Test void secretWeaponChoicesFollowTheTouchdown() throws Exception {
+        secretWeaponChoicesFollowTheSettledBoundary("touchdown");
+    }
+
+    @Test void secretWeaponChoicesFollowTheLastTurnTouchdown() throws Exception {
+        secretWeaponChoicesFollowTheSettledBoundary("lastTurnTouchdown");
+    }
+
+    @Test void secretWeaponChoicesFollowTheLastTurnTurnover() throws Exception {
+        secretWeaponChoicesFollowTheSettledBoundary("lastTurnTurnover");
+    }
+
+    @Test void secretWeaponChoicesFollowAVoluntaryLastTurnWithoutASplash() throws Exception {
+        secretWeaponChoicesFollowTheSettledBoundary("voluntaryEnd");
+    }
+
+    private void secretWeaponChoicesFollowTheSettledBoundary(String ending) throws Exception {
+        SetupSessionMovementTest.Fixture fixture = fixture();
+        JsonObject ready = fixture.advanceToTurn();
+        GameState nativeState = state(fixture.session);
+        Game game = nativeState.getGame();
+        Team team = game.getActingTeam();
+        Player<?> active = team.getPlayers()[0];
+        game.getOptions().addOption(new GameOptionBoolean(GameOptionId.ARGUE_THE_CALL).setValue(true));
+        game.getFieldModel().setWeather(Weather.NICE);
+        UtilBox.putAllPlayersIntoBox(game);
+        place(game, team.getPlayers()[1], 5, 5, PlayerState.STANDING);
+        place(game, team.getPlayers()[2], 5, 6, PlayerState.STANDING);
+        for (int index = 1; index <= 2; index++) {
+            ((RosterPlayer) team.getPlayers()[index]).addSkill(game.getRules().getSkillFactory().forName("Secret Weapon"));
+        }
+        TurnData turnData = game.getTurnData();
+        InducementTypeFactory inducements = game.getFactory(FactoryType.Factory.INDUCEMENT_TYPE);
+        turnData.getInducementSet().addInducement(new Inducement(inducements.forName("bribes"), 1));
+        turnData.getInducementSet().addInducement(new Inducement(inducements.forName("briberyAndCorruption"), 1));
+        Inducement referee = new Inducement(inducements.forName("biasedRef"), 1);
+        referee.setValue(1);
+        turnData.getInducementSet().addInducement(referee);
+        if (!ending.equals("touchdown")) {
+            game.getTurnDataHome().setTurnNr(8);
+            game.getTurnDataAway().setTurnNr(8);
+        }
+
+        JsonObject current;
+        if (ending.equals("lastTurnTurnover")) {
+            place(game, active, 7, 7, PlayerState.STANDING);
+            game.getFieldModel().setBallCoordinate(new FieldCoordinate(8, 7));
+            game.getFieldModel().setBallInPlay(true);
+            game.getFieldModel().setBallMoving(true);
+            forceGeneral(nativeState, 1, 6, 6, 6);
+            current = fixture.session.apply(ready.getString("actor", null), fixture.request("movement", "failed-pickup", ready)
+                .add("playerId", active.getId()).add("kind", "move").add("targetPlayerId", JsonValue.NULL)
+                .add("waypoints", new JsonArray().add(new JsonObject().add("x", 8).add("y", 7))))
+                .get("state").asObject();
+            assertEquals(-1, announcementIndex(nativeOutcomes(fixture.session, current.getInt("revision", -1)), "turnover"));
+            current = applyAction(fixture, current, "decline-pickup-reroll", actionWithSuffix(current, "none"));
+        } else {
+            if (ending.equals("voluntaryEnd")) {
+                game.getFieldModel().setBallCoordinate(null);
+                game.getFieldModel().setBallInPlay(false);
+            } else {
+                prepareScorer(game, active);
+            }
+            current = applyAction(fixture, ready, "end-drive", action(ready, "endTurn").getString("id", null));
+        }
+        current = fixture.session.reply("load", "ACCEPTED", false, current.getString("actor", null)).get("state").asObject();
+        String boundary = ending.equals("lastTurnTurnover") ? "turnover" : "touchdown";
+        JsonArray outcomes = recordedNativeOutcomes(fixture.session, current.getInt("revision", -1));
+        int selection = changeIndex(outcomes, "gameSetDialogParameter", "playerChoice");
+        assertTrue(selection >= 0, outcomes.toString());
+        if (ending.equals("voluntaryEnd")) {
+            assertEquals(-1, announcementIndex(outcomes, "touchdown"));
+            assertEquals(-1, announcementIndex(outcomes, "turnover"));
+        } else {
+            int event = announcementIndex(outcomes, boundary);
+            assertTrue(event >= 0 && event < selection, outcomes.toString());
+        }
+
+        current = applyAction(fixture, current, "choose-weapon", action(current, "secretWeapon").getString("id", null));
+        assertDecisionOffered(fixture.session, current, "argueTheCall");
+        forceGeneral(nativeState, 1);
+        current = applyAction(fixture, current, "argue", actionWithSuffix(current, "argue:" + team.getPlayers()[1].getId()));
+        assertDecisionOffered(fixture.session, current, "briberyAndCorruptionReRoll");
+        current = applyAction(fixture, current, "decline-argue-reroll", actionWithSuffix(current, "argue-reroll:none"));
+        assertDecisionOffered(fixture.session, current, "bribes");
+    }
+
     @Test void voluntaryEndAndRecoveryProduceOnlyTheNextAuthoritativeTurnStart() throws Exception {
         SetupSessionMovementTest.Fixture fixture = fixture();
         JsonObject ready = fixture.advanceToTurn();
@@ -440,6 +724,65 @@ class MatchAnnouncementPresentationTest {
             DiceCategory die = new DiceCategory(); die.parseCommand(Integer.toString(value), state.getGame(), state.getGame().getTeamHome()); dice.add(die);
         }
         state.getDiceRoller().getTestRolls().put("General", dice);
+    }
+
+    private void prepareScorer(Game game, Player<?> scorer) {
+        boolean home = game.getTeamHome().hasPlayer(scorer);
+        FieldCoordinate endzone = new FieldCoordinate(home ? 25 : 0, 7);
+        game.getFieldModel().setPlayerCoordinate(scorer, endzone);
+        game.getFieldModel().setPlayerState(scorer, new PlayerState(PlayerState.STANDING));
+        game.getFieldModel().setBallCoordinate(endzone);
+        game.getFieldModel().setBallInPlay(true);
+        game.getFieldModel().setBallMoving(false);
+    }
+
+    private JsonObject applyAction(SetupSessionMovementTest.Fixture fixture, JsonObject view, String requestId, String actionId) {
+        return fixture.session.apply(view.getString("actor", null), fixture.request("action", requestId, view).add("actionId", actionId))
+            .get("state").asObject();
+    }
+
+    private String actionWithSuffix(JsonObject view, String suffix) {
+        for (JsonValue value : view.get("actions").asArray()) {
+            String id = value.asObject().getString("id", "");
+            if (id.endsWith(":" + suffix)) return id;
+        }
+        throw new AssertionError("Missing action " + suffix + " in " + view.get("actions"));
+    }
+
+    private void assertDecisionOffered(SetupSession session, JsonObject view, String dialogId) {
+        JsonArray outcomes = recordedNativeOutcomes(session, view.getInt("revision", -1));
+        assertTrue(changeIndex(outcomes, "gameSetDialogParameter", dialogId) >= 0, outcomes.toString());
+        assertEquals(-1, announcementIndex(outcomes, "touchdown"));
+        assertEquals(-1, announcementIndex(outcomes, "turnover"));
+    }
+
+    private JsonArray recordedNativeOutcomes(SetupSession session, int revision) {
+        return session.recoveryCheckpointPayload().get("transcript").asObject().get("records").asArray()
+            .get(revision).asObject().get("native").asArray();
+    }
+
+    private JsonArray nativeOutcomes(SetupSession session, int revision) {
+        return session.transcriptPage(revision, 1).get("records").asArray().get(0).asObject().get("native").asArray();
+    }
+
+    private int announcementIndex(JsonArray outcomes, String kind) {
+        for (int index = 0; index < outcomes.size(); index++) {
+            if (events(new JsonArray().add(outcomes.get(index))).stream().anyMatch(event -> kind.equals(event.getString("kind", null))))
+                return index;
+        }
+        return -1;
+    }
+
+    private int changeIndex(JsonArray outcomes, String changeId, String dialogId) {
+        for (int index = 0; index < outcomes.size(); index++) {
+            for (JsonValue value : outcomes.get(index).asObject().get("modelChangeList").asObject().get("modelChangeArray").asArray()) {
+                JsonObject change = value.asObject();
+                if (!changeId.equals(change.getString("modelChangeId", null))) continue;
+                JsonValue data = change.get("modelChangeValue");
+                if (dialogId == null || data.isObject() && dialogId.equals(data.asObject().getString("dialogId", null))) return index;
+            }
+        }
+        return -1;
     }
 
     private SetupSessionMovementTest.Fixture fixture() throws Exception {

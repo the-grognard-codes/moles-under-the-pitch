@@ -17,6 +17,7 @@
       "com.fumbbl.ffb.server.local.SkillUsePreferenceSchemaIntegrationTest",
       "com.fumbbl.ffb.server.match.BoundedJsonStorageCodecTest",
       "com.fumbbl.ffb.server.match.CanonicalJsonTest",
+      "com.fumbbl.ffb.server.match.CompactMatchSnapshotTest",
       "com.fumbbl.ffb.server.match.CompletedMatchTest",
       "com.fumbbl.ffb.server.match.ComputerCoachNativeDecisionTest",
       "com.fumbbl.ffb.server.match.ComputerPolicyStateTest",

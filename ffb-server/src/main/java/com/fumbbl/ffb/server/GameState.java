@@ -54,6 +54,9 @@ public class GameState implements IModelChangeObserver, IJsonSerializable {
 	/** Whether the application commits limited actions when the player declares them. */
 	public boolean consumesDeclaredActions() { return false; }
 
+	/** Native step fields used only by the compact snapshot format. */
+	public boolean usesCompactSnapshot() { return false; }
+
 	/** Read-only application presentation observer; native sessions have no observer. */
 	public void observeModelSync(ServerCommandModelSync command) { }
 
@@ -419,6 +422,23 @@ public class GameState implements IModelChangeObserver, IJsonSerializable {
 		IServerJsonOption.ACTIVE_EFFECTS.addTo(jsonObject, activeEffects.toJsonValue());
 
 		return jsonObject;
+	}
+
+	/** Native continuation omitted from the shared game model and legacy checkpoint format. */
+	public JsonObject continuationJson() {
+		Game game = getGame();
+		return new JsonObject().add("actingPlayer", game.getActingPlayer().continuationJson())
+			.add("homeTurn", game.getTurnDataHome().continuationJson()).add("awayTurn", game.getTurnDataAway().continuationJson())
+			.add("modelChanges", fChangeList.toJsonValue());
+	}
+
+	public void restoreContinuation(JsonObject saved) {
+		if (saved.size() != 4) throw new IllegalArgumentException("Invalid native continuation");
+		Game game = getGame();
+		game.getActingPlayer().restoreContinuation(saved.get("actingPlayer").asObject());
+		game.getTurnDataHome().restoreContinuation(saved.get("homeTurn").asObject());
+		game.getTurnDataAway().restoreContinuation(saved.get("awayTurn").asObject());
+		fChangeList = new ModelChangeList().initFrom(game.getRules(), saved.get("modelChanges"));
 	}
 
 	public GameState initFrom(IFactorySource emptySource, JsonValue jsonValue) {

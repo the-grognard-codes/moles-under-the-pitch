@@ -11,6 +11,13 @@ import com.eclipsesource.json.JsonValue;
 
 /** Captures the accepted native choice and the actual progress of one committed move. */
 final class AcceptedActionPresentation {
+    JsonObject unfinishedMovement(JsonValue decision) {
+        if (!decision.isObject() || decision.asObject().get("logPresentation") == null) return null;
+        JsonValue movement = decision.asObject().get("logPresentation").asObject().get("movement");
+        return movement.isObject() && !movement.asObject().getBoolean("complete", true)
+            ? JsonObject.readFrom(movement.toString()) : null;
+    }
+
     JsonObject action(Game game, Action action) {
         String playerId = new ActionSource().playerId(game, action);
         JsonValue target = action.targetPlayerId != null ? new JsonObject().add("playerId", action.targetPlayerId)

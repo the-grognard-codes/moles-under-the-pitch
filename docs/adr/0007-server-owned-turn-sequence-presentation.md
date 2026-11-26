@@ -62,9 +62,12 @@ are independent of server progression, so a slow or hung client cannot stall
 the match.
 
 Star of the Show is a cleanup decision whose preceding marker is the touchdown
-boundary. In the current path, `StepEndTurn` can offer Star of the Show before
-`observeTurnEnd` emits the touchdown. The implementation must bring this
-emission site into line with the ordering above.
+boundary. The original `StepEndTurn` path could offer Star of the Show before
+`observeTurnEnd` emitted the touchdown.
+
+2026-11-25 implementation follow-up. [PR #687](https://github.com/the-grognard-codes/moles-under-the-pitch/pull/687)
+stages the settled score and touchdown before Star of the Show. Half-time
+presentation remains tracked in [#685](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/685).
 
 Markers describe accepted facts; native steps/dialogs remain rules authority.
 The server still validates actor, revision and the current choice. Metadata

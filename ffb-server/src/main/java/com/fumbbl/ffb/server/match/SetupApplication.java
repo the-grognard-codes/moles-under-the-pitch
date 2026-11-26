@@ -6,7 +6,6 @@ import com.fumbbl.ffb.server.local.BrowserRequestTiming;
 import com.fumbbl.ffb.server.skilluse.SkillUsePreferences;
 import com.fumbbl.ffb.server.skilluse.SkillUsePreferenceService;
 
-import com.eclipsesource.json.JsonArray;
 import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonValue;
 
@@ -1115,28 +1114,21 @@ public final class SetupApplication {
 		return setupReplies.create(requestId, "ACCEPTED", duplicate, retained.view(role));
 	}
 
-	private HandleOutcome completedArtifactReply(MatchDocument document, String role, String requestId) {
+	private HandleOutcome completedArtifactReply(MatchDocument document, String role, String requestId) throws SQLException {
 		return outcome(setupReplies.create(requestId, "ACCEPTED", false, completedState(document, role)), false);
 	}
 
 	/** Adds a live-only explanation without changing frozen replay or recovery schemas. */
-	private JsonObject completedState(MatchDocument document, String role) {
-		JsonObject artifact = JsonObject.readFrom(document.completion.json());
-		JsonArray events = artifact.get("events").asArray();
-		JsonObject terminal = new PublicMatchView().recorded(events.get(events.size() - 1).asObject().get("state").asObject(), role);
-		JsonValue transcript = artifact.get("transcript");
-		if (transcript != null) {
-			JsonArray records = transcript.asObject().get("records").asArray();
-			JsonValue decision = records.get(records.size() - 1).asObject().get("decision");
-			if (decision.isObject() && "sizeLimit".equals(decision.asObject().getString("operation", null))
-				&& MatchStopReason.MATCH_SIZE_LIMIT.name().equals(decision.asObject().getString("reason", null)))
-				terminal.set("stopReason", MatchStopReason.MATCH_SIZE_LIMIT.name());
-		}
+	private JsonObject completedState(MatchDocument document, String role) throws SQLException {
+		MatchHistory history = matches.openHistory(document);
+		JsonObject terminal = new PublicMatchView().recorded(history.finalState(), role);
+		MatchStopReason stopReason = history.stopReason();
+		if (stopReason != null) terminal.set("stopReason", stopReason.name());
 		return terminal;
 	}
 
 	private HandleOutcome completedReplyWithOutcome(MatchDocument document, String role, JsonObject request,
-		RecoveryRepository.Record record) {
+		RecoveryRepository.Record record) throws SQLException {
 		if (record == null) {
 			if (!"load".equals(request.getString("operation", null)) && !"concessionStatus".equals(request.getString("operation", null))) throw new MatchService.Failure("MATCH_COMPLETED");
 			return completedArtifactReply(document, role, request.getString("requestId", null));
@@ -1294,10 +1286,7 @@ public final class SetupApplication {
 	private JsonObject transcriptPage(String matchId, int from, int limit, boolean restoreMissing) throws SQLException {
 		MatchDocument document = matches.load("home", matchId).document;
 		if (document.lifecycle == MatchDocument.Lifecycle.COMPLETED) {
-			JsonObject artifact = JsonObject.readFrom(document.completion.json());
-			if (artifact.getInt("formatVersion", -1) != 2 && artifact.getInt("formatVersion", -1) != 3)
-				throw new MatchService.Failure("REPLAY_UNSUPPORTED");
-			return new MatchTranscript(artifact.get("transcript").asObject()).page(from, limit);
+			return matches.openHistory(document).recordPage(from, limit);
 		}
 		if (document.lifecycle != MatchDocument.Lifecycle.ACTIVATED) throw new MatchService.Failure("NOT_FOUND");
 		if (!restoreMissing && recovery == null) throw new MatchService.Failure("SESSION_UNAVAILABLE");
@@ -1315,9 +1304,7 @@ public final class SetupApplication {
 	public JsonObject chatPage(String matchId, int from, int limit) throws SQLException {
 		MatchDocument document = matches.load("home", matchId).document;
 		if (document.lifecycle == MatchDocument.Lifecycle.COMPLETED) {
-			JsonObject artifact = JsonObject.readFrom(document.completion.json());
-			if (artifact.getInt("formatVersion", -1) != 3) throw new MatchService.Failure("CHAT_UNAVAILABLE");
-			return new MatchChat(artifact.get("chat").asObject()).page(from, limit);
+			return new CompletedMatchChat(document.completion).page(from, limit);
 		}
 		if (document.lifecycle != MatchDocument.Lifecycle.ACTIVATED) throw new MatchService.Failure("NOT_FOUND");
 		releaseIdle();
@@ -1342,9 +1329,7 @@ public final class SetupApplication {
 	private MatchChat.Outcome persistChat(String matchId, String accountId, String role, String requestId, String content) throws SQLException {
 		MatchDocument document = matches.load("home", matchId).document;
 		if (document.lifecycle == MatchDocument.Lifecycle.COMPLETED) {
-			JsonObject artifact = JsonObject.readFrom(document.completion.json());
-			if (artifact.getInt("formatVersion", -1) != 3) throw new MatchService.Failure("CHAT_UNAVAILABLE");
-			return new MatchChat(artifact.get("chat").asObject()).duplicate(accountId, requestId, content);
+			return new CompletedMatchChat(document.completion).duplicate(accountId, requestId, content);
 		}
 		if (document.lifecycle != MatchDocument.Lifecycle.ACTIVATED) throw new MatchService.Failure("NOT_FOUND");
 		releaseIdle();

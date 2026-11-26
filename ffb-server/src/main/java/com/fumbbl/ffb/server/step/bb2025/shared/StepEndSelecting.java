@@ -483,6 +483,7 @@ public final class StepEndSelecting extends AbstractStep {
     IServerJsonOption.END_PLAYER_ACTION.addTo(jsonObject, fEndPlayerAction);
     IServerJsonOption.DISPATCH_PLAYER_ACTION.addTo(jsonObject, fDispatchPlayerAction);
     IServerJsonOption.MOVE_STACK.addTo(jsonObject, fMoveStack);
+    if (getGameState().usesCompactSnapshot()) IServerJsonOption.MOVE_START.addTo(jsonObject, moveStart);
     IServerJsonOption.GAZE_VICTIM_ID.addTo(jsonObject, fGazeVictimId);
     IServerJsonOption.BLOCK_DEFENDER_ID.addTo(jsonObject, fBlockDefenderId);
     IServerJsonOption.USING_STAB.addTo(jsonObject, fUsingStab);
@@ -513,6 +514,7 @@ public final class StepEndSelecting extends AbstractStep {
     fEndPlayerAction = IServerJsonOption.END_PLAYER_ACTION.getFrom(source, jsonObject);
     fDispatchPlayerAction = (PlayerAction) IServerJsonOption.DISPATCH_PLAYER_ACTION.getFrom(source, jsonObject);
     fMoveStack = IServerJsonOption.MOVE_STACK.getFrom(source, jsonObject);
+    moveStart = IServerJsonOption.MOVE_START.getFrom(source, jsonObject);
     fGazeVictimId = IServerJsonOption.GAZE_VICTIM_ID.getFrom(source, jsonObject);
     fBlockDefenderId = IServerJsonOption.BLOCK_DEFENDER_ID.getFrom(source, jsonObject);
     usingChainsaw = IServerJsonOption.USING_CHAINSAW.getFrom(source, jsonObject);

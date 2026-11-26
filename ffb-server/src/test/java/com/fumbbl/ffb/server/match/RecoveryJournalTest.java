@@ -6,7 +6,10 @@ import com.fumbbl.ffb.FactoryType;
 import com.fumbbl.ffb.FieldCoordinate;
 import com.fumbbl.ffb.PlayerAction;
 import com.fumbbl.ffb.PlayerState;
+import com.fumbbl.ffb.ReRollSources;
+import com.fumbbl.ffb.dialog.DialogReRollBlockForTargetsParameter;
 import com.fumbbl.ffb.factory.SkillFactory;
+import com.fumbbl.ffb.model.BlockRoll;
 import com.fumbbl.ffb.model.Game;
 import com.fumbbl.ffb.model.Player;
 import com.fumbbl.ffb.model.RosterPlayer;
@@ -29,8 +32,8 @@ import com.eclipsesource.json.JsonValue;
 
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -61,6 +64,41 @@ class RecoveryJournalTest {
 		for (int index = 0; index < count; index++) log.add(command);
 		assertEquals(count, log.size()); assertTrue(log.recoveryEpoch() > epoch);
 	}
+	@Test void legacyCheckpointNormalizesUnorderedRerollSourcesInTheNativeLog() throws Exception {
+		SetupSessionMovementTest.Fixture fixture = new SetupSessionMovementTest.Fixture(0, true);
+		GameState state = nativeState(fixture.session);
+		String attacker = state.getGame().getTeamHome().getPlayers()[0].getId();
+		String defender = state.getGame().getTeamAway().getPlayers()[0].getId();
+		BlockRoll roll = new BlockRoll(defender, new PlayerState(PlayerState.STANDING), 0);
+		roll.setNrOfDice(1);
+		roll.setBlockRoll(new int[] { 3 });
+		roll.add(ReRollSources.PRO);
+		roll.add(ReRollSources.TEAM_RE_ROLL);
+		ModelChangeList changes = new ModelChangeList();
+		changes.add(new ModelChange(ModelChangeId.GAME_SET_DIALOG_PARAMETER, null,
+			new DialogReRollBlockForTargetsParameter(attacker, List.of(roll))));
+		ServerCommandModelSync sync = new ServerCommandModelSync(changes, new ReportList(), null, null, 0, 0);
+		sync.setCommandNr(state.generateCommandNr());
+		GameLog log = state.getGameLog();
+		log.add(sync);
+		JsonObject frozen = log.recoveryJsonFrom(0);
+		lastLoggedRoll(frozen).set("reRollSources", new JsonArray().add("Team ReRoll").add("Pro"));
+		log.restoreRecoveryJson(frozen);
+
+		String artifact = fixture.session.recoveryArtifact();
+		JsonObject saved = JsonObject.readFrom(artifact).get("payload").asObject().get("native").asObject().get("gameLog").asObject();
+		assertEquals(new JsonArray().add("Pro").add("Team ReRoll"), lastLoggedRoll(saved).get("reRollSources"));
+		SetupSession restored = new SetupSession(fixture.server, fixture.document, artifact);
+		assertEquals(saved, restored.orderedRecoveryPayload().get("native").asObject().get("gameLog"));
+	}
+
+	private JsonObject lastLoggedRoll(JsonObject log) {
+		JsonArray commands = log.get("commandArray").asArray();
+		return commands.get(commands.size() - 1).asObject().get("modelChangeList").asObject()
+			.get("modelChangeArray").asArray().get(0).asObject().get("modelChangeValue").asObject()
+			.get("blockRolls").asArray().get(0).asObject();
+	}
+
 	@Test void movementPickupAndBlitzBlockChoicesPreserveCommittedNativeCommands() throws Exception {
 		SetupSessionMovementTest.Fixture fixture = new SetupSessionMovementTest.Fixture(0, true);
 		fixture.advanceToTurn(); fixture.session.startSaveResumeRetention(System.currentTimeMillis());
