@@ -551,7 +551,7 @@ public class StepEndTurn extends AbstractStep {
 				getResult().addReport(new ReportShowStarReRoll(touchdownPlayerId));
 			}
 			if (fNewHalf) {
-				// The step's final model sync records the cleanup and half transition before setup runs.
+				// Stage halftime after applying the Star of the Show reward, before the final model sync.
 				getGameState().observeHalfEnd();
 			}
 

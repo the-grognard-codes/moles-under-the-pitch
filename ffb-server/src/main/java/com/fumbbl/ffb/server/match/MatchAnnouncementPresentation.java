@@ -32,6 +32,7 @@ import java.util.function.Function;
 final class MatchAnnouncementPresentation {
     private static final List<String> LEGACY_CHECKPOINT_FIELDS = List.of("voluntary", "confirmed", "reason", "lastTurn", "pending");
     private static final List<String> KICKOFF_CHECKPOINT_FIELDS = List.of("lastWeather", "pendingKickoff", "deferredWeather");
+    private static final String PENDING_HALF_TIME_FIELD = "pendingHalfTime";
     private final MatchSplashRules rules = new MatchSplashRules();
     private final Map<Integer, JsonArray> syncs = new LinkedHashMap<>();
     private JsonArray pending = new JsonArray();
@@ -112,7 +113,7 @@ final class MatchAnnouncementPresentation {
         if (game.getTurnMode() == TurnMode.REGULAR && reason == null) reason = confirmedReason;
     }
 
-    void end(Game game, Player<?> scorer, boolean halfEnded) {
+    void end(Game game, Player<?> scorer, boolean lastTurnOfHalf) {
         // Kickoff bonus actions and setup are not normal numbered team turns.
         if (scorer != null) {
             boolean home = game.getTeamHome().hasPlayer(scorer);
@@ -122,7 +123,7 @@ final class MatchAnnouncementPresentation {
             pending.add(event("turnover", game, game.isHomePlaying(),
                 reason == null ? "A rules-triggered turnover ended the turn." : reason));
         }
-        if (halfEnded && game.getHalf() == 1) {
+        if (lastTurnOfHalf && game.getHalf() == 1) {
             pendingHalfTime = event("halfTime", game, game.isHomePlaying(), score(game));
         }
         voluntary = false;
@@ -195,12 +196,13 @@ final class MatchAnnouncementPresentation {
             .add("lastTurn", nullable(lastTurn)).add("pending", pending)
             .add("lastWeather", nullable(lastWeather)).add("pendingKickoff", pendingKickoff == null ? JsonValue.NULL : pendingKickoff)
             .add("deferredWeather", deferredWeather == null ? JsonValue.NULL : deferredWeather);
-        if (pendingHalfTime != null) saved.add("pendingHalfTime", pendingHalfTime);
+        // Keep the older checkpoint shape when there is no halftime event to resume.
+        if (pendingHalfTime != null) saved.add(PENDING_HALF_TIME_FIELD, pendingHalfTime);
         return saved;
     }
 
     void restore(JsonObject saved) {
-        JsonValue halfTime = saved.get("pendingHalfTime");
+        JsonValue halfTime = saved.get(PENDING_HALF_TIME_FIELD);
         boolean legacy = saved.size() == LEGACY_CHECKPOINT_FIELDS.size();
         boolean current = saved.size() == LEGACY_CHECKPOINT_FIELDS.size() + KICKOFF_CHECKPOINT_FIELDS.size() + (halfTime == null ? 0 : 1)
             && saved.names().containsAll(KICKOFF_CHECKPOINT_FIELDS);

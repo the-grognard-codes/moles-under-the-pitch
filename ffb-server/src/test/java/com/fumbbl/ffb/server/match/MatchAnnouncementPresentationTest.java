@@ -44,9 +44,11 @@ import java.util.zip.GZIPInputStream;
 
 import org.junit.jupiter.api.Test;
 
+import static com.fumbbl.ffb.server.match.RecordedMatchAnnouncements.events;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -146,9 +148,8 @@ class MatchAnnouncementPresentationTest {
         assertEquals(1, continued.getGameResult().getPlayerResult(restoredScorer).getTouchdowns());
         assertEquals(scorerHome ? 1 : 0, continued.getGameResult().getTeamResultHome().getScore());
         assertEquals(scorerHome ? 0 : 1, continued.getGameResult().getTeamResultAway().getScore());
-        assertEquals(1, allEvents(resumed).stream().filter(event -> "touchdown".equals(event.getString("kind", null))).count());
-        assertEquals(lastTurn ? 1 : 0,
-            allEvents(resumed).stream().filter(event -> "halfTime".equals(event.getString("kind", null))).count());
+        assertEquals(1, countEvents(resumed, "touchdown"));
+        assertEquals(lastTurn ? 1 : 0, countEvents(resumed, "halfTime"));
     }
 
     @Test void preChangeCheckpointResumesTheUnscoredTouchdownExactlyOnce() throws Exception {
@@ -178,28 +179,99 @@ class MatchAnnouncementPresentationTest {
         assertTrue(resumed.apply(role, request).getBoolean("duplicate", false));
         assertEquals(continued.getInt("revision", -1) + 1, resumed.transcriptPage(0, 1).getInt("total", -1));
         assertEquals(1, game.getGameResult().getPlayerResult(game.getPlayerById(scorerId)).getTouchdowns());
-        assertEquals(1, allEvents(resumed).stream().filter(event -> "touchdown".equals(event.getString("kind", null))).count());
+        assertEquals(1, countEvents(resumed, "touchdown"));
+    }
+
+    @Test void concessionDuringFirstHalfCleanupSkipsStraightToFullTime() throws Exception {
+        SetupSessionMovementTest.Fixture fixture = fixture();
+        JsonObject paused = pauseAtFirstHalfStarOfTheShow(fixture);
+        SetupSession resumed = new SetupSession(fixture.server, fixture.document, fixture.session.recoveryArtifact());
+        String role = paused.getString("actor", null);
+
+        JsonObject reply = resumed.apply(role, fixture.request("concede", "concede-during-first-half-cleanup", paused));
+
+        assertEquals("ACCEPTED", reply.getString("code", null));
+        assertTrue(resumed.isComplete());
+        List<JsonObject> events = events(nativeOutcomes(resumed, resumed.revision()));
+        assertEquals(List.of("fullTime"), events.stream().map(event -> event.getString("kind", null)).toList());
+        assertEquals("MATCH CONCEDED", events.getFirst().getString("headline", null));
+        assertEquals(1, countEvents(resumed, "touchdown"));
+        assertEquals(0, countEvents(resumed, "halfTime"));
+        assertNull(resumed.recoveryCheckpointPayload().get("matchAnnouncements").asObject().get("pendingHalfTime"));
+    }
+
+    @Test void recoveryArtifactWithAlreadyRecordedHalftimeFinishesCleanupWithoutAnotherEvent() throws Exception {
+        SetupSessionMovementTest.Fixture fixture = fixture();
+        JsonObject paused = pauseAtFirstHalfStarOfTheShow(fixture);
+        JsonObject payload = fixture.session.orderedRecoveryPayload();
+        // Older writers put halftime in the touchdown sync instead of the cleanup continuation.
+        JsonObject checkpointAnnouncements = payload.get("matchAnnouncements").asObject();
+        JsonValue halftime = checkpointAnnouncements.get("pendingHalfTime");
+        assertNotNull(halftime);
+        checkpointAnnouncements.remove("pendingHalfTime");
+        JsonArray records = payload.get("transcript").asObject().get("records").asArray();
+        JsonArray score = records.get(paused.getInt("revision", -1)).asObject().get("native").asArray();
+        score.get(announcementIndex(score, "touchdown")).asObject().get("matchAnnouncements").asObject()
+            .get("events").asArray().add(halftime);
+        String artifact = new RecoveryArtifactJson().encodeCheckpoint(payload).envelope();
+
+        SetupSession resumed = new SetupSession(fixture.server, fixture.document, artifact);
+        assertEquals(1, countEvents(resumed, "halfTime"));
+        String role = paused.getString("actor", null);
+        JsonObject offer = resumed.reply("load", "ACCEPTED", false, role).get("state").asObject();
+        JsonObject request = fixture.request("action", "decline-star-after-legacy-halftime", offer)
+            .add("actionId", actionWithSuffix(offer, "skill:false"));
+        JsonObject setup = resumed.apply(role, request).get("state").asObject();
+
+        assertEquals(2, setup.getInt("half", -1));
+        assertEquals(StepId.SETUP, state(resumed).getCurrentStep().getId());
+        assertTrue(resumed.apply(role, request).getBoolean("duplicate", false));
+        assertEquals(1, countEvents(resumed, "halfTime"));
+    }
+
+    private JsonObject pauseAtFirstHalfStarOfTheShow(SetupSessionMovementTest.Fixture fixture) throws Exception {
+        JsonObject ready = fixture.advanceToTurn();
+        Game game = state(fixture.session).getGame();
+        setLastTurnOfFirstHalf(game);
+        UtilBox.putAllPlayersIntoBox(game);
+        Player<?> scorer = game.getActingTeam().getPlayers()[0];
+        ((RosterPlayer) scorer).addSkill(game.getRules().getSkillFactory().forName("Star of the Show"));
+        prepareScorer(game, scorer);
+        JsonObject paused = applyAction(fixture, ready, "score-with-star", action(ready, "endTurn").getString("id", null));
+        assertTrue(game.getDialogParameter() instanceof DialogSkillUseParameter);
+        return paused;
     }
 
     @Test void offTurnStarThenRestoredSendOffKeepsOneTouchdownAndDriveAdvance() throws Exception {
-        offTurnStarThenRestoredSendOff(false);
+        SetupSessionMovementTest.Fixture fixture = fixture();
+        SendOffResult result = resolveOffTurnStarAndSendOff(fixture, fixture.advanceToTurn());
+
+        assertEquals("SETUP", result.setup().getString("phase", null));
+        assertEquals(result.driveBeforeFinalBribe(), result.setup().getInt("drive", -1));
+        assertEquals(0, countEvents(result.session(), "halfTime"));
     }
 
     @Test void offTurnStarAndRestoredSendOffBothPrecedeHalftime() throws Exception {
-        offTurnStarThenRestoredSendOff(true);
-    }
-
-    private void offTurnStarThenRestoredSendOff(boolean lastTurn) throws Exception {
         SetupSessionMovementTest.Fixture fixture = fixture();
         JsonObject ready = fixture.advanceToTurn();
+        Game game = state(fixture.session).getGame();
+        game.getTurnDataHome().setTurnNr(game.isHomePlaying() ? 8 : 7);
+        game.getTurnDataAway().setTurnNr(game.isHomePlaying() ? 7 : 8);
+
+        SendOffResult result = resolveOffTurnStarAndSendOff(fixture, ready);
+
+        assertHalftimeAtSetup(result.session(), result.setup());
+        assertEquals(result.driveBeforeFinalBribe() + 1, result.setup().getInt("drive", -1));
+        assertEquals(1, countEvents(result.session(), "halfTime"));
+    }
+
+    private record SendOffResult(SetupSession session, JsonObject setup, int driveBeforeFinalBribe) { }
+
+    private SendOffResult resolveOffTurnStarAndSendOff(SetupSessionMovementTest.Fixture fixture, JsonObject ready) throws Exception {
         Game game = state(fixture.session).getGame();
         Team scoringTeam = game.getOtherTeam(game.getActingTeam());
         boolean scorerHome = scoringTeam == game.getTeamHome();
         String role = scorerHome ? "home" : "away";
-        if (lastTurn) {
-            game.getTurnDataHome().setTurnNr(scorerHome ? 7 : 8);
-            game.getTurnDataAway().setTurnNr(scorerHome ? 8 : 7);
-        }
         Player<?> scorer = scoringTeam.getPlayers()[0];
         Player<?> weapon = scoringTeam.getPlayers()[1];
         game.getOptions().addOption(new GameOptionBoolean(GameOptionId.ARGUE_THE_CALL).setValue(true));
@@ -235,9 +307,6 @@ class MatchAnnouncementPresentationTest {
         JsonObject decline = fixture.request("action", "decline-bribe", bribe)
             .add("actionId", actionWithSuffix(bribe, "bribe:no"));
         JsonObject setup = sendOffSession.apply(role, decline).get("state").asObject();
-        if (lastTurn) assertHalftimeAtSetup(sendOffSession, setup);
-        else assertEquals("SETUP", setup.getString("phase", null));
-        assertEquals(sendOff.getInt("drive", -1) + (lastTurn ? 1 : 0), setup.getInt("drive", -1));
         assertEquals(scorerHome ? 1 : 0, setup.getInt("homeScore", -1));
         assertEquals(scorerHome ? 0 : 1, setup.getInt("awayScore", -1));
         assertTrue(sendOffSession.apply(role, decline).getBoolean("duplicate", false));
@@ -245,34 +314,34 @@ class MatchAnnouncementPresentationTest {
         Game continued = state(sendOffSession).getGame();
         assertEquals(1, continued.getGameResult().getPlayerResult(continued.getPlayerById(scorer.getId())).getTouchdowns());
         assertEquals(PlayerState.BANNED, continued.getFieldModel().getPlayerState(continued.getPlayerById(weapon.getId())).getBase());
-        assertEquals(1, allEvents(sendOffSession).stream().filter(event -> "touchdown".equals(event.getString("kind", null))).count());
-        assertEquals(lastTurn ? 1 : 0,
-            allEvents(sendOffSession).stream().filter(event -> "halfTime".equals(event.getString("kind", null))).count());
+        assertEquals(1, countEvents(sendOffSession, "touchdown"));
+        return new SendOffResult(sendOffSession, setup, sendOff.getInt("drive", -1));
     }
 
     @Test void secretWeaponChoicesFollowTheTouchdown() throws Exception {
-        secretWeaponChoicesFollowTheSettledBoundary("touchdown");
+        SetupSessionMovementTest.Fixture fixture = fixture();
+        openFirstSecretWeaponBribe(fixture, fixture.advanceToTurn(), TurnEnding.TOUCHDOWN);
     }
 
     @Test void secretWeaponChoicesFollowTheLastTurnTouchdown() throws Exception {
-        secretWeaponChoicesFollowTheSettledBoundary("lastTurnTouchdown");
+        assertHalftimeAfterRestoringSecretWeaponChain(TurnEnding.TOUCHDOWN);
     }
 
     @Test void secretWeaponChoicesFollowTheLastTurnTurnover() throws Exception {
-        secretWeaponChoicesFollowTheSettledBoundary("lastTurnTurnover");
+        assertHalftimeAfterRestoringSecretWeaponChain(TurnEnding.TURNOVER);
     }
 
     @Test void voluntaryLastTurnWithSecretWeaponsAnnouncesOnlyHalftimeAfterCleanup() throws Exception {
-        secretWeaponChoicesFollowTheSettledBoundary("voluntaryEnd");
+        assertHalftimeAfterRestoringSecretWeaponChain(TurnEnding.VOLUNTARY);
     }
 
-    private void secretWeaponChoicesFollowTheSettledBoundary(String ending) throws Exception {
-        SetupSessionMovementTest.Fixture fixture = fixture();
-        JsonObject ready = fixture.advanceToTurn();
+    private enum TurnEnding { TOUCHDOWN, TURNOVER, VOLUNTARY }
+
+    private JsonObject openFirstSecretWeaponBribe(SetupSessionMovementTest.Fixture fixture, JsonObject ready, TurnEnding ending)
+        throws Exception {
         GameState nativeState = state(fixture.session);
         Game game = nativeState.getGame();
         Team team = game.getActingTeam();
-        Player<?> active = team.getPlayers()[0];
         game.getOptions().addOption(new GameOptionBoolean(GameOptionId.ARGUE_THE_CALL).setValue(true));
         game.getFieldModel().setWeather(Weather.NICE);
         UtilBox.putAllPlayersIntoBox(game);
@@ -288,43 +357,28 @@ class MatchAnnouncementPresentationTest {
         Inducement referee = new Inducement(inducements.forName("biasedRef"), 1);
         referee.setValue(1);
         turnData.getInducementSet().addInducement(referee);
-        if (!ending.equals("touchdown")) {
-            game.getTurnDataHome().setTurnNr(8);
-            game.getTurnDataAway().setTurnNr(8);
-        }
-
-        JsonObject current;
-        if (ending.equals("lastTurnTurnover")) {
-            place(game, active, 7, 7, PlayerState.STANDING);
-            game.getFieldModel().setBallCoordinate(new FieldCoordinate(8, 7));
-            game.getFieldModel().setBallInPlay(true);
-            game.getFieldModel().setBallMoving(true);
-            forceGeneral(nativeState, 1, 6, 6, 6);
-            current = fixture.session.apply(ready.getString("actor", null), fixture.request("movement", "failed-pickup", ready)
-                .add("playerId", active.getId()).add("kind", "move").add("targetPlayerId", JsonValue.NULL)
-                .add("waypoints", new JsonArray().add(new JsonObject().add("x", 8).add("y", 7))))
-                .get("state").asObject();
-            assertEquals(-1, announcementIndex(nativeOutcomes(fixture.session, current.getInt("revision", -1)), "turnover"));
-            current = applyAction(fixture, current, "decline-pickup-reroll", actionWithSuffix(current, "none"));
-        } else {
-            if (ending.equals("voluntaryEnd")) {
+        JsonObject current = switch (ending) {
+            case TURNOVER -> failPickupAndDeclineReroll(fixture, ready);
+            case VOLUNTARY -> {
                 game.getFieldModel().setBallCoordinate(null);
                 game.getFieldModel().setBallInPlay(false);
-            } else {
-                prepareScorer(game, active);
+                yield applyAction(fixture, ready, "end-drive", action(ready, "endTurn").getString("id", null));
             }
-            current = applyAction(fixture, ready, "end-drive", action(ready, "endTurn").getString("id", null));
-        }
+            case TOUCHDOWN -> {
+                prepareScorer(game, team.getPlayers()[0]);
+                yield applyAction(fixture, ready, "end-drive", action(ready, "endTurn").getString("id", null));
+            }
+        };
         current = fixture.session.reply("load", "ACCEPTED", false, current.getString("actor", null)).get("state").asObject();
-        String boundary = ending.equals("lastTurnTurnover") ? "turnover" : "touchdown";
         JsonArray outcomes = nativeOutcomes(fixture.session, current.getInt("revision", -1));
         int selection = changeIndex(outcomes, "gameSetDialogParameter", "playerChoice");
         assertTrue(selection >= 0, outcomes.toString());
         assertEquals(-1, announcementIndex(outcomes, "halfTime"));
-        if (ending.equals("voluntaryEnd")) {
+        if (ending == TurnEnding.VOLUNTARY) {
             assertEquals(-1, announcementIndex(outcomes, "touchdown"));
             assertEquals(-1, announcementIndex(outcomes, "turnover"));
         } else {
+            String boundary = ending == TurnEnding.TURNOVER ? "turnover" : "touchdown";
             int event = announcementIndex(outcomes, boundary);
             assertTrue(event >= 0 && event < selection, outcomes.toString());
         }
@@ -336,8 +390,31 @@ class MatchAnnouncementPresentationTest {
         assertDecisionOffered(fixture.session, current, "briberyAndCorruptionReRoll");
         current = applyAction(fixture, current, "decline-argue-reroll", actionWithSuffix(current, "argue-reroll:none"));
         assertDecisionOffered(fixture.session, current, "bribes");
-        if (ending.equals("touchdown")) return;
+        return current;
+    }
 
+    private JsonObject failPickupAndDeclineReroll(SetupSessionMovementTest.Fixture fixture, JsonObject ready) throws Exception {
+        GameState nativeState = state(fixture.session);
+        Game game = nativeState.getGame();
+        Player<?> active = game.getActingTeam().getPlayers()[0];
+        place(game, active, 7, 7, PlayerState.STANDING);
+        game.getFieldModel().setBallCoordinate(new FieldCoordinate(8, 7));
+        game.getFieldModel().setBallInPlay(true);
+        game.getFieldModel().setBallMoving(true);
+        forceGeneral(nativeState, 1, 6, 6, 6);
+        JsonObject reroll = fixture.session.apply(ready.getString("actor", null), fixture.request("movement", "failed-pickup", ready)
+            .add("playerId", active.getId()).add("kind", "move").add("targetPlayerId", JsonValue.NULL)
+            .add("waypoints", new JsonArray().add(new JsonObject().add("x", 8).add("y", 7))))
+            .get("state").asObject();
+        assertEquals(-1, announcementIndex(nativeOutcomes(fixture.session, reroll.getInt("revision", -1)), "turnover"));
+        return applyAction(fixture, reroll, "decline-pickup-reroll", actionWithSuffix(reroll, "none"));
+    }
+
+    private void assertHalftimeAfterRestoringSecretWeaponChain(TurnEnding ending) throws Exception {
+        SetupSessionMovementTest.Fixture fixture = fixture();
+        JsonObject ready = fixture.advanceToTurn();
+        setLastTurnOfFirstHalf(state(fixture.session).getGame());
+        JsonObject current = openFirstSecretWeaponBribe(fixture, ready, ending);
         SetupSession resumed = new SetupSession(fixture.server, fixture.document, fixture.session.recoveryArtifact());
         String role = current.getString("actor", null);
         JsonObject bribe = resumed.reply("load", "ACCEPTED", false, role).get("state").asObject();
@@ -355,21 +432,37 @@ class MatchAnnouncementPresentationTest {
         SetupSession afterAcceptance = new SetupSession(fixture.server, fixture.document, resumed.recoveryArtifact());
         assertTrue(afterAcceptance.apply(role, request).getBoolean("duplicate", false));
         assertEquals(setup.getInt("revision", -1) + 1, afterAcceptance.transcriptPage(0, 1).getInt("total", -1));
-        assertEquals(1, allEvents(afterAcceptance).stream().filter(event -> "halfTime".equals(event.getString("kind", null))).count());
+        assertEquals(1, countEvents(afterAcceptance, "halfTime"));
     }
 
     @Test void voluntaryLastTurnWithNoCleanupChoiceAnnouncesHalftimeInTheSameRevision() throws Exception {
         SetupSessionMovementTest.Fixture fixture = fixture();
         JsonObject ready = fixture.advanceToTurn();
-        Game game = state(fixture.session).getGame();
-        game.getTurnDataHome().setTurnNr(8);
-        game.getTurnDataAway().setTurnNr(8);
+        setLastTurnOfFirstHalf(state(fixture.session).getGame());
 
         JsonObject setup = applyAction(fixture, ready, "end-first-half", action(ready, "endTurn").getString("id", null));
 
         assertEquals(ready.getInt("revision", -1) + 1, setup.getInt("revision", -1));
         assertHalftimeAtSetup(fixture.session, setup);
         assertEquals(List.of("halfTime"), events(nativeOutcomes(fixture.session, setup.getInt("revision", -1))).stream()
+            .map(event -> event.getString("kind", null)).toList());
+    }
+
+    @Test void lastTurnTurnoverWithNoCleanupChoicePrecedesHalftime() throws Exception {
+        SetupSessionMovementTest.Fixture fixture = fixture();
+        JsonObject ready = fixture.advanceToTurn();
+        Game game = state(fixture.session).getGame();
+        setLastTurnOfFirstHalf(game);
+        game.getFieldModel().setWeather(Weather.NICE);
+        UtilBox.putAllPlayersIntoBox(game);
+
+        JsonObject setup = failPickupAndDeclineReroll(fixture, ready);
+
+        assertHalftimeAtSetup(fixture.session, setup);
+        JsonArray outcomes = nativeOutcomes(fixture.session, setup.getInt("revision", -1));
+        int turnover = announcementIndex(outcomes, "turnover");
+        assertTrue(turnover >= 0 && turnover < announcementIndex(outcomes, "halfTime"), outcomes.toString());
+        assertEquals(List.of("turnover", "halfTime"), events(outcomes).stream()
             .map(event -> event.getString("kind", null)).toList());
     }
 
@@ -792,6 +885,11 @@ class MatchAnnouncementPresentationTest {
         game.getFieldModel().setBallMoving(false);
     }
 
+    private void setLastTurnOfFirstHalf(Game game) {
+        game.getTurnDataHome().setTurnNr(8);
+        game.getTurnDataAway().setTurnNr(8);
+    }
+
     private JsonObject applyAction(SetupSessionMovementTest.Fixture fixture, JsonObject view, String requestId, String actionId) {
         return fixture.session.apply(view.getString("actor", null), fixture.request("action", requestId, view).add("actionId", actionId))
             .get("state").asObject();
@@ -929,6 +1027,10 @@ class MatchAnnouncementPresentationTest {
         throw new AssertionError("Missing " + kind);
     }
 
+    private long countEvents(SetupSession session, String kind) {
+        return allEvents(session).stream().filter(event -> kind.equals(event.getString("kind", null))).count();
+    }
+
     private List<JsonObject> allEvents(SetupSession session) {
         List<JsonObject> result = new ArrayList<>();
         for (int from = 0; ; ) {
@@ -943,12 +1045,4 @@ class MatchAnnouncementPresentationTest {
         JsonArray result = new JsonArray(); values.forEach(result::add); return result;
     }
 
-    private List<JsonObject> events(JsonArray outcomes) {
-        List<JsonObject> result = new ArrayList<>();
-        for (JsonValue value : outcomes) {
-            JsonValue announcements = value.asObject().get("matchAnnouncements");
-            if (announcements != null) for (JsonValue event : announcements.asObject().get("events").asArray()) result.add(event.asObject());
-        }
-        return result;
-    }
 }

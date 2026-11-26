@@ -664,10 +664,8 @@ class CompactMatchSnapshotTest {
     }
 
     private List<String> announcementKinds(CompactMatchWrite.Capture capture) {
-        return JsonArray.readFrom(capture.nativeOutcomes()).values().stream()
-            .map(sync -> sync.asObject().get("matchAnnouncements")).filter(value -> value != null)
-            .flatMap(value -> value.asObject().get("events").asArray().values().stream())
-            .map(event -> event.asObject().getString("kind", null)).toList();
+        return RecordedMatchAnnouncements.events(JsonArray.readFrom(capture.nativeOutcomes())).stream()
+            .map(event -> event.getString("kind", null)).toList();
     }
 
     private void applyChoice(SetupSession session, String role, String kind, String suffix) {
