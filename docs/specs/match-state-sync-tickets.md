@@ -162,6 +162,10 @@ Filed as [#661](https://github.com/the-grognard-codes/moles-under-the-pitch/issu
 
 **Blocked by:** ticket 20; ADR accepted.
 
+The maintainer approved using match-team and side IDs for actor identity in the
+[shared record](https://github.com/the-grognard-codes/moles-under-the-pitch/issues/663).
+The internal account ID belongs in the private receipt. See the [implementation outcome](match-format-4-outcome.md).
+
 - Over complete headless matches with both rosters and several seeds, the browser's own reducer reproduces the server's independent public state at every revision.
 - The cases include the ball disappearing, a player leaving the pitch, and `passing`, `kickoff`, `activePlayerAction` and `blockContext` ending.
 - Decoding is strict and versioned, and marker identities are stable. BB2025 mapping stays behind the shared record types.

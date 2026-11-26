@@ -24,11 +24,68 @@ function integer(value: unknown, max = 2147483646): asserts value is number { if
 function bool(value: unknown): asserts value is boolean { if (typeof value !== 'boolean') throw Error('Invalid boolean'); }
 function array(value: unknown, max: number): unknown[] { if (!Array.isArray(value) || value.length > max) throw Error('Invalid array'); return value; }
 /** JSON.parse accepts duplicate object keys; protocol JSON must reject them before decoding. */
-export function parseUniqueJson(source: string): unknown {
-  let index = 0; const space = () => { while (/\s/.test(source[index] ?? '')) index++; };
-  const string = () => { const start = index++; let escaped = false; while (index < source.length) { const char = source[index++]; if (escaped) { escaped = false; continue; } if (char === '\\') { escaped = true; continue; } if (char === '"') return JSON.parse(source.slice(start, index)); } throw Error('Unterminated string'); };
-  const value = (): unknown => { space(); const char = source[index]; if (char === '"') return string(); if (char === '{') { index++; const result: Record<string, unknown> = {}; const keys = new Set<string>(); space(); if (source[index] === '}') { index++; return result; } while (true) { space(); if (source[index] !== '"') throw Error('Expected key'); const key = string(); if (keys.has(key)) throw Error('Duplicate key'); keys.add(key); space(); if (source[index++] !== ':') throw Error('Expected colon'); result[key] = value(); space(); if (source[index] === '}') { index++; return result; } if (source[index++] !== ',') throw Error('Expected comma'); } } if (char === '[') { index++; const result: unknown[] = []; space(); if (source[index] === ']') { index++; return result; } while (true) { result.push(value()); space(); if (source[index] === ']') { index++; return result; } if (source[index++] !== ',') throw Error('Expected comma'); } } const match = /^(true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/.exec(source.slice(index)); if (!match) throw Error('Invalid JSON'); index += match[0].length; return JSON.parse(match[0]); };
-  const result = value(); space(); if (index !== source.length) throw Error('Trailing JSON'); return result;
+export function parseUniqueJson(source: string, integersOnly = false): unknown {
+  let index = 0;
+  const tokenPattern = /(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/y;
+  function space() {
+    while (/[ \t\r\n]/.test(source[index] ?? '')) index++;
+  }
+  function string(): string {
+    const start = index++;
+    let escaped = false;
+    while (index < source.length) {
+      const char = source[index++];
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') return JSON.parse(source.slice(start, index));
+    }
+    throw Error('Unterminated string');
+  }
+  function value(): unknown {
+    space();
+    const char = source[index];
+    if (char === '"') return string();
+    if (char === '{') {
+      index++;
+      const result: Record<string, unknown> = {};
+      space();
+      if (source[index] === '}') { index++; return result; }
+      while (true) {
+        space();
+        if (source[index] !== '"') throw Error('Expected key');
+        const key = string();
+        if (Object.hasOwn(result, key)) throw Error('Duplicate key');
+        space();
+        if (source[index++] !== ':') throw Error('Expected colon');
+        Object.defineProperty(result, key, { value: value(), enumerable: true, configurable: true, writable: true });
+        space();
+        if (source[index] === '}') { index++; return result; }
+        if (source[index++] !== ',') throw Error('Expected comma');
+      }
+    }
+    if (char === '[') {
+      index++;
+      const result: unknown[] = [];
+      space();
+      if (source[index] === ']') { index++; return result; }
+      while (true) {
+        result.push(value());
+        space();
+        if (source[index] === ']') { index++; return result; }
+        if (source[index++] !== ',') throw Error('Expected comma');
+      }
+    }
+    tokenPattern.lastIndex = index;
+    const token = tokenPattern.exec(source)?.[0];
+    if (!token) throw Error('Invalid JSON');
+    if (integersOnly && /^-?\d+[.eE]/.test(token)) throw Error('Expected JSON integer');
+    index = tokenPattern.lastIndex;
+    return JSON.parse(token);
+  }
+  const result = value();
+  space();
+  if (index !== source.length) throw Error('Trailing JSON');
+  return result;
 }
 function validateDraft(value: unknown): TeamDraft {
   const named = !!value && typeof value === 'object' && Object.hasOwn(value, 'draftVersion');

@@ -1013,6 +1013,8 @@ class CompactMatchSnapshotTest {
         JsonObject a = JsonObject.readFrom(expected), b = JsonObject.readFrom(actual);
         a.get("historyBoundary").asObject().remove("digest");
         b.get("historyBoundary").asObject().remove("digest");
+        a.remove("lastRecordTime");
+        b.remove("lastRecordTime");
         eraseWallTime(a);
         eraseWallTime(b);
         assertEquals(a, b, () -> "continuation at r" + a.getInt("revision", -1));

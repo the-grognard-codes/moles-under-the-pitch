@@ -27,7 +27,7 @@ final class PublicMatchRecord {
         return result;
     }
 
-    private JsonObject decision(JsonObject source) {
+    JsonObject decision(JsonObject source) {
         String operation = source.getString("operation", "");
         JsonObject result = new JsonObject();
         if (OPERATIONS.contains(operation)) result.add("operation", operation);
@@ -55,7 +55,7 @@ final class PublicMatchRecord {
         return result;
     }
 
-    private JsonObject outcome(JsonObject source) {
+    JsonObject outcome(JsonObject source) {
         JsonObject result = fields.scalars(source, "commandNr");
         fields.object(source, result, "modelChangeList", list -> {
             JsonObject changes = new JsonObject();

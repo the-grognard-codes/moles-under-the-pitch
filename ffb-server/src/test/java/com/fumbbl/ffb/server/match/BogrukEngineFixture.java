@@ -57,7 +57,11 @@ final class BogrukEngineFixture implements AutoCloseable {
 	}
 
 	BogrukEngineFixture(String homeRoster, String awayRoster, long seed, boolean simulation, boolean measure) throws Exception {
-		this(homeRoster, awayRoster, seed, "00000000-0000-0000-0000-000000000021", DEFAULT_TEAM_PREFIX, simulation, measure);
+		this(homeRoster, awayRoster, seed, simulation, measure, false);
+	}
+
+	BogrukEngineFixture(String homeRoster, String awayRoster, long seed, boolean simulation, boolean measure, boolean format4) throws Exception {
+		this(homeRoster, awayRoster, seed, "00000000-0000-0000-0000-000000000021", DEFAULT_TEAM_PREFIX, simulation, measure, format4);
 	}
 
 	BogrukEngineFixture(String homeRoster, String awayRoster, long seed, String id) throws Exception {
@@ -65,15 +69,15 @@ final class BogrukEngineFixture implements AutoCloseable {
 	}
 
 	BogrukEngineFixture(String homeRoster, String awayRoster, long seed, String id, String teamPrefix) throws Exception {
-		this(homeRoster, awayRoster, seed, id, teamPrefix, false, false);
+		this(homeRoster, awayRoster, seed, id, teamPrefix, false, false, false);
 	}
 
 	private BogrukEngineFixture(String homeRoster, String awayRoster, long seed, String id, String teamPrefix,
-		boolean simulation, boolean measure) throws Exception {
+		boolean simulation, boolean measure, boolean format4) throws Exception {
 		this.simulation = simulation;
 		server = mock(FantasyFootballServer.class, simulation ? withSettings().stubOnly() : withSettings());
 		debugLog = mock(DebugLog.class, simulation ? withSettings().stubOnly() : withSettings());
-		communication = measure ? new ServerCommunication(server)
+		communication = measure || format4 ? new ServerCommunication(server)
 			: mock(ServerCommunication.class, simulation ? withSettings().stubOnly() : withSettings());
 		ComputerOpponentService computers = new ComputerOpponentService(null);
 		FrozenTeam home = frozen(homeRoster, "home", "00000000-0000-0000-0000-000000000011", teamPrefix);
@@ -95,9 +99,10 @@ final class BogrukEngineFixture implements AutoCloseable {
 		when(server.getDebugLog()).thenReturn(debugLog);
 		when(server.getCommunication()).thenReturn(communication);
 		dice = new Random(seed);
-		session = SetupSession.startRecoverable(server, document, -2, true, true);
+		session = format4 ? SetupSession.startCompact(server, document, -2, true, true)
+			: SetupSession.startRecoverable(server, document, -2, true, true);
 		session.recordPlayerActivity("home", System.currentTimeMillis());
-		if (measure) seedRecoveryDice(seed);
+		if (measure || format4) seedRecoveryDice(seed);
 		else pinDice();
 	}
 

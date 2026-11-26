@@ -1,0 +1,733 @@
+{
+  "schemas": {
+    "square": {"required":{"x":"column","y":"row"},"optional":{}},
+    "player": {
+      "required": {
+        "id": "id",
+        "slot": "nat",
+        "art": ["nullable",{"required":{"rosterId":"id","positionId":"id"},"optional":{}}],
+        "number": "nat",
+        "position": "id",
+        "ma": "nat",
+        "st": "nat",
+        "ag": "nat",
+        "pa": "nat",
+        "av": "nat",
+        "skills": ["list","id",64],
+        "offPitch": ["pitch","reserve","knockedOut","casualty","sentOff","other"],
+        "role": ["home","away"],
+        "state": "id",
+        "x": ["nullable","column"],
+        "y": ["nullable","row"]
+      },
+      "optional": {
+        "status": "id",
+        "skillMarkers": {
+          "required": {"version":[1],"entries":["list",{"required":{"id":"id","category":"id","origin":"id"},"optional":{}},64],"details":["list","id",64]},
+          "optional": {}
+        },
+        "conditions": ["list","id",16],
+        "positionRace": "id",
+        "positionRole": "id",
+        "limitedAction": "id"
+      }
+    },
+    "teamArt": {
+      "required": {"rosterId":"id","league":["nullable","id"]},
+      "optional": {"colors":{"required":{"version":[1],"primary":"id","secondary":"id"},"optional":{}}}
+    },
+    "resources": {"required":{"apothecaries":"nat","assistantCoaches":"nat","cheerleaders":"nat"},"optional":{"bribes":"nat"}},
+    "blockContext": {
+      "required": {
+        "version": [1],
+        "activeTargetPlayerId": ["nullable","id"],
+        "blocks": [
+          "list",
+          {
+            "required": {
+              "playerId": "id",
+              "targetPlayerId": "id",
+              "from": "@square",
+              "to": "@square",
+              "offensiveAssists": ["list",{"required":{"playerId":"id","x":"column","y":"row"},"optional":{}},32],
+              "defensiveAssists": ["list",{"required":{"playerId":"id","x":"column","y":"row"},"optional":{}},32]
+            },
+            "optional": {}
+          },
+          32
+        ]
+      },
+      "optional": {}
+    },
+    "view": {
+      "required": {
+        "matchId": "match",
+        "revision": "nat",
+        "players": ["list","@player",32],
+        "phase": ["PRE_MATCH","SETUP","READY_FOR_KICKOFF","PLAY","FULL_TIME"],
+        "half": [1,2],
+        "drive": "nat",
+        "turn": "nat",
+        "homeTurn": "nat",
+        "awayTurn": "nat",
+        "turnMode": "id",
+        "homeScore": "nat",
+        "awayScore": "nat",
+        "weather": "id",
+        "actor": ["home","away"],
+        "decisionKind": [
+          "coin",
+          "receive",
+          "setup",
+          "kickoff",
+          "touchback",
+          "kickoffEvent",
+          "turn",
+          "blockDie",
+          "rerollDie",
+          "reroll",
+          "push",
+          "followUp",
+          "skill",
+          "kickSkill",
+          "apothecary",
+          "interception",
+          "argueTheCall",
+          "bribe",
+          "endAction",
+          "secretWeapon",
+          "pileDriver",
+          "hitAndRun",
+          "reaction",
+          "reactionMovement",
+          "engine",
+          "none"
+        ],
+        "activePlayerId": ["nullable","id"],
+        "homeTeamArt": "@teamArt",
+        "awayTeamArt": "@teamArt",
+        "homeRerolls": "nat",
+        "awayRerolls": "nat",
+        "homeResources": "@resources",
+        "awayResources": "@resources",
+        "ballState": {"required":{"version":[1],"carrierPlayerId":["nullable","id"],"inPlay":"boolean","moving":"boolean"},"optional":{}}
+      },
+      "optional": {
+        "activePlayerAction": "id",
+        "ball": ["nullable","@square"],
+        "passing": {
+          "required": {"version":[1,2,3],"playerId":"id","from":"@square","weatherPenalty":"int","rangeLimited":"boolean","ranges":["list","id",26]},
+          "optional": {"action":"id","targets":["list",["list",["nullable","nat"],26],26],"hailMary":"boolean"}
+        },
+        "kickPreview": {"required":{"deviation":"@kickSquare","withKick":"@kickSquare"},"optional":{}},
+        "kickoff": {
+          "required": {"version":[1],"event":"id","actor":["home","away"],"stage":["selection","movement"],"allowed":"nat","completed":"nat","selected":"nat"},
+          "optional": {"participantIds":["list","id",32]}
+        },
+        "driveTracker": {
+          "required": {
+            "version": [1],
+            "receivingRole": ["home","away"],
+            "phase": ["KICKING_SETUP","RECEIVING_SETUP","KICK_TARGET","KICKOFF"],
+            "secretWeapons": "boolean",
+            "knockouts": "boolean",
+            "event": ["nullable","id"],
+            "eventComplete": "boolean"
+          },
+          "optional": {}
+        },
+        "blockContext": "@blockContext",
+        "stopReason": ["MATCH_SIZE_LIMIT"]
+      }
+    },
+    "patch": {
+      "required": {
+        "baseRevision": ["nullable","nat"],
+        "sections": {
+          "required": {},
+          "optional": {
+            "phase": ["PRE_MATCH","SETUP","READY_FOR_KICKOFF","PLAY","FULL_TIME"],
+            "half": [1,2],
+            "drive": "nat",
+            "turn": "nat",
+            "homeTurn": "nat",
+            "awayTurn": "nat",
+            "turnMode": "id",
+            "homeScore": "nat",
+            "awayScore": "nat",
+            "weather": "id",
+            "actor": ["home","away"],
+            "decisionKind": [
+              "coin",
+              "receive",
+              "setup",
+              "kickoff",
+              "touchback",
+              "kickoffEvent",
+              "turn",
+              "blockDie",
+              "rerollDie",
+              "reroll",
+              "push",
+              "followUp",
+              "skill",
+              "kickSkill",
+              "apothecary",
+              "interception",
+              "argueTheCall",
+              "bribe",
+              "endAction",
+              "secretWeapon",
+              "pileDriver",
+              "hitAndRun",
+              "reaction",
+              "reactionMovement",
+              "engine",
+              "none"
+            ],
+            "activePlayerId": ["nullable","id"],
+            "homeTeamArt": "@teamArt",
+            "awayTeamArt": "@teamArt",
+            "homeRerolls": "nat",
+            "awayRerolls": "nat",
+            "homeResources": "@resources",
+            "awayResources": "@resources",
+            "ballState": {"required":{"version":[1],"carrierPlayerId":["nullable","id"],"inPlay":"boolean","moving":"boolean"},"optional":{}},
+            "activePlayerAction": "id",
+            "ball": ["nullable","@square"],
+            "passing": {
+              "required": {"version":[1,2,3],"playerId":"id","from":"@square","weatherPenalty":"int","rangeLimited":"boolean","ranges":["list","id",26]},
+              "optional": {"action":"id","targets":["list",["list",["nullable","nat"],26],26],"hailMary":"boolean"}
+            },
+            "kickPreview": {"required":{"deviation":"@kickSquare","withKick":"@kickSquare"},"optional":{}},
+            "kickoff": {
+              "required": {"version":[1],"event":"id","actor":["home","away"],"stage":["selection","movement"],"allowed":"nat","completed":"nat","selected":"nat"},
+              "optional": {"participantIds":["list","id",32]}
+            },
+            "driveTracker": {
+              "required": {
+                "version": [1],
+                "receivingRole": ["home","away"],
+                "phase": ["KICKING_SETUP","RECEIVING_SETUP","KICK_TARGET","KICKOFF"],
+                "secretWeapons": "boolean",
+                "knockouts": "boolean",
+                "event": ["nullable","id"],
+                "eventComplete": "boolean"
+              },
+              "optional": {}
+            },
+            "blockContext": "@blockContext",
+            "stopReason": ["MATCH_SIZE_LIMIT"]
+          }
+        },
+        "removeSections": ["list",["activePlayerAction","ball","passing","kickPreview","kickoff","driveTracker","blockContext","stopReason"],8],
+        "players": ["list","@player",32],
+        "removePlayers": ["list","id",32]
+      },
+      "optional": {"playerOrder":["list","id",32]}
+    },
+    "record": {
+      "required": {
+        "formatVersion": [4],
+        "matchId": "match",
+        "revision": "nat",
+        "kind": ["START","ACTION","SELECTION","TOUCHDOWN","HALFTIME","FULL_TIME"],
+        "actor": ["nullable",{"required":{"side":["home","away"],"teamId":"id"},"optional":{}}],
+        "at": "time",
+        "decision": [
+          "nullable",
+          {
+            "required": {"operation":["action","choice","concede","confirm","formation","movement","place","route","sizeLimit"]},
+            "optional": {
+              "optionId": ["heads","tails","receive","kick"],
+              "reason": ["MATCH_SIZE_LIMIT"],
+              "playerId": "id",
+              "playerIds": ["list","id",32],
+              "to": "@square",
+              "logPresentation": {
+                "required": {
+                  "version": [1],
+                  "action": [
+                    "nullable",
+                    {
+                      "required": {"kind":"id","playerId":["nullable","id"],"target":["any","null","@square",{"required":{"playerId":"id"},"optional":{}}]},
+                      "optional": {"rerollSource":["nullable","id"]}
+                    }
+                  ],
+                  "movement": [
+                    "nullable",
+                    {"required":{"commitRevision":"nat","playerId":"id","from":"@square","to":["nullable","@square"],"complete":"boolean"},"optional":{}}
+                  ]
+                },
+                "optional": {}
+              }
+            }
+          }
+        ],
+        "outcomes": [
+          "list",
+          {
+            "required": {"commandNr":"positive"},
+            "optional": {
+              "modelChangeList": [
+                "nullable",
+                {
+                  "required": {
+                    "modelChangeArray": [
+                      "list",
+                      [
+                        "any",
+                        {"required":{"modelChangeId":["fieldModelSetBallCoordinate"],"modelChangeValue":["nullable","nativeSquare"]},"optional":{}},
+                        {
+                          "required": {"modelChangeId":["fieldModelSetBallMoving","fieldModelSetBallInPlay"],"modelChangeValue":["nullable","boolean"]},
+                          "optional": {}
+                        },
+                        {
+                          "required": {"modelChangeId":["fieldModelSetPlayerCoordinate"],"modelChangeKey":"id","modelChangeValue":["nullable","nativeSquare"]},
+                          "optional": {}
+                        },
+                        {"required":{"modelChangeId":["fieldModelSetPlayerState"],"modelChangeKey":"id","modelChangeValue":["nullable","int"]},"optional":{}}
+                      ],
+                      4096
+                    ]
+                  },
+                  "optional": {}
+                }
+              ],
+              "reportList": ["nullable",{"required":{"reports":["list","report",4096]},"optional":{}}],
+              "blockContext": ["nullable","@blockContext"],
+              "logOutcomes": {
+                "required": {
+                  "version": [1],
+                  "events": [
+                    "list",
+                    {
+                      "required": {"playerId":"id","kind":"id","from":["nullable","@square"],"to":["nullable","@square"],"skill":["nullable","id"]},
+                      "optional": {}
+                    },
+                    256
+                  ]
+                },
+                "optional": {}
+              },
+              "matchAnnouncements": {
+                "required": {
+                  "version": [1],
+                  "events": [
+                    "list",
+                    {
+                      "required": {"kind":["touchdown","turnover","halfTime","fullTime","turnStart","kickoff","weather"]},
+                      "optional": {
+                        "team": ["nullable",["home","away"]],
+                        "turn": "nat",
+                        "half": [1,2],
+                        "code": "id",
+                        "teamSpecific": "boolean",
+                        "scorerId": "id",
+                        "weather": {"required":{"code":"id"},"optional":{}}
+                      }
+                    },
+                    256
+                  ]
+                },
+                "optional": {}
+              }
+            }
+          },
+          4096
+        ],
+        "presentation": ["list",{"required":{"commandNr":["nullable","positive"],"ordinal":"nat"},"optional":{}},256],
+        "patch": "@patch"
+      },
+      "optional": {}
+    },
+    "keyframe": {"required":{"formatVersion":[4],"view":"@view"},"optional":{}},
+    "status": {
+      "required": {
+        "formatVersion": [4],
+        "matchId": "match",
+        "revision": "nat",
+        "generation": "generation",
+        "sampledAt": "time",
+        "saveResume": [
+          "nullable",
+          {
+            "required": {
+              "status": ["ACTIVE","SAVE_PENDING","RESUME_PENDING","SUSPENDED","ABANDONED"],
+              "proposer": ["nullable",["home","away"]],
+              "expiresAt": ["nullable","time"]
+            },
+            "optional": {}
+          }
+        ],
+        "clock": {
+          "required": {"activeRole":["nullable",["home","away"]],"turnElapsedMs":"time","homeReserveMs":"time","awayReserveMs":"time","running":"boolean"},
+          "optional": {}
+        },
+        "reaction": [
+          "nullable",
+          {
+            "required": {"actor":["home","away"],"title":"text","expiresAt":"time","allowanceMs":"time","running":"boolean"},
+            "optional": {"detail":"text"}
+          }
+        ]
+      },
+      "optional": {}
+    },
+    "report": {
+      "required": {"reportId":"id"},
+      "optional": {
+        "logActors": {"required":{"version":[1],"actorId":"id","targetId":["nullable","id"]},"optional":{}},
+        "logTest": {"required":{"version":[1],"rerolled":"boolean"},"optional":{}},
+        "logBlock": {
+          "required": {"version":[1],"attackerId":["nullable","id"],"defenderId":["nullable","id"],"chooser":["nullable",["home","away"]]},
+          "optional": {}
+        },
+        "logRoll": {"required":{"version":[1],"base":"nat","target":"nat","modifier":"int","square":["nullable","@square"]},"optional":{}},
+        "numericDice": {"required":{"version":[1],"dice":["list",{"required":{"sides":"nat","value":"nat"},"optional":{"label":"id"}},32]},"optional":{}}
+      }
+    },
+    "reportData": {
+      "required": {},
+      "optional": {
+        "knockoutRecoveryArray": [
+          "list",
+          {"required":{"playerId":"id","recovering":"boolean","roll":"nat"},"optional":{"bloodweiserBabes":"nat","bugmansXXXXXXModifier":"int"}},
+          32
+        ],
+        "heatExhaustionArray": ["list",{"required":{"playerId":"id","exhausted":"boolean","roll":"nat"},"optional":{}},32],
+        "statBasedRollModifier": {"required":{"value":"int"},"optional":{"reason":["nullable","text"],"name":["nullable","text"]}},
+        "ballAction": ["nullable","text"],
+        "bomb": ["nullable","boolean"],
+        "playerId": ["nullable","text"],
+        "minimumRoll": ["nullable","int"],
+        "reRolled": ["nullable","boolean"],
+        "roll": ["nullable","int"],
+        "rollModifiers": ["nullable",["list","text",256]],
+        "successful": ["nullable","boolean"],
+        "secureTheBallUsed": ["nullable","boolean"],
+        "biasedRefs": ["nullable","int"],
+        "coachBanned": ["nullable","boolean"],
+        "friendsWithRef": ["nullable","boolean"],
+        "staysOnPitch": ["nullable","boolean"],
+        "interceptorId": ["nullable","text"],
+        "throwerId": ["nullable","text"],
+        "confusionSkill": ["nullable","text"],
+        "defenderId": ["nullable","text"],
+        "strength": ["nullable","int"],
+        "ignoreAgility": ["nullable","boolean"],
+        "hailMaryPass": ["nullable","boolean"],
+        "passResult": ["nullable","text"],
+        "passingDistance": ["nullable","text"],
+        "skill": ["nullable","text"],
+        "skillUse": ["nullable","text"],
+        "used": ["nullable","boolean"],
+        "reRollSource": ["nullable","text"],
+        "heatRoll": ["nullable","int"],
+        "playerIdTouchdown": ["nullable","text"],
+        "actingPlayerId": ["nullable","text"],
+        "playerAction": ["nullable","text"],
+        "catcherId": ["nullable","text"],
+        "armorBroken": ["nullable","boolean"],
+        "armorModifiers": ["nullable",["list","text",256]],
+        "armorRoll": ["nullable",["list","int",256]],
+        "attackerId": ["nullable","text"],
+        "casualtyModifiers": ["nullable",["list","text",256]],
+        "casualtyRoll": ["nullable",["list","int",256]],
+        "casualtyRollDecay": ["nullable",["list","int",256]],
+        "injury": ["nullable","int"],
+        "injuryDecay": ["nullable","int"],
+        "injuryModifiers": ["nullable",["list","text",256]],
+        "injuryRoll": ["nullable",["list","int",256]],
+        "injuryType": ["nullable","text"],
+        "seriousInjury": ["nullable","text"],
+        "seriousInjuryDecay": ["nullable","text"],
+        "seriousInjuryOld": ["nullable","text"],
+        "skipInjuryParts": ["nullable","text"],
+        "playerState": ["nullable","int"],
+        "direction": ["nullable","text"],
+        "directionRoll": ["nullable","int"],
+        "distanceRoll": ["nullable",["list","int",256]],
+        "directionArray": ["nullable",["list","text",256]],
+        "gustOfWind": ["nullable","boolean"],
+        "rolls": ["nullable",["list","int",256]],
+        "blockResult": ["nullable","text"],
+        "blockRoll": ["nullable",["list","int",256]],
+        "diceIndex": ["nullable","int"],
+        "nrOfDice": ["nullable","int"],
+        "showNameInReport": ["nullable","boolean"],
+        "suppressExtraEffectHandling": ["nullable","boolean"],
+        "weather": ["nullable","text"],
+        "weatherRoll": ["nullable",["list","int",256]],
+        "coinChoiceHeads": ["nullable","boolean"],
+        "coinThrowHeads": ["nullable","boolean"],
+        "receiveChoice": ["nullable","boolean"],
+        "teamId": ["nullable","matchTeam"],
+        "kickoffResult": ["nullable","text"],
+        "kickoffRoll": ["nullable",["list","int",256]],
+        "ballCoordinateEnd": ["nullable","nativeSquare"],
+        "rollScatterDirection": ["nullable","int"],
+        "rollScatterDistance": ["nullable","int"],
+        "scatterDirection": ["nullable","text"],
+        "rollAway": ["nullable","int"],
+        "rollHome": ["nullable","int"],
+        "turnModifier": ["nullable","int"],
+        "turnNr": ["nullable","int"],
+        "nrOfPlayers": ["nullable","int"],
+        "nrOfPlayersAllowed": ["nullable","int"],
+        "number": ["nullable","int"],
+        "limitReached": ["nullable","boolean"],
+        "pushbackMode": ["nullable","text"],
+        "foulingPlayerBanned": ["nullable","boolean"],
+        "underScrutiny": ["nullable","boolean"],
+        "amount": ["nullable","int"],
+        "playerIds": ["nullable",["list","id",256]],
+        "kicked": ["nullable","boolean"],
+        "thrownPlayerId": ["nullable","text"],
+        "conceded": ["nullable","boolean"],
+        "dedicatedFansModifierAway": ["nullable","int"],
+        "dedicatedFansModifierHome": ["nullable","int"],
+        "endCoordinate": ["nullable","nativeSquare"],
+        "isScatter": ["nullable","boolean"],
+        "startCoordinate": ["nullable","nativeSquare"],
+        "distance": ["nullable","int"],
+        "outOfBounds": ["nullable","boolean"],
+        "winningsAway": ["nullable","int"],
+        "winningsHome": ["nullable","int"],
+        "playerIdsAway": ["nullable",["list","id",256]],
+        "playerIdsHome": ["nullable",["list","id",256]],
+        "defectingArray": ["nullable",["list","boolean",256]],
+        "modifier": ["nullable","int"],
+        "masterChefRoll": ["nullable",["list","int",256]],
+        "reRollsStolen": ["nullable","int"],
+        "half": ["nullable","int"],
+        "inducementType": ["nullable","text"],
+        "value": ["nullable","int"],
+        "leaderState": ["nullable","text"],
+        "banArray": ["nullable",["list","boolean",256]],
+        "nurglesRot": ["nullable","boolean"],
+        "positionName": ["nullable","text"],
+        "choosingTeamId": ["nullable","matchTeam"],
+        "homeTeam": ["nullable","boolean"],
+        "penaltyScoreAway": ["nullable","int"],
+        "penaltyScoreHome": ["nullable","int"],
+        "rollCount": ["nullable","text"],
+        "starPlayerName": ["nullable","text"],
+        "name": ["nullable","text"],
+        "specialEffect": ["nullable","text"],
+        "wizardSpell": ["nullable","text"],
+        "passBlockAvailable": ["nullable","boolean"],
+        "card": ["nullable","text"],
+        "gold": ["nullable","int"],
+        "riotousAmount": ["nullable","int"],
+        "riotousRoll": ["nullable",["list","int",256]],
+        "swarmingPlayerRoll": ["nullable","int"],
+        "dedicatedFans": ["nullable","int"],
+        "dedicatedFansResult": ["nullable","int"],
+        "dedicatedFansRoll": ["nullable","int"],
+        "rerollBrilliantCoachingOneDrive": ["nullable","int"],
+        "rerollPumpUpTheCrowdOneDrive": ["nullable","int"],
+        "rerollShowStarOneDrive": ["nullable","int"],
+        "escaped": ["nullable","boolean"],
+        "opponentTeamValue": ["nullable","int"],
+        "teamValue": ["nullable","int"],
+        "prayer": ["nullable","text"],
+        "teamIdsAdditionalAssist": ["nullable",["list","matchTeam",2]],
+        "teamIdsReRolledCheeringFangs": ["nullable",["list","matchTeam",2]],
+        "briberyAncCorruptionAction": ["nullable","text"],
+        "message": ["nullable","text"],
+        "oldRoll": ["nullable","int"],
+        "selfInflicted": ["nullable","boolean"],
+        "playerIdOtherPlayer": ["nullable","text"],
+        "fumble": ["nullable","boolean"],
+        "targetPlayerId": ["nullable","text"],
+        "effect": ["nullable","text"],
+        "oldWeather": ["nullable","text"],
+        "status": ["nullable","text"],
+        "strongOpponent": ["nullable","boolean"],
+        "nrOfInducements": ["nullable","int"],
+        "nrOfMercenaries": ["nullable","int"],
+        "nrOfStars": ["nullable","int"],
+        "reRollUsed": ["nullable","boolean"],
+        "keyword": ["nullable","text"],
+        "scatterDistanceSides": "positive",
+        "blockRollAfterReroll": ["list","int",3],
+        "rerolledIndexes": ["list","nat",3],
+        "side": ["home","away"]
+      }
+    },
+    "kickSquare": {"required":{"x":"kickColumn","y":"kickRow"},"optional":{}}
+  },
+  "reportFields": {
+    "nervesOfSteel": ["ballAction","bomb","playerId"],
+    "alwaysHungryRoll": ["minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "escapeRoll": ["minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "goForItRoll": ["minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "leapRoll": ["minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "rightStuffRoll": ["minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "regenerationRoll": ["minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "jumpUpRoll": ["minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "bloodLustRoll": ["minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "animosityRoll": ["minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "lookIntoMyEyesRoll": ["minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "allYouCanEat": ["minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "catchOfTheDay": ["minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "steadyFootingRoll": ["minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "saboteurRoll": ["minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "pickUpRoll": ["minimumRoll","playerId","reRolled","roll","rollModifiers","secureTheBallUsed","successful"],
+    "argueTheCall": ["biasedRefs","coachBanned","friendsWithRef","playerId","roll","staysOnPitch","successful"],
+    "catchRoll": ["bomb","minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "cloudBurster": ["interceptorId","throwerId"],
+    "confusionRoll": ["confusionSkill","minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "dauntlessRoll": ["defenderId","minimumRoll","playerId","reRolled","roll","rollModifiers","strength","successful"],
+    "dodgeRoll": ["minimumRoll","playerId","reRolled","roll","rollModifiers","statBasedRollModifier","successful"],
+    "foulAppearanceRoll": ["defenderId","minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "chainsawRoll": ["defenderId","minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "hypnoticGazeRoll": ["defenderId","minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "projectileVomit": ["defenderId","minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "interceptionRoll": ["bomb","ignoreAgility","minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "passRoll": [
+      "bomb",
+      "hailMaryPass",
+      "minimumRoll",
+      "passResult",
+      "passingDistance",
+      "playerId",
+      "reRolled",
+      "roll",
+      "rollModifiers",
+      "statBasedRollModifier",
+      "successful"
+    ],
+    "tentaclesShadowingRoll": ["defenderId","minimumRoll","reRolled","roll","skill","successful"],
+    "skillUse": ["playerId","skill","skillUse","used"],
+    "reRoll": ["playerId","reRollSource","roll","successful"],
+    "turnEnd": ["heatExhaustionArray","heatRoll","knockoutRecoveryArray","playerIdTouchdown"],
+    "playerAction": ["actingPlayerId","playerAction"],
+    "foul": ["defenderId"],
+    "block": ["defenderId"],
+    "handOver": ["catcherId"],
+    "injury": [
+      "armorBroken",
+      "armorModifiers",
+      "armorRoll",
+      "attackerId",
+      "casualtyModifiers",
+      "casualtyRoll",
+      "casualtyRollDecay",
+      "defenderId",
+      "injury",
+      "injuryDecay",
+      "injuryModifiers",
+      "injuryRoll",
+      "injuryType",
+      "seriousInjury",
+      "seriousInjuryDecay",
+      "seriousInjuryOld",
+      "skipInjuryParts"
+    ],
+    "apothecaryRoll": ["casualtyModifiers","casualtyRoll","playerId","playerState","seriousInjury","seriousInjuryOld"],
+    "apothecaryChoice": ["playerId","playerState","seriousInjury"],
+    "throwIn": ["direction","directionRoll","distanceRoll"],
+    "scatterBall": ["directionArray","gustOfWind","rolls"],
+    "blockChoice": ["blockResult","blockRoll","defenderId","diceIndex","nrOfDice","showNameInReport","suppressExtraEffectHandling"],
+    "weather": ["weather","weatherRoll"],
+    "coinThrow": ["coach","coinChoiceHeads","coinThrowHeads"],
+    "receiveChoice": ["receiveChoice","teamId"],
+    "kickoffResult": ["kickoffResult","kickoffRoll"],
+    "kickoffScatter": ["ballCoordinateEnd","rollScatterDirection","rollScatterDistance","scatterDirection","scatterDistanceSides"],
+    "extraReRoll": ["rollAway","rollHome","teamId"],
+    "kickoffTimeout": ["turnModifier","turnNr"],
+    "solidDefenceRoll": ["nrOfPlayers","roll","teamId"],
+    "quickSnapRoll": ["nrOfPlayers","roll","teamId"],
+    "blitzRoll": ["nrOfPlayers","roll","teamId"],
+    "dwarfenWisdomRoll": ["nrOfPlayers","roll","teamId"],
+    "kickoffSequenceActivationsCount": ["nrOfPlayers","nrOfPlayersAllowed","number"],
+    "kickoffSequenceActivationsExhausted": ["limitReached"],
+    "pushback": ["defenderId","pushbackMode"],
+    "referee": ["foulingPlayerBanned","underScrutiny"],
+    "kickoffPitchInvasion": ["amount","playerIds","rollAway","rollHome"],
+    "dodgySnackRoll": ["playerId","roll"],
+    "kickoffDodgySnack": ["playerIds","rollAway","rollHome"],
+    "throwTeamMateRoll": ["kicked","minimumRoll","passResult","passingDistance","playerId","reRolled","roll","rollModifiers","successful","thrownPlayerId"],
+    "dedicatedFans": ["conceded","dedicatedFansModifierAway","dedicatedFansModifierHome","rollAway","rollHome","teamId"],
+    "scatterPlayer": ["directionArray","endCoordinate","isScatter","rolls","startCoordinate"],
+    "swoopPlayer": ["distance","endCoordinate","outOfBounds","scatterDirection","startCoordinate"],
+    "timeoutEnforced": ["coach"],
+    "winnings": ["winningsAway","winningsHome"],
+    "mostValuablePlayers": ["playerIdsAway","playerIdsHome"],
+    "defectingPlayers": ["defectingArray","playerIds","rolls"],
+    "standUpRoll": ["modifier","playerId","reRolled","roll","successful"],
+    "bribesRoll": ["playerId","roll","successful"],
+    "throwAtStallingPlayer": ["playerId","roll","successful"],
+    "pickMeUp": ["playerId","roll","successful"],
+    "throwAtPlayer": ["playerId","roll","successful"],
+    "masterChefRoll": ["masterChefRoll","reRollsStolen","teamId"],
+    "startHalf": ["half"],
+    "inducement": ["inducementType","teamId","value"],
+    "leader": ["leaderState","teamId"],
+    "secretWeaponBan": ["banArray","playerIds","rolls"],
+    "raiseDead": ["nurglesRot","playerId","positionName"],
+    "blockRoll": ["blockRoll","choosingTeamId","defenderId"],
+    "penaltyShootout": ["homeTeam","penaltyScoreAway","penaltyScoreHome","rollAway","rollCount","rollHome","teamId"],
+    "doubleHiredStarPlayer": ["starPlayerName"],
+    "doubleHiredStaff": ["name"],
+    "spellEffectRoll": ["playerId","roll","specialEffect","successful"],
+    "wizardUse": ["teamId","wizardSpell"],
+    "passBlock": ["passBlockAvailable","teamId"],
+    "playCard": ["card","playerId","teamId"],
+    "cardDeactivated": ["card"],
+    "bombOutOfBounds": [],
+    "kickTeamMateFumble": [],
+    "freePettyCash": ["gold","teamId"],
+    "riotousRookies": ["riotousAmount","riotousRoll","teamId"],
+    "swarmingPlayersRoll": ["swarmingPlayerRoll","teamId"],
+    "fanFactor": ["dedicatedFans","dedicatedFansResult","dedicatedFansRoll","teamId"],
+    "selectBlitzTarget": ["attackerId","defenderId"],
+    "selectGazeTarget": ["attackerId","defenderId"],
+    "animalSavagery": ["attackerId","defenderId"],
+    "placedBallDirection": ["direction","playerId"],
+    "hitAndRun": ["direction","playerId"],
+    "fumblerooskie": ["playerId","used"],
+    "brilliantCoachingReRoll": ["rerollBrilliantCoachingOneDrive","teamId"],
+    "pumpUpTheCrowdReRollLost": ["rerollPumpUpTheCrowdOneDrive","teamId"],
+    "showStarReRollLost": ["rerollShowStarOneDrive","teamId"],
+    "blockReRoll": ["blockRoll","blockRollAfterReroll","defenderId","playerId","reRollSource","rerolledIndexes"],
+    "trapDoor": ["escaped","playerId","roll"],
+    "prayerAmount": ["homeTeam","number","opponentTeamValue","teamValue"],
+    "prayerRoll": ["homeTeam","roll","teamName"],
+    "prayerEnd": ["prayer"],
+    "prayerWasted": ["name","playerId"],
+    "cheeringFans": ["rollAway","rollHome","teamIdsAdditionalAssist","teamIdsReRolledCheeringFangs"],
+    "briberyAndCorruptionReRoll": ["briberyAncCorruptionAction","teamId"],
+    "playerEvent": ["message","playerId"],
+    "stallerDetected": ["playerId"],
+    "pumpUpTheCrowdReRoll": ["playerId"],
+    "showStarReRoll": ["playerId"],
+    "indomitable": ["defenderId","playerId"],
+    "oldPro": ["oldRoll","playerId","roll","selfInflicted"],
+    "skillWasted": ["playerId","skill"],
+    "modifiedPassResult": ["passResult","skill"],
+    "modifiedDodgeResultSuccessful": ["skill"],
+    "raidingParty": ["direction","playerId","playerIdOtherPlayer"],
+    "event": ["message"],
+    "thrownKeg": ["fumble","playerId","roll","successful","targetPlayerId"],
+    "thenIStartedBlastin": ["fumble","playerId","roll","successful","targetPlayerId"],
+    "biasedRef": ["foulingPlayerBanned","roll"],
+    "weatherMageRoll": ["weatherRoll"],
+    "weatherMageResult": ["effect","modifier","oldWeather","weather"],
+    "balefulHex": ["minimumRoll","playerId","reRolled","roll","rollModifiers","successful","targetPlayerId"],
+    "breatheFire": ["defenderId","minimumRoll","playerId","reRolled","roll","rollModifiers","status","strongOpponent","successful"],
+    "prayersAndInducementsBought": ["gold","nrOfInducements","nrOfMercenaries","nrOfStars","teamId","teamValue"],
+    "mascotUsed": ["minimumRoll","reRollUsed","roll","successful","teamId"],
+    "teamEvent": ["message","teamId"],
+    "teamCaptainRoll": ["minimumRoll","roll","successful","teamId"],
+    "gettingEvenRoll": ["keyword","minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "chompRoll": ["attackerId","defenderId","minimumRoll","playerId","reRolled","roll","rollModifiers","successful"],
+    "chompRemoved": ["playerId","successful"],
+    "puntDirectionRoll": ["direction","directionRoll","outOfBounds","playerId"],
+    "swoopDirectionRoll": ["direction","directionRoll","outOfBounds","playerId"],
+    "puntDistanceRoll": ["outOfBounds","roll"]
+  },
+  "omittedReportFields": ["coach","teamName"]
+}

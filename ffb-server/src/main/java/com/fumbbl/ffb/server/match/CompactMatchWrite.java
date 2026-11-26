@@ -7,7 +7,7 @@ record CompactMatchWrite(String snapshot, Capture capture) {
     enum Result { DURABLE, FAILED, UNKNOWN }
 
     /** Native outcomes are serialized at capture, before a later command can change referenced state. */
-    record Capture(int revision, int lastCapturedCommand, String nativeOutcomes) { }
+    record Capture(int revision, int lastCapturedCommand, String nativeOutcomes, String record, String keyframe) { }
 
     /** Storage owns the chat watermark and the digest of the actual persisted records. */
     record History(int recordCount, int chatCount, String digest) {
