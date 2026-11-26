@@ -84,7 +84,7 @@ class FoulBribeFlowTest {
                 "Fouler state; home=" + home + ", recover=" + recover);
             assertEquals(saved, scenario.role.equals(scenario.view.getString("actor", null)));
             assertEquals(use ? 0 : 1, scenario.bribes());
-            assertFalse(scenario.view.get("actions").asArray().isEmpty());
+            assertFalse(SetupSessionMovementTest.Fixture.actingView(scenario.session, scenario.view).get("actions").asArray().isEmpty());
             int revision = scenario.view.getInt("revision", -1);
             assertTrue(scenario.session.apply(scenario.role, request).getBoolean("duplicate", false));
             assertEquals(revision, scenario.session.spectatorView().getInt("revision", -1));
@@ -138,7 +138,7 @@ class FoulBribeFlowTest {
             assertEquals(PlayerState.BANNED,
                 scenario.game().getFieldModel().getPlayerState(scenario.game().getPlayerById(scenario.foulerId)).getBase());
             assertFalse(scenario.role.equals(scenario.view.getString("actor", null)));
-            assertFalse(scenario.view.get("actions").asArray().isEmpty());
+            assertFalse(SetupSessionMovementTest.Fixture.actingView(scenario.session, scenario.view).get("actions").asArray().isEmpty());
         }
     }
 

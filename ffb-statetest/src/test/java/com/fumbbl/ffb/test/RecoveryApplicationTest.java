@@ -429,7 +429,7 @@ class RecoveryApplicationTest {
 		SetupApplication application = new SetupApplication(new TestServer().getServer(), fixture.matches, fixture.recovery, true, clock);
 		accepted(application.activate("home", activate(fixture.id, "activate").toString()));
 		JsonObject before = accepted(application.handle("home", load(fixture.id, "before"))).get("state").asObject();
-		JsonObject request = choice(fixture.id, "lost-ack", before, "heads");
+		JsonObject request = choice(fixture.id, "lost-ack", actingView(application, fixture.id, before), "heads");
 		accepted(application.handle(actor(before), request));
 		String checkpoint = fixture.recovery.rows.get(fixture.id).json;
 		Fixture completed = fixture(); fixture.repository.rows.putAll(completed.repository.rows);
@@ -483,7 +483,7 @@ class RecoveryApplicationTest {
 			.handleCommand(org.mockito.ArgumentMatchers.any(com.fumbbl.ffb.server.net.ReceivedCommand.class));
 		stateField.set(session, engine);
 		JsonObject before = accepted(application.handle("home", load(fixture.id, "before"))).get("state").asObject();
-		assertEquals("SESSION_UNAVAILABLE", application.handle(actor(before), choice(fixture.id, "fail", before, "heads")).getString("code", null));
+		assertEquals("SESSION_UNAVAILABLE", application.handle(actor(before), choice(fixture.id, "fail", actingView(application, fixture.id, before), "heads")).getString("code", null));
 		assertEquals(0, application.lifecycleMetrics().getInt("residentSessions", -1));
 		assertEquals(1, application.lifecycleMetrics().getLong("failedReleases", -1));
 		SetupApplication restored = app(fixture);
@@ -520,6 +520,9 @@ class RecoveryApplicationTest {
 		for (int index = 0; index < 160 && !session.isComplete(); index++) {
 			JsonObject view = accepted(onWorker(() -> application.handle("home", load(id, "view")))).get("state").asObject();
 			role = view.getString("actor", null);
+			String decidingRole = role;
+			if (!role.equals(view.getString("callerRole", null)))
+				view = accepted(onWorker(() -> application.handle(decidingRole, load(id, "actor-view")))).get("state").asObject();
 			if (!view.get("prompt").isNull()) {
 				JsonObject prompt = view.get("prompt").asObject();
 				last = choice(id, "decision-" + index, view, prompt.get("options").asArray().get(0).asString());
@@ -557,7 +560,7 @@ class RecoveryApplicationTest {
 		assertEquals("ACCEPTED", first.activate("home", activate(fixture.id, "activate").toString()).getString("code", null));
 		assertNotNull(fixture.recovery.rows.get(fixture.id));
 		JsonObject view = accepted(first.handle("home", load(fixture.id, "load"))).get("state").asObject();
-		JsonObject choice = choice(fixture.id, "choose", view, "heads");
+		JsonObject choice = choice(fixture.id, "choose", actingView(first, fixture.id, view), "heads");
 		assertEquals("ACCEPTED", first.handle(actor(view), choice).getString("code", null));
 
 		SetupApplication restarted = app(fixture);
@@ -615,7 +618,7 @@ class RecoveryApplicationTest {
 		accepted(application.activate("home", activate(fixture.id, "activate").toString()));
 		fixture.recovery.full = true;
 		JsonObject state = accepted(application.handle("home", load(fixture.id, "current"))).get("state").asObject();
-		JsonObject command = choice(fixture.id, "choice-at-capacity", state, "heads");
+		JsonObject command = choice(fixture.id, "choice-at-capacity", actingView(application, fixture.id, state), "heads");
 		accepted(application.handle(actor(state), command));
 		assertTrue(accepted(application.handle(actor(state), command)).getBoolean("duplicate", false));
 	}
@@ -627,7 +630,7 @@ class RecoveryApplicationTest {
 			SetupApplication application = app(fixture);
 			assertEquals("ACCEPTED", application.activate("home", activate(fixture.id, "activate").toString()).getString("code", null));
 			JsonObject view = accepted(application.handle("home", load(fixture.id, "load"))).get("state").asObject();
-			JsonObject choice = choice(fixture.id, "choose", view, "heads");
+			JsonObject choice = choice(fixture.id, "choose", actingView(application, fixture.id, view), "heads");
 			fixture.recovery.failure = failure;
 			assertEquals(failure == Failure.COMMITTED_UNKNOWN ? "MATCH_OUTCOME_UNKNOWN" : "PERSISTENCE_FAILED",
 				application.handle(actor(view), choice).getString("code", null));
@@ -650,7 +653,7 @@ class RecoveryApplicationTest {
 		RecoveryRepository.Record durable = fixture.recovery.rows.get(fixture.id);
 		String role = actor(before);
 		fixture.recovery.failure = Failure.BEFORE_WRITE;
-		SetupApplication.HandleOutcome failure = application.handleWithOutcome(role, choice(fixture.id, "rejected", before, "heads"));
+		SetupApplication.HandleOutcome failure = application.handleWithOutcome(role, choice(fixture.id, "rejected", actingView(application, fixture.id, before), "heads"));
 		assertEquals("PERSISTENCE_FAILED", failure.response().getString("code", null));
 		assertFalse(failure.publish());
 		assertEquals(durable.generation + 1, fixture.recovery.lastAttempt.generation);
@@ -661,7 +664,7 @@ class RecoveryApplicationTest {
 		JsonObject reloaded = accepted(application.handle("home", load(fixture.id, "after-failure"))).get("state").asObject();
 		assertEquals(before.get("revision"), reloaded.get("revision"));
 		assertEquals(before.get("prompt"), reloaded.get("prompt"));
-		JsonObject fresh = choice(fixture.id, "fresh-decision", reloaded, "heads");
+		JsonObject fresh = choice(fixture.id, "fresh-decision", actingView(application, fixture.id, reloaded), "heads");
 		JsonObject response = accepted(application.handle(actor(reloaded), fresh));
 		assertFalse(response.getBoolean("duplicate", true));
 		assertEquals(before.getInt("revision", -1) + 1, response.get("state").asObject().getInt("revision", -1));
@@ -675,8 +678,8 @@ class RecoveryApplicationTest {
 			SetupApplication application = new SetupApplication(new TestServer().getServer(), fixture.matches, fixture.recovery, true);
 			accepted(application.activate("home", activate(fixture.id, "activate").toString()));
 			JsonObject first = accepted(application.handle("home", load(fixture.id, "first"))).get("state").asObject();
-			JsonObject receive = accepted(application.handle(actor(first), choice(fixture.id, "coin", first, "heads"))).get("state").asObject();
-			JsonObject transition = choice(fixture.id, "receive", receive, "receive");
+			JsonObject receive = accepted(application.handle(actor(first), choice(fixture.id, "coin", actingView(application, fixture.id, first), "heads"))).get("state").asObject();
+			JsonObject transition = choice(fixture.id, "receive", actingView(application, fixture.id, receive), "receive");
 			fixture.recovery.failure = failure;
 			assertEquals(failure == Failure.COMMITTED_UNKNOWN ? "MATCH_OUTCOME_UNKNOWN" : "PERSISTENCE_FAILED",
 				application.handle(actor(receive), transition).getString("code", null));
@@ -707,7 +710,7 @@ class RecoveryApplicationTest {
 		SetupApplication restarted = new SetupApplication(new TestServer().getServer(), fixture.matches, fixture.recovery, true, clock, true);
 		JsonObject suspended = accepted(restarted.handle("away", save(fixture.id, "save-accept", view, "saveAccept", proposal))).get("state").asObject();
 		assertEquals("SUSPENDED", suspended.get("saveResume").asObject().getString("status", null));
-		assertEquals("MATCH_SUSPENDED", restarted.handle(actor(view), choice(fixture.id, "blocked-action", view, "heads")).getString("code", null));
+		assertEquals("MATCH_SUSPENDED", restarted.handle(actor(view), choice(fixture.id, "blocked-action", actingView(restarted, fixture.id, view), "heads")).getString("code", null));
 		assertTrue(restarted.handle("away", save(fixture.id, "save-accept", view, "saveAccept", proposal)).getBoolean("duplicate", false));
 		clock.advance(30L * 24 * 60 * 60 * 1000L + 1L);
 		int writes = fixture.recovery.writes;
@@ -762,7 +765,7 @@ class RecoveryApplicationTest {
 			save(fixture.id, "save-cancel", view, "saveCancel", proposal));
 		accepted(cancelled.response());
 		assertTrue(cancelled.publish());
-		SetupApplication.HandleOutcome changed = application.handleWithOutcome(actor(view), choice(fixture.id, "coin", view, "heads"));
+		SetupApplication.HandleOutcome changed = application.handleWithOutcome(actor(view), choice(fixture.id, "coin", actingView(application, fixture.id, view), "heads"));
 		accepted(changed.response());
 		assertTrue(changed.publish());
 	}
@@ -802,6 +805,11 @@ class RecoveryApplicationTest {
 	}
 	private JsonObject load(String id, String requestId) {
 		return new JsonObject().add("version", 1).add("type", "setup").add("operation", "load").add("requestId", requestId).add("matchId", id);
+	}
+	private JsonObject actingView(SetupApplication application, String id, JsonObject view) {
+		String actor = actor(view);
+		return actor.equals(view.getString("callerRole", null)) ? view
+			: accepted(application.handle(actor, load(id, "actor-view"))).get("state").asObject();
 	}
 	private JsonObject choice(String id, String requestId, JsonObject view, String option) {
 		return new JsonObject().add("version", 1).add("type", "setup").add("operation", "choice").add("requestId", requestId)

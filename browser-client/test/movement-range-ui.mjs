@@ -29,14 +29,23 @@ async function open(role, distant = false, hold = false) {
     const ready = distant ? fixture.distantMoveReadyState : fixture.readyState;
     const plan = (distant ? fixture.distantMovePlan : fixture.movePlan).plan;
     const accepted = distant ? fixture.distantMoveAcceptedState : fixture.moveAcceptedState;
+    const forCoach = state => {
+      const view = { ...state, callerRole: role, decisionKind: 'turn' };
+      if (view.actor !== role) {
+        view.actions = []; view.prompt = null;
+        delete view.playerActionMenu; delete view.movementForecast; delete view.blockPreview; delete view.threats;
+      }
+      return view;
+    };
     const snapshot = state => {
       const value = { ...state, callerRole: 'home', actions: [], prompt: null };
-      delete value.movementForecast; delete value.passing; return value;
+      delete value.movementForecast; delete value.passing; delete value.playerActionMenu; delete value.blockPreview; delete value.threats;
+      return value;
     };
     window.rangeFrames = [];
     window.WebSocket = class {
       static OPEN = 1; readyState = 1; sent = []; ranges = []; hold = hold;
-      state = { ...ready, callerRole: role };
+      state = forCoach(ready);
       records = Array.from({ length: ready.revision + 1 }, (_, revision) => ({
         index: revision, revision, kind: revision ? 'ACTION' : 'START', actor: revision ? ready.actor : 'system',
         at: revision, decision: revision ? {} : null, native: [], state: snapshot({ ...ready, revision }) }));
@@ -53,7 +62,7 @@ async function open(role, distant = false, hold = false) {
           matchId: request.matchId, range });
       }
       advance(actor = this.state.actor) {
-        this.state = { ...this.state, actor, actions: actor === ready.actor ? ready.actions : [], revision: this.state.revision + 1 };
+        this.state = forCoach({ ...this.state, actor, actions: actor === ready.actor ? ready.actions : [], revision: this.state.revision + 1 });
         const revision = this.state.revision;
         this.records.push({ index: revision, revision, kind: 'ACTION', actor: ready.actor, at: revision,
           decision: {}, native: [], state: snapshot(this.state) });
@@ -80,7 +89,7 @@ async function open(role, distant = false, hold = false) {
           plan: { ...plan, waypoints: request.waypoints, route: { ...plan.route, revision: this.state.revision } } }));
         if (request.type === 'setup') {
           if (request.operation === 'movement') {
-            this.state = { ...accepted, callerRole: role };
+            this.state = forCoach(accepted);
             const revision = this.state.revision;
             this.records.push({ index: revision, revision, kind: 'ACTION', actor: ready.actor, at: revision,
               decision: {}, state: snapshot(this.state), native: [{ commandNr: revision + 1,
@@ -110,6 +119,8 @@ const waitRange = (page, id, revision) => page.waitForFunction(({ id, revision }
 try {
   for (const role of ['home', 'away']) {
     const { page, errors } = await open(role);
+    if (role !== fixture.meta.role)
+      await page.getByText('Waiting for the other participant.', { exact: true }).waitFor();
     // Select the other coach's player first, then clear it before independent inspection.
     for (const id of role === fixture.meta.role ? [fixture.meta.opponentId, fixture.meta.playerId]
       : [fixture.meta.playerId, fixture.meta.opponentId]) {

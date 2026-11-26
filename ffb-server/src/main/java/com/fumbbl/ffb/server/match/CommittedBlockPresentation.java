@@ -21,14 +21,12 @@ import com.fumbbl.ffb.report.ReportBlockChoice;
 import com.fumbbl.ffb.report.ReportBlockRoll;
 import com.fumbbl.ffb.server.GameState;
 import com.fumbbl.ffb.server.step.StepId;
-import com.fumbbl.ffb.server.step.bb2025.mutliblock.StepBlockRollMultiple;
 
 import com.eclipsesource.json.JsonArray;
 import com.eclipsesource.json.JsonObject;
 import com.eclipsesource.json.JsonValue;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -85,23 +83,6 @@ final class CommittedBlockPresentation {
         if (game.getFinished() != null || game.getActingPlayer().getPlayer() == null
             || !(action == PlayerAction.BLOCK || multiple || action != null && action.isBlitzing())) clear();
         else {
-            // Initial Multiple Block rolls synchronize separately without roll reports.
-            // Freeze each target as its native roll becomes available, before resolution can move players.
-            if (multiple && state.getCurrentStep() instanceof StepBlockRollMultiple)
-                for (String target : ((StepBlockRollMultiple) state.getCurrentStep()).getRolledTargetIds())
-                    if (blocks.containsKey(target) && !rolled.contains(target)) {
-                        add(game, game.getActingPlayer().getPlayerId(), target, true);
-                        rolled.add(target);
-                    }
-            if (multiple) {
-                List<BlockRollProperties> choices = game.getDialogParameter() instanceof DialogOpponentBlockSelectionPropertiesParameter
-                    ? ((DialogOpponentBlockSelectionPropertiesParameter) game.getDialogParameter()).getBlockRolls()
-                    : game.getDialogParameter() instanceof DialogReRollBlockForTargetsPropertiesParameter
-                        ? ((DialogReRollBlockForTargetsPropertiesParameter) game.getDialogParameter()).getBlockRolls() : Collections.emptyList();
-                String only = null; int count = 0;
-                for (BlockRollProperties choice : choices) if (choice.needsSelection()) { only = choice.getTargetId(); count++; }
-                if (count == 1 && blocks.containsKey(only)) active = only;
-            }
             for (IReport report : sync.getReportList() == null ? new IReport[0] : sync.getReportList().getReports()) {
                 if (report instanceof ReportBlockChoice) {
                     String target = ((ReportBlockChoice) report).getDefenderId();
@@ -134,7 +115,22 @@ final class CommittedBlockPresentation {
     }
 
     void finishCommand(GameState state, boolean pendingRoute) {
-        if (planned && !pendingRoute && state.getGame().getDefenderId() == null) clear();
+        Game game = state.getGame();
+        if (planned && !pendingRoute && game.getDefenderId() == null) clear();
+        List<BlockRollProperties> choices;
+        boolean attackerChoosing;
+        if (game.getDialogParameter() instanceof DialogReRollBlockForTargetsPropertiesParameter dialog) {
+            choices = dialog.getBlockRolls();
+            attackerChoosing = true;
+        } else if (game.getDialogParameter() instanceof DialogOpponentBlockSelectionPropertiesParameter dialog) {
+            choices = dialog.getBlockRolls();
+            attackerChoosing = false;
+        } else return;
+        List<BlockRollProperties> pending = choices.stream().filter(BlockRollProperties::needsSelection)
+            .filter(choice -> blocks.containsKey(choice.getTargetId())).toList();
+        if (pending.isEmpty()) return;
+        active = pending.stream().filter(choice -> !attackerChoosing || choice.isOwnChoice())
+            .findFirst().orElse(pending.getFirst()).getTargetId();
     }
 
     JsonValue json() {

@@ -21,3 +21,5 @@ An open cleanup dialog can carry one deferred halftime event in the existing ann
 | Browser playback | The announcement tests cover playback, decision visibility, replay and recovery using the existing client scheduler. |
 
 The new ordering assertions failed against the base branch for a last-turn touchdown, a rules-triggered turnover and a voluntary last turn. The review follow-up passed 54 focused Java tests across match announcements, concessions, compact recovery, Secret Weapons, turnovers and kickoff. The initial delivery also passed the browser announcement Playwright suite and all 597 browser unit tests.
+
+After integrating the public match view from #689, 99 focused Java tests, all 602 browser unit tests and the announcement Playwright suite passed. The tests check private dialog and half-change ordering against stored outcomes and confirm that the public transcript carries the halftime announcement at the same boundary.

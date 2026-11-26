@@ -2,9 +2,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { decodeSetupStateValue } from '../src/setup-protocol.ts';
+import type { SetupState } from '../src/setup-protocol.ts';
 import { passingLegend, passingSquare } from '../src/passing-presentation.ts';
 
 const journeys = JSON.parse(readFileSync(new URL('./fixtures/adr0003-pass-ranges.json', import.meta.url), 'utf8'));
+function spectatorView(view: SetupState): SetupState {
+  const { playerActionMenu, movementForecast, blockPreview, threats, ...board } = view;
+  return { ...board, callerRole: 'spectator', actions: [], prompt: null };
+}
 test('native ranges retain categories while weather shifts colors and movement refreshes them', () => {
   for (const journey of journeys) {
     const declared = decodeSetupStateValue(journey.frames[1].actor);
@@ -23,7 +28,7 @@ test('native ranges retain categories while weather shifts colors and movement r
     if (limited) assert.match(passingSquare(declared.passing!, 17, 7).description, /unavailable.*weather/);
     assert.equal(decodeSetupStateValue(journey.frames[0].actor).passing, undefined);
     assert.equal(decodeSetupStateValue(journey.frames[3].actor).passing, undefined);
-    assert.deepEqual(decodeSetupStateValue({ ...journey.frames[1].actor, callerRole: 'spectator' }, true).passing, declared.passing);
+    assert.deepEqual(decodeSetupStateValue(spectatorView(declared), true).passing, declared.passing);
   }
 });
 test('passing projection rejects unknown versions, private data, mismatched coordinates and forbidden issued actions', () => {
@@ -55,7 +60,7 @@ test('teammate guidance decodes native reduced ranges and roll targets without a
     assert.match(passingSquare(guidance, 14, 7).description, /Short Pass.*3\+/);
     assert.match(passingSquare(guidance, 25, 14).description, /unavailable.*teammate/);
     assert.deepEqual(passingLegend(guidance).map(item => item.text), ['Quick Pass: 2+', 'Short Pass: 3+']);
-    assert.deepEqual(decodeSetupStateValue({ ...flight, callerRole: 'spectator' }, true).passing, guidance);
+    assert.deepEqual(decodeSetupStateValue(spectatorView(flight), true).passing, guidance);
     for (const change of [{ action: 'pass' }, { private: true }, { targets: targets.slice(1) },
       { targets: targets.map(row => row.map(target => target === 3 ? 1 : target)) },
       { targets: targets.map(row => row.map(target => target === 3 ? null : target)) },

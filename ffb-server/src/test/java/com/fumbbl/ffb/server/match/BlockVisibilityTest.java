@@ -87,6 +87,7 @@ class BlockVisibilityTest {
             assertEquals(context, recovered.reply("load", "ACCEPTED", false, scenario.role).get("state").asObject().get("blockContext"));
             JsonObject resolved = rolled;
             for (int index = 0; index < 12 && resolved.names().contains("blockContext"); index++) {
+                resolved = SetupSessionMovementTest.Fixture.actingView(recovered, resolved);
                 JsonObject choice = null;
                 for (JsonValue value : resolved.get("actions").asArray()) {
                     JsonObject action = value.asObject(); String kind = action.getString("kind", "");
@@ -230,6 +231,52 @@ class BlockVisibilityTest {
         assertFalse(rolled.names().contains("blockContext"));
     }
 
+    @Test void eachMultipleBlockPoolIsReportedOnceForEitherChooser() throws Exception {
+        for (boolean ownChoice : new boolean[] {true, false}) {
+            Scenario scenario = new Scenario();
+            SkillFactory skills = scenario.game.getFactory(FactoryType.Factory.SKILL);
+            ((RosterPlayer) scenario.attacker).addSkill(skills.forName("Multiple Block"));
+            scenario.attacker.setStrength(ownChoice ? 8 : 3);
+            scenario.other[0].setStrength(ownChoice ? 1 : 8);
+            scenario.other[1].setStrength(ownChoice ? 1 : 8);
+            scenario.place(scenario.other[1], 7, 6);
+            scenario.forcePushes();
+            JsonObject declared = scenario.act(scenario.view(), "declareMultipleBlock", scenario.attacker.getId());
+            JsonObject rolled = scenario.act(declared, "multiBlock", scenario.attacker.getId());
+            String chooser = (ownChoice ? scenario.attacker : scenario.defender).getTeam().getId();
+            assertPublicMultipleBlockPools(scenario, rolled, chooser, chooser);
+        }
+    }
+
+    private void assertPublicMultipleBlockPools(Scenario scenario, JsonObject rolled, String firstChooser, String secondChooser) {
+        SetupSession session = scenario.fixture.session;
+        JsonObject record = session.transcriptPage(rolled.getInt("revision", -1), 1).get("records").asArray().get(0).asObject();
+        JsonObject replay = record.get("state").asObject();
+        CanonicalJson canonical = new CanonicalJson();
+        List<JsonObject> observers = new ArrayList<>(List.of(replay, session.spectatorView()));
+        for (String side : List.of("home", "away"))
+            observers.add(session.reply("load", "ACCEPTED", false, side).get("state").asObject());
+        for (JsonObject observer : observers)
+            for (String field : List.of("blockContext", "decisionKind", "actor"))
+                assertEquals(canonical.encode(rolled.get(field), 65536), canonical.encode(observer.get(field), 65536), field);
+        List<String> targets = new ArrayList<>();
+        for (JsonValue sync : record.get("native").asArray()) {
+            JsonValue list = sync.asObject().get("reportList");
+            if (list == null || list.isNull()) continue;
+            for (JsonValue value : list.asObject().get("reports").asArray()) {
+                JsonObject report = value.asObject();
+                if (!"blockRoll".equals(report.getString("reportId", null))) continue;
+                String target = report.getString("defenderId", null);
+                targets.add(target);
+                assertEquals(target, report.get("logBlock").asObject().getString("defenderId", null));
+                assertEquals(scenario.defender.getId().equals(target) ? firstChooser : secondChooser, report.getString("choosingTeamId", null));
+                assertFalse(report.get("blockRoll").asArray().isEmpty());
+            }
+        }
+        assertEquals(2, targets.size());
+        assertTrue(targets.containsAll(List.of(scenario.defender.getId(), scenario.other[1].getId())));
+    }
+
     @Test void mixedMultipleBlockHandsTheRemainingTargetToTheOpponentAndFreezesBothRolls() throws Exception {
         Scenario scenario = new Scenario();
         SkillFactory skills = scenario.game.getFactory(FactoryType.Factory.SKILL);
@@ -242,6 +289,7 @@ class BlockVisibilityTest {
             .filter(item -> "multiBlock".equals(item.getString("kind", ""))).findFirst().get();
         JsonObject rolled = scenario.fixture.session.apply(scenario.role, scenario.fixture.request("action", "mixed", declared)
             .add("actionId", action.get("id"))).get("state").asObject();
+        assertPublicMultipleBlockPools(scenario, rolled, scenario.attacker.getTeam().getId(), scenario.defender.getTeam().getId());
         JsonObject frozen = JsonObject.readFrom(rolled.get("blockContext").toString());
         Field presentationField = SetupSession.class.getDeclaredField("blockPresentation"); presentationField.setAccessible(true);
         CommittedBlockPresentation presentation = (CommittedBlockPresentation) presentationField.get(scenario.fixture.session);
@@ -259,7 +307,8 @@ class BlockVisibilityTest {
             .add("actionId", keep.get("id"))).get("state").asObject();
         assertFalse(scenario.role.equals(opponent.getString("actor", "")));
         assertEquals(scenario.other[1].getId(), opponent.get("blockContext").asObject().getString("activeTargetPlayerId", ""));
-        JsonObject die = opponent.get("actions").asArray().get(0).asObject();
+        assertTrue(opponent.get("actions").asArray().isEmpty());
+        JsonObject die = SetupSessionMovementTest.Fixture.actingView(scenario.fixture.session, opponent).get("actions").asArray().get(0).asObject();
         assertEquals("blockDie", die.getString("kind", ""));
         assertThrows(MatchService.Failure.class, () -> scenario.fixture.session.apply(scenario.role,
             scenario.fixture.request("action", "wrong-mixed-owner", opponent).add("actionId", die.get("id"))));
@@ -352,7 +401,8 @@ class BlockVisibilityTest {
                 .get("state").asObject();
             assertEquals(context, paused.get("blockContext"));
             assertEquals(context, scenario.fixture.session.spectatorView().get("blockContext"));
-            assertTrue(paused.get("actions").asArray().values().stream().anyMatch(value ->
+            assertEquals("skill", scenario.fixture.session.spectatorView().getString("decisionKind", null));
+            assertTrue(SetupSessionMovementTest.Fixture.actingView(scenario.fixture.session, paused).get("actions").asArray().values().stream().anyMatch(value ->
                 "skill".equals(value.asObject().getString("kind", null))), paused.toString());
 
             // A paused decision and its rolled assists survive recovery even if account policy changes.
@@ -360,7 +410,7 @@ class BlockVisibilityTest {
             SetupSession restored = new SetupSession(scenario.fixture.server, scenario.fixture.document,
                 scenario.fixture.session.recoveryArtifact());
             restored.configureSkillUsePreferences(SkillUsePreferences.defaults(), SkillUsePreferences.defaults());
-            JsonObject pending = restored.reply("load", "ACCEPTED", false, scenario.role).get("state").asObject();
+            JsonObject pending = SetupSessionMovementTest.Fixture.actingView(restored, paused);
             assertEquals(context, pending.get("blockContext"));
             JsonObject answer = pending.get("actions").asArray().values().stream().map(JsonValue::asObject)
                 .filter(action -> action.getString("id", "").endsWith(":skill:" + useDodge)).findFirst()
@@ -369,6 +419,7 @@ class BlockVisibilityTest {
                 scenario.fixture.request("action", "answer-dodge", pending).add("actionId", answer.get("id")))
                 .get("state").asObject();
             assertEquals(context, push.get("blockContext"));
+            push = SetupSessionMovementTest.Fixture.actingView(restored, push);
             JsonObject square = push.get("actions").asArray().values().stream().map(JsonValue::asObject)
                 .filter(action -> "push".equals(action.getString("kind", null))).findFirst().get();
             JsonObject moved = restored.apply(square.getString("actor", null),

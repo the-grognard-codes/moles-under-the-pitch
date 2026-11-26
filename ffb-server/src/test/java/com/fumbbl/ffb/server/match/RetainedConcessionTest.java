@@ -75,7 +75,7 @@ class RetainedConcessionTest {
           for (int commitFailure : new int[] { 0, 1, 2, 3 }) {
             final int failureMode = commitFailure;
             SetupSessionMovementTest.Fixture fixture = new SetupSessionMovementTest.Fixture();
-            JsonObject initial = fixture.session.spectatorView();
+            JsonObject initial = SetupSessionMovementTest.Fixture.actingView(fixture.session, fixture.session.spectatorView());
             String historicalRole = initial.getString("actor", null);
             JsonObject prompt = initial.get("prompt").asObject();
             fixture.session.apply(historicalRole, fixture.request("choice", "historical-choice", initial)

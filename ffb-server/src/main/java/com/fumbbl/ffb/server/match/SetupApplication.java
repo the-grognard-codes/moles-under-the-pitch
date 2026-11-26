@@ -1121,9 +1121,9 @@ public final class SetupApplication {
 	/** Adds a live-only explanation without changing frozen replay or recovery schemas. */
 	private JsonObject completedState(MatchDocument document, String role) throws SQLException {
 		MatchHistory history = matches.openHistory(document);
-		JsonObject terminal = history.finalState().set("callerRole", role);
+		JsonObject terminal = new PublicMatchView().recorded(history.finalState(), role);
 		MatchStopReason stopReason = history.stopReason();
-		if (stopReason != null) terminal.add("stopReason", stopReason.name());
+		if (stopReason != null) terminal.set("stopReason", stopReason.name());
 		return terminal;
 	}
 

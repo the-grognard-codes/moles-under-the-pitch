@@ -189,7 +189,7 @@ class RiotousRookiesTest {
 	}
 
 	private static JsonObject view(SetupSession session) {
-		return session.reply("inspect", "ACCEPTED", false, "home").get("state").asObject();
+		return SetupSessionFixtureState.actingView(session);
 	}
 
 	private static GameState engine(SetupSession session) throws Exception {

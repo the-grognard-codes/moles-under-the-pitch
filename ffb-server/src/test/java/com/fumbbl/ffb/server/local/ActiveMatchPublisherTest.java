@@ -8,6 +8,7 @@ import com.fumbbl.ffb.server.match.V2MatchAccess;
 import com.fumbbl.ffb.server.match.V2PrincipalDirectory;
 
 import com.eclipsesource.json.JsonObject;
+import com.eclipsesource.json.JsonValue;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -20,6 +21,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -30,6 +32,30 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class ActiveMatchPublisherTest {
+	@Test void terminalSaveStatusKeepsTheCoachShapeAndHidesProposalIdFromSpectators() throws Exception {
+		V2MatchAccess access = mock(V2MatchAccess.class);
+		SetupApplication setup = mock(SetupApplication.class);
+		BrowserConnection coach = mock(BrowserConnection.class), spectator = mock(BrowserConnection.class);
+		new PublicationTestGrants().allow(access, target -> "away");
+		when(setup.spectatorView("match")).thenReturn(new JsonObject());
+		ActiveMatchPublisher publisher = new ActiveMatchPublisher(access, setup);
+		publisher.enrollPlayer(coach, mock(AuthenticatedPrincipal.class), "match");
+		publisher.watch(spectator, mock(AuthenticatedPrincipal.class), "match", "watch");
+		JsonObject status = JsonObject.readFrom("{\"status\":\"ACTIVE\",\"proposalId\":null,\"proposer\":null,\"expiresAt\":null}");
+		publisher.publish("match", null, new JsonObject().add("phase", "FULL_TIME").add("decisionKind", "none").add("saveResume", status));
+		ArgumentCaptor<String> frame = ArgumentCaptor.forClass(String.class);
+		verify(coach).send(frame.capture());
+		JsonObject coachState = JsonObject.readFrom(frame.getValue()).get("state").asObject();
+		assertEquals("away", coachState.getString("callerRole", null));
+		JsonObject coachStatus = coachState.get("saveResume").asObject();
+		assertEquals(status.get("status"), coachStatus.get("status"));
+		assertEquals(JsonValue.NULL, coachStatus.get("proposalId"));
+		assertEquals(JsonValue.NULL, coachStatus.get("proposer"));
+		assertEquals(JsonValue.NULL, coachStatus.get("expiresAt"));
+		verify(spectator).send(frame.capture());
+		assertNull(JsonObject.readFrom(frame.getValue()).get("state").asObject().get("saveResume").asObject().get("proposalId"));
+	}
+
 	@Test void terminalPublicationUsesTheCommittedTerminalViewAfterTheEngineIsReleased() throws Exception {
 		V2MatchAccess access = mock(V2MatchAccess.class);
 		SetupApplication setup = mock(SetupApplication.class);
@@ -195,6 +221,10 @@ class ActiveMatchPublisherTest {
 		publisher.watch(spectator, mock(AuthenticatedPrincipal.class), "match", "watch");
 		JsonObject coach = new JsonObject().add("callerRole", "away").add("phase", "PLAY")
 			.add("revision", 51).add("computer", new JsonObject().add("policyVersion", "bogruk-v1"))
+			.add("actor", "away").add("decisionKind", "reroll")
+			.add("prompt", new JsonObject().add("id", "private"))
+			.add("actions", new com.eclipsesource.json.JsonArray().add(new JsonObject().add("id", "private")))
+			.add("reaction", new JsonObject().add("id", "private").add("actor", "away").add("expiresAt", 250))
 			.add("threats", new JsonObject().add("role", "away")).add("savedFormations", new com.eclipsesource.json.JsonArray()).add("blockPreview", new JsonObject());
 
 		publisher.publish("match", null, coach);
@@ -204,6 +234,12 @@ class ActiveMatchPublisherTest {
 		JsonObject view = JsonObject.readFrom(frame.getValue()).get("state").asObject();
 		assertEquals("spectator", view.getString("callerRole", null));
 		assertEquals(51, view.getInt("revision", -1));
+		assertEquals("reroll", view.getString("decisionKind", null));
+		assertEquals("away", view.getString("actor", null));
+		assertTrue(view.get("actions").asArray().isEmpty());
+		assertTrue(view.get("prompt").isNull());
+		assertNull(view.get("reaction").asObject().get("id"));
+		assertEquals(250, view.get("reaction").asObject().getInt("expiresAt", -1));
 		assertNull(view.get("computer"));
 		assertNull(view.get("threats"));
 		assertNull(view.get("savedFormations"));

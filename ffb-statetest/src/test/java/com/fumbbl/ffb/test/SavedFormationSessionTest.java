@@ -193,7 +193,7 @@ class SavedFormationSessionTest {
 	private TeamFormations.FormationSet templates() { return new TeamFormations().defaults(roster()); }
 	private GameState engine(SetupSession session) throws Exception { Field field = SetupSession.class.getDeclaredField("state"); field.setAccessible(true); return (GameState) field.get(session); }
 	private MatchDocument document(SetupSession session) throws Exception { Field field = SetupSession.class.getDeclaredField("document"); field.setAccessible(true); return (MatchDocument) field.get(session); }
-	private JsonObject view(SetupSession session) { return session.reply("inspect", "ACCEPTED", false, "home").get("state").asObject(); }
+	private JsonObject view(SetupSession session) { return SetupSessionFixtureState.actingView(session); }
 	private JsonObject request(SetupSession session, String operation) { return new JsonObject().add("requestId", UUID.randomUUID().toString()).add("expectedRevision", view(session).get("revision")).add("operation", operation); }
 	private void choices(SetupSession session) { choose(session); choose(session); }
 	private void choose(SetupSession session) { JsonObject view = view(session); assertEquals("ACCEPTED", session.apply(view.getString("actor", null), request(session, "choice").add("promptId", view.get("prompt").asObject().get("id")).add("optionId", view.get("prompt").asObject().get("options").asArray().get(0))).getString("code", null)); }

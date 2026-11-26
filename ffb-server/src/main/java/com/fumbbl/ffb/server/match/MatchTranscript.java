@@ -147,12 +147,13 @@ final class MatchTranscript {
     JsonObject page(int from, int limit) {
         if (from < 0 || from > records.size() || limit < 1 || limit > 8) throw new IllegalArgumentException("Invalid transcript page");
         JsonArray selected = new JsonArray();
+        PublicMatchRecord projection = new PublicMatchRecord();
         int selectedBytes = 0;
         for (int index = from; index < records.size() && selected.size() < limit; index++) {
             String record = records.get(index);
             int length = record.getBytes(StandardCharsets.UTF_8).length;
             if (selected.size() > 0 && selectedBytes + length > 512 * 1024) break;
-            selected.add(JsonObject.readFrom(record));
+            selected.add(projection.record(JsonObject.readFrom(record)));
             selectedBytes += length;
         }
         return new JsonObject().add("formatVersion", FORMAT_VERSION).add("from", from)

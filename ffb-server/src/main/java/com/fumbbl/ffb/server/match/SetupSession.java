@@ -1009,10 +1009,18 @@ public final class SetupSession {
 	/** Public live decorations only; coach threat guidance never enters frozen snapshots. */
 	public JsonObject decorateSaveResumeState(JsonObject state) {
 		requireAvailable();
-		if (saveResume) state.add("saveResume", saveResumeState.publicJson());
+		String caller = state.getString("callerRole", null);
+		if (saveResume) {
+			JsonObject saveStatus = saveResumeState.publicJson();
+			if ("spectator".equals(caller)) saveStatus.remove("proposalId");
+			state.add("saveResume", saveStatus);
+		}
 		if (chatV1) state.add("clock", clockProjection());
 		JsonObject reaction = reactiveDecision.publicJson(System.currentTimeMillis());
-		if (reaction != null && state.getInt("revision", -1) == revision) state.add("reaction", reaction);
+		if (reaction != null && state.getInt("revision", -1) == revision) {
+			if (!reaction.getString("actor", "").equals(caller)) reaction.remove("id");
+			state.add("reaction", reaction);
+		}
 		if (state.getInt("projectionVersion", -1) == 4 && state.getInt("revision", -1) == revision
 			&& "PLAY".equals(state.getString("phase", null))
 			&& state.getString("actor", "").equals(state.getString("callerRole", null))
@@ -1366,7 +1374,6 @@ public final class SetupSession {
 	private JsonObject reply(String requestId, String code, boolean duplicate, String role, JsonArray setupErrors) {
 		JsonObject response = new SetupStateReply().create(requestId, failed ? "SESSION_UNAVAILABLE" : code,
 			!failed && duplicate, failed ? JsonValue.NULL : liveView(role));
-		if (!failed && endedForSizeLimit()) response.get("state").asObject().add("stopReason", MatchStopReason.MATCH_SIZE_LIMIT.name());
 		if (!failed && "ILLEGAL_SETUP".equals(code) && setupErrors != null) response.add("setupErrors", setupErrors);
 		return response;
 	}
@@ -1418,13 +1425,40 @@ public final class SetupSession {
 	private JsonObject view(String role) { return view(role, false); }
 
 	private JsonObject view(String role, boolean live) {
-		return view(role, live, () -> captureNativeOutcomes(null).modelSyncs);
+		return view(role, live, () -> captureNativeOutcomes(null).modelSyncs, false, !"spectator".equals(role));
 	}
 
-	private JsonObject view(String role, boolean live, Supplier<List<JsonObject>> pendingOutcomes) {
+	private int passingRevision = -1;
+	private JsonObject passingGuidance;
+
+	private JsonObject passingGuidance() {
+		if (passingRevision != revision) {
+			passingGuidance = new PassingProjection().project(state.getGame());
+			passingRevision = revision;
+		}
+		return passingGuidance;
+	}
+
+	private JsonObject view(String role, boolean live, Supplier<List<JsonObject>> pendingOutcomes,
+		boolean legacyRecovery, boolean coachOffer) {
 		requireAvailable();
+		PublicMatchDecision decision = PublicMatchDecision.read(state);
+		KickoffAdjustmentBudget budget = new KickoffBudgetLookup().find(state);
+		JsonObject passing = "PLAY".equals(browsePhase()) ? passingGuidance() : null;
+		List<Action> legacyActions = legacyRecovery ? actions(budget, live) : List.of();
+		String viewActor = legacyRecovery ? legacyActor(legacyActions) : decision.actor();
+		JsonObject view = publicBoard(live, pendingOutcomes, budget, passing, viewActor);
+		if (!legacyRecovery) view.add("decisionKind", decision.kind());
+		else view.remove("stopReason");
+		view.add("callerRole", role).add("actions", new JsonArray()).add("prompt", JsonValue.NULL);
+		if (legacyRecovery || coachOffer && role.equals(viewActor))
+			addOffer(view, role, legacyRecovery ? legacyActions : actions(budget, live), legacyRecovery);
+		return view;
+	}
+
+	private JsonObject publicBoard(boolean live, Supplier<List<JsonObject>> pendingOutcomes, KickoffAdjustmentBudget budget,
+		JsonObject passing, String viewActor) {
 		Game game = state.getGame();
-        KickoffAdjustmentBudget budget = new KickoffBudgetLookup().find(state);
 		JsonArray players = new JsonArray();
 		LimitedActionProjection limitedActions = new LimitedActionProjection();
 		NegativeConditionProjection conditions = new NegativeConditionProjection();
@@ -1463,30 +1497,6 @@ public final class SetupSession {
 				players.add(projected);
 			}
 		}
-        List<Action> available = actions(budget, live);
-        String viewActor = actor(available);
-		JsonValue prompt = JsonValue.NULL;
-		if (step() == StepId.COIN_CHOICE || step() == StepId.RECEIVE_CHOICE) {
-			boolean coin = step() == StepId.COIN_CHOICE;
-			prompt = new JsonObject().add("id", promptId()).add("actor", viewActor).add("kind", coin ? "coin" : "receive")
-				.add("options", new JsonArray().add(coin ? "heads" : "receive").add(coin ? "tails" : "kick"));
-		}
-		JsonArray legal = new JsonArray();
-        ActionSource source = new ActionSource();
-        for (Action action : available) {
-            JsonValue target = action.targetPlayerId != null ? new JsonObject().add("playerId", action.targetPlayerId)
-                : action.targetSquare != null ? new JsonObject().add("x", action.targetSquare.getX()).add("y", action.targetSquare.getY()) : JsonValue.NULL;
-            String sourcePlayerId = source.playerId(game, action);
-            legal.add(new JsonObject().add("id", actionId(action)).add("kind", action.kind)
-                .add("label", action.label).add("actor", action.role).add("target", target)
-                .add("sourcePlayerId", sourcePlayerId == null ? JsonValue.NULL : JsonValue.valueOf(sourcePlayerId)));
-        }
-        JsonArray playerActionMenu = new JsonArray();
-        if (!isComplete()) for (Action action : new CoreTurnActions(state, routeV2 && activationSequencing).playerActionMenu()) {
-            if (action.targetPlayerId == null) continue;
-            playerActionMenu.add(new JsonObject().add("playerId", action.targetPlayerId).add("kind", action.kind)
-                .add("spent", action.spent));
-        }
         FieldCoordinate ball = new KickoffBallPresentation().coordinate(state);
         DialogKickSkillParameter kickChoice = game.getDialogParameter() instanceof DialogKickSkillParameter
             ? (DialogKickSkillParameter) game.getDialogParameter() : null;
@@ -1494,12 +1504,12 @@ public final class SetupSession {
         JsonObject projected = new JsonObject().add("projectionVersion", 4).add("half", period.get("half")).add("drive", period.get("drive"))
             .add("homeScore", homeScore()).add("awayScore", awayScore())
             .add("homeTurn", period.get("homeTurn")).add("awayTurn", period.get("awayTurn"))
-            .add("actions", legal).add("turn", game.getTurnData().getTurnNr()).add("turnMode", game.getTurnMode().name())
+            .add("turn", game.getTurnData().getTurnNr()).add("turnMode", game.getTurnMode().name())
             .add("activePlayerId", game.getActingPlayer().getPlayerId())
             .add("ball", FieldCoordinateBounds.FIELD.isInBounds(ball) ? new JsonObject().add("x", ball.getX()).add("y", ball.getY()) : JsonValue.NULL)
-            .add("matchId", matchId).add("revision", revision).add("callerRole", role)
+            .add("matchId", matchId).add("revision", revision)
 			.add("phase", period.get("phase"))
-			.add("actor", viewActor).add("prompt", prompt).add("players", players)
+			.add("actor", viewActor).add("players", players)
 			.add("weather", game.getFieldModel().getWeather().name())
 			.add("homeRerolls", game.getTurnDataHome().getReRolls()).add("awayRerolls", game.getTurnDataAway().getReRolls())
 			.add("homeTeamName", game.getTeamHome().getName()).add("awayTeamName", game.getTeamAway().getName())
@@ -1507,10 +1517,9 @@ public final class SetupSession {
 			.add("awayTeamArt", new MatchTeamArt().project(document.away.team))
 			.add("homeResources", resources(game.getTeamHome(), game.getTurnDataHome()))
 			.add("awayResources", resources(game.getTeamAway(), game.getTurnDataAway()));
+        if (endedForSizeLimit()) projected.add("stopReason", MatchStopReason.MATCH_SIZE_LIMIT.name());
 		if (game.getActingPlayer().getPlayer() != null && game.getActingPlayer().getPlayerAction() != null)
             projected.add("activePlayerAction", new HailMaryActions().action(game).getName());
-        if (!playerActionMenu.isEmpty()) projected.add("playerActionMenu", playerActionMenu);
-		JsonObject passing = new PassingProjection().project(game);
 		projected.add("ballState", new BallPresentation().project(game));
         if (kickChoice != null) {
             FieldCoordinate alternate = kickChoice.getBallCoordinateWithKick();
@@ -1519,17 +1528,8 @@ public final class SetupSession {
                 .add("deviation", new JsonObject().add("x", deviation.getX()).add("y", deviation.getY()))
                 .add("withKick", new JsonObject().add("x", alternate.getX()).add("y", alternate.getY())));
         }
-		Player<?> mover = game.getActingPlayer().getPlayer();
-		if (mover != null
-			&& !mover.hasSkillProperty(NamedProperties.movesRandomly)
-			&& available.stream().anyMatch(action -> "move".equals(action.kind) || "jump".equals(action.kind) || "reactionMove".equals(action.kind))) {
-			JsonObject forecast = new RoutePlanner(state, true).adjacent(available);
-			if (forecast != null) projected.add("movementForecast", forecast);
-		}
-		if (passing != null && "PLAY".equals(projected.getString("phase", null))) projected.add("passing", passing);
+		if (passing != null) projected.add("passing", passing);
 		if ("PLAY".equals(projected.getString("phase", null))) {
-			JsonObject blockPreview = role.equals(viewActor) ? new BlockPreviewPresentation(state).project(available, revision) : null;
-			if (blockPreview != null) projected.add("blockPreview", blockPreview);
 			JsonValue context = blockPresentation.json();
 			if (!context.isNull()) projected.add("blockContext", context);
 		}
@@ -1537,15 +1537,60 @@ public final class SetupSession {
 		if (kickoff != null && "PLAY".equals(projected.getString("phase", null))) projected.add("kickoff", kickoff);
 		JsonObject tracker = driveTracker.project(state, drive, browsePhase(), pendingOutcomes);
 		if (tracker != null) projected.add("driveTracker", tracker);
-		if (step() == StepId.SETUP && game.getTurnMode() == TurnMode.SETUP && role.equals(viewActor) && !savedFormations().isEmpty()) {
+		return projected;
+	}
+
+	private void addOffer(JsonObject projected, String role, List<Action> available, boolean legacyRecovery) {
+		Game game = state.getGame();
+		String viewActor = projected.getString("actor", null);
+		boolean eligibleCoach = role.equals(viewActor);
+		JsonValue prompt = JsonValue.NULL;
+		if (step() == StepId.COIN_CHOICE || step() == StepId.RECEIVE_CHOICE) {
+			boolean coin = step() == StepId.COIN_CHOICE;
+			prompt = new JsonObject().add("id", promptId()).add("actor", viewActor).add("kind", coin ? "coin" : "receive")
+				.add("options", new JsonArray().add(coin ? "heads" : "receive").add(coin ? "tails" : "kick"));
+		}
+		JsonArray legal = new JsonArray();
+        ActionSource source = new ActionSource();
+        List<Action> offered = legacyRecovery ? available : available.stream().filter(action -> role.equals(action.role)).toList();
+        for (Action action : offered) {
+            JsonValue target = action.targetPlayerId != null ? new JsonObject().add("playerId", action.targetPlayerId)
+                : action.targetSquare != null ? new JsonObject().add("x", action.targetSquare.getX()).add("y", action.targetSquare.getY()) : JsonValue.NULL;
+            String sourcePlayerId = source.playerId(game, action);
+            legal.add(new JsonObject().add("id", actionId(action)).add("kind", action.kind)
+                .add("label", action.label).add("actor", action.role).add("target", target)
+                .add("sourcePlayerId", sourcePlayerId == null ? JsonValue.NULL : JsonValue.valueOf(sourcePlayerId)));
+        }
+        JsonArray playerActionMenu = new JsonArray();
+        if (!isComplete()) {
+            for (Action action : new CoreTurnActions(state, routeV2 && activationSequencing).playerActionMenu()) {
+                if (action.targetPlayerId == null || !legacyRecovery && !role.equals(action.role)) continue;
+                playerActionMenu.add(new JsonObject().add("playerId", action.targetPlayerId).add("kind", action.kind)
+                    .add("spent", action.spent));
+            }
+        }
+		projected.set("actions", legal).set("prompt", prompt);
+		if (!playerActionMenu.isEmpty()) projected.add("playerActionMenu", playerActionMenu);
+		Player<?> mover = game.getActingPlayer().getPlayer();
+		if (mover != null
+			&& !mover.hasSkillProperty(NamedProperties.movesRandomly)
+			&& offered.stream().anyMatch(action -> "move".equals(action.kind) || "jump".equals(action.kind) || "reactionMove".equals(action.kind))) {
+			JsonObject forecast = new RoutePlanner(state, true).adjacent(offered);
+			if (forecast != null) projected.add("movementForecast", forecast);
+		}
+		if (eligibleCoach && "PLAY".equals(projected.getString("phase", null))) {
+			JsonObject blockPreview = new BlockPreviewPresentation(state).project(offered, revision);
+			if (blockPreview != null) projected.add("blockPreview", blockPreview);
+		}
+		if (step() == StepId.SETUP && game.getTurnMode() == TurnMode.SETUP && eligibleCoach && !savedFormations().isEmpty()) {
 			JsonArray formations = new JsonArray();
 			List<TeamFormations.Formation> group = savedFormations();
 			for (int index = 0; index < group.size(); index++)
 				formations.add(new JsonObject().add("name", group.get(index).name()).add("index", index));
 			projected.add("savedFormations", formations);
 		}
-		return projected;
 	}
+
 	private JsonObject resources(Team team, TurnData turnData) {
 		int bribes = 0;
 		for (Inducement inducement : turnData.getInducementSet().getInducements()) {
@@ -1596,7 +1641,9 @@ public final class SetupSession {
 		return null;
 	}
 	private boolean matchesRecoveredView(JsonObject saved, String role) {
-		JsonObject current = view(role);
+		JsonObject current = saved.get("decisionKind") == null
+			? view(role, false, () -> captureNativeOutcomes(null).modelSyncs, true, true)
+			: view(role);
         if (saved.get("savedFormations") == null) current.remove("savedFormations");
 		// Existing checkpoints predate this optional, independently versioned public guidance.
 		if (saved.get("passing") == null) current.remove("passing");
@@ -1702,9 +1749,10 @@ public final class SetupSession {
 		throw new IllegalStateException("Unrecognized frozen player");
 	}
 
-	private String actor() { return actor(actions()); }
+	private String actor() { return PublicMatchDecision.read(state).actor(); }
 
-    private String actor(List<Action> available) {
+    /** Reproduces the actor in checkpoints written before the public decision was recorded. */
+    private String legacyActor(List<Action> available) {
         if (!available.isEmpty()) return available.get(0).role;
 		if (step() == StepId.RECEIVE_CHOICE) {
 			String team = ((DialogReceiveChoiceParameter) state.getGame().getDialogParameter()).getChoosingTeamId();
@@ -1853,13 +1901,9 @@ public final class SetupSession {
 
     private void recordEvent(String kind, String role, JsonValue decision, NativeRollPresentation rollPresentation) {
         NativeOutcomeCapture.Capture capture = captureNativeOutcomes(rollPresentation);
-        JsonObject snapshot = view("home", false, () -> capture.modelSyncs)
-            .set("actions", new JsonArray()).set("prompt", JsonValue.NULL);
-        snapshot.remove("savedFormations");
+        JsonObject snapshot = view("home", false, () -> capture.modelSyncs, false, false);
         if (computerPolicy != null) computerPolicy.observe(snapshot,
             reactiveDecision.pending() ? reactiveDecision.normalHome() : state.getGame().isHomePlaying());
-        snapshot.remove("movementForecast"); // Available actions are absent from frozen replay snapshots.
-        snapshot.remove("blockPreview"); // Proposals are never part of recorded replay presentation.
         if (!compact) freezeEvent(new JsonObject().add("revision", revision).add("kind", kind).add("state", snapshot));
         decisionLimit.recorded(kind, snapshot);
         if (compact || transcript != null) {

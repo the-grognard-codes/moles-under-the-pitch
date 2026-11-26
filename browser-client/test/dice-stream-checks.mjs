@@ -114,8 +114,52 @@ export async function verifyDiceStream(browser, url) {
     await page.waitForFunction(() => document.querySelector('#playback-state').dataset.revision === '1');
     await page.clock.runFor(2500);
     assert.deepEqual(await faces(), [], 'Replay seeking cancels the decorative queue');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    const multiple = JSON.parse(readFileSync(new URL('./fixtures/block-visibility-multiple.json', import.meta.url), 'utf8')).rolled;
+    const [first, second] = multiple.blockContext.blocks.map(block => block.targetPlayerId);
+    const attacking = multiple.players.find(player => player.id === multiple.activePlayerId).role;
+    const defending = attacking === 'home' ? 'away' : 'home';
+    const firstRoll = { reportId: 'blockRoll', defenderId: first, blockRoll: [6], choosingTeamId: attacking };
+    const secondRoll = { reportId: 'blockRoll', defenderId: second, blockRoll: [1, 2], choosingTeamId: defending };
+    const watched = (revision, target, actor, callerRole) => ({ ...multiple, revision, actor, callerRole, decisionKind: 'blockDie',
+      actions: callerRole === actor ? [{ id: '1:multi:choose', kind: 'blockDie', actor, label: 'Choose POW (die 1)',
+        sourcePlayerId: multiple.activePlayerId, target: { playerId: target } }] : [],
+      blockContext: { ...multiple.blockContext, activeTargetPlayerId: target } });
+    const complete = revision => page.waitForFunction(revision => {
+      const status = document.querySelector('#playback-state');
+      return status?.dataset.revision === String(revision) && status.dataset.active === 'false';
+    }, revision);
+    for (const role of [attacking, defending, 'spectator']) {
+      const before = { ...watched(0, first, attacking, role), decisionKind: 'turn', actions: [] };
+      const rolled = watched(1, first, attacking, role);
+      const handoff = { ...watched(2, second, defending, role), actions: [] };
+      const records = [{ ...record(0), state: before }, { ...record(1), state: rolled, native: [
+        { commandNr: 1, reportList: { reports: [firstRoll] } }, { commandNr: 2, reportList: { reports: [secondRoll] } },
+      ] }, { ...record(2), state: handoff }];
+      await publish({ view: before, records: [records[0]], enabled: false });
+      await complete(0);
+      await publish({ view: rolled, records: records.slice(0, 2) });
+      await page.waitForFunction(() => document.querySelectorAll('.live-dice-overlay .pitch-dice-lifetime:not(.exiting) .match-die').length === 1);
+      assert.deepEqual(await faces(), ['POW']);
+      await page.clock.runFor(1200);
+      assert.deepEqual(await faces(), ['POW', 'SKULL', 'BOTH DOWN'], JSON.stringify({
+        role, frames: await page.evaluate(() => window.playbackFrames.slice(-6)),
+      }));
+      await page.clock.runFor(5000);
+      await complete(1);
+      assert.deepEqual(await faces(), ['POW'], 'Only the active pool remains pinned for ' + role);
+      await publish({ view: handoff, records });
+      await complete(2);
+      await page.clock.runFor(5000);
+      assert.deepEqual(await faces(), ['SKULL', 'BOTH DOWN'], 'Handoff restores the earlier reported pool for ' + role);
+      await publish({ view: handoff, records, enabled: false });
+      await page.waitForFunction(() => !document.querySelector('.live-dice-overlay'));
+      await publish({ view: handoff, records });
+      await page.clock.runFor(5000);
+      assert.deepEqual(await faces(), ['SKULL', 'BOTH DOWN'], 'Reconnect restores the same public pool for ' + role);
+    }
     assert.deepEqual(errors, []);
-    console.log('PASS: animated D16 has no scrollbars; armour/injury retain independent lifetimes and gate dependent input.');
+    console.log('PASS: animated D16 has no scrollbars; armour/injury retain independent lifetimes and gate dependent input; Multiple Block pools stay pinned for all recipients.');
   } finally { await page.close(); }
 }
 

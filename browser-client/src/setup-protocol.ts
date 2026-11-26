@@ -21,8 +21,8 @@ export type SetupAction = { id: string; label: string; actor: MatchRole; kind: s
 export type PlayerActionMenuEntry = { playerId: string; kind: string; spent: boolean };
 export type MatchTeamArt = { colors?: TeamColors; rosterId: string; league: string | null };
 export type TeamResources = { apothecaries: number; assistantCoaches: number; cheerleaders: number; bribes?: number };
-export type SaveResumeStatus = { status: 'ACTIVE' | 'SAVE_PENDING' | 'SUSPENDED' | 'RESUME_PENDING' | 'ABANDONED'; proposalId: string | null; proposer: MatchRole | null; expiresAt: number | null };
-export type Reaction = { id: string; actor: MatchRole; title: string; detail?: string; expiresAt: number; serverNow: number; allowanceMs?: number };
+export type SaveResumeStatus = { status: 'ACTIVE' | 'SAVE_PENDING' | 'SUSPENDED' | 'RESUME_PENDING' | 'ABANDONED'; proposalId?: string | null; proposer: MatchRole | null; expiresAt: number | null };
+export type Reaction = { id?: string; actor: MatchRole; title: string; detail?: string; expiresAt: number; serverNow: number; allowanceMs?: number };
 export type MatchClock = { activeRole: MatchRole | null; turnElapsedMs: number; homeReserveMs: number; awayReserveMs: number };
 type RangeGuidance = { playerId: string; from: { x: number; y: number }; weatherPenalty: number; rangeLimited: boolean; ranges: string[] };
 export type PassingRanges = RangeGuidance & ({ version: 1 } | { version: 2; action: 'throwTeamMate' | 'kickMateTo'; targets: (number | null)[][] }
@@ -34,7 +34,11 @@ export type BallState = { version: 1; carrierPlayerId: string | null; inPlay: bo
 export type ThreatGuidance = { version: 1; eligiblePlayerIds: string[]; zonePlayerIds: string[] };
 export type BlockPreview = { version: 1; rolls: { playerId: string; targetPlayerId: string; dice: number; highlight?: BlockHighlight }[];
   multiple?: { actionId: string; context: BlockContext }[] };
-export type SetupState = { stopReason?: 'MATCH_SIZE_LIMIT'; stageSeq?: number; setupAdjustmentsExhausted?: true; savedFormations?: { name: string; index: number }[]; blockContext?: BlockContext; computer?: ComputerPolicyContext; projectionVersion?: 2 | 3 | 4; matchId: string; revision: number; callerRole: MatchRole | 'spectator'; phase: 'PRE_MATCH' | 'SETUP' | 'READY_FOR_KICKOFF' | 'PLAY' | 'FULL_TIME'; actor: MatchRole; prompt: SetupPrompt | null; players: SetupPlayer[]; weather: string; homeRerolls: number; awayRerolls: number; actions: SetupAction[]; playerActionMenu?: PlayerActionMenuEntry[]; turn: number; turnMode: string; ball: { x: number; y: number } | null; activePlayerId: string | null; activePlayerAction?: string; half: number; homeTurn: number; awayTurn: number; homeScore: number; awayScore: number; drive: number; homeTeamName?: string; awayTeamName?: string; homeTeamArt?: MatchTeamArt; awayTeamArt?: MatchTeamArt; homeResources?: TeamResources; awayResources?: TeamResources; saveResume?: SaveResumeStatus; clock?: MatchClock; passing?: PassingRanges; kickoff?: KickoffPresentation; driveTracker?: DriveTrackerPresentation; ballState?: BallState; kickPreview?: { deviation: { x: number; y: number }; withKick: { x: number; y: number } }; movementForecast?: MovementForecast; threats?: ThreatGuidance; blockPreview?: BlockPreview; reaction?: Reaction };
+const publicDecisionKinds = ['coin', 'receive', 'setup', 'kickoff', 'touchback', 'kickoffEvent', 'turn',
+  'blockDie', 'rerollDie', 'reroll', 'push', 'followUp', 'skill', 'kickSkill', 'apothecary', 'interception',
+  'argueTheCall', 'bribe', 'endAction', 'secretWeapon', 'pileDriver', 'hitAndRun', 'reaction', 'reactionMovement', 'engine', 'none'] as const;
+export type PublicDecisionKind = typeof publicDecisionKinds[number];
+export type SetupState = { decisionKind?: PublicDecisionKind; stopReason?: 'MATCH_SIZE_LIMIT'; stageSeq?: number; setupAdjustmentsExhausted?: true; savedFormations?: { name: string; index: number }[]; blockContext?: BlockContext; computer?: ComputerPolicyContext; projectionVersion?: 2 | 3 | 4; matchId: string; revision: number; callerRole: MatchRole | 'spectator'; phase: 'PRE_MATCH' | 'SETUP' | 'READY_FOR_KICKOFF' | 'PLAY' | 'FULL_TIME'; actor: MatchRole; prompt: SetupPrompt | null; players: SetupPlayer[]; weather: string; homeRerolls: number; awayRerolls: number; actions: SetupAction[]; playerActionMenu?: PlayerActionMenuEntry[]; turn: number; turnMode: string; ball: { x: number; y: number } | null; activePlayerId: string | null; activePlayerAction?: string; half: number; homeTurn: number; awayTurn: number; homeScore: number; awayScore: number; drive: number; homeTeamName?: string; awayTeamName?: string; homeTeamArt?: MatchTeamArt; awayTeamArt?: MatchTeamArt; homeResources?: TeamResources; awayResources?: TeamResources; saveResume?: SaveResumeStatus; clock?: MatchClock; passing?: PassingRanges; kickoff?: KickoffPresentation; driveTracker?: DriveTrackerPresentation; ballState?: BallState; kickPreview?: { deviation: { x: number; y: number }; withKick: { x: number; y: number } }; movementForecast?: MovementForecast; threats?: ThreatGuidance; blockPreview?: BlockPreview; reaction?: Reaction };
 export type SetupResponse = { version: 1; type: 'setupState'; requestId: string | null; code: SetupCode; duplicate: boolean; state: SetupState | null; setupErrors?: string[] };
 const codes = new Set<SetupCode>(['ACCEPTED','SESSION_UNAVAILABLE','NOT_ACTIVATED','WRONG_ACTOR','WRONG_PHASE','WRONG_PLAYER','ILLEGAL_PLACEMENT','ILLEGAL_SETUP','PROMPT_MISMATCH','INVALID_OPTION','REQUEST_ID_REUSED','REQUEST_HISTORY_LIMIT','SAVE_HISTORY_LIMIT','SAVE_RESUME_UNAVAILABLE','SAVE_PROPOSAL_PENDING','SAVE_PROPOSAL_MISSING','SAVE_PROPOSAL_MISMATCH','SAVE_PROPOSAL_OWNER','MATCH_SUSPENDED','MATCH_NOT_SUSPENDED','MATCH_ABANDONED','STALE_REVISION','INVALID_REQUEST','NOT_FOUND','AUTHENTICATION_REQUIRED','PERSISTENCE_FAILED','SNAPSHOT_UNSUPPORTED','REPLAY_UNSUPPORTED','MATCH_COMPLETED','MATCH_OUTCOME_UNKNOWN','COMPLETION_CONFLICT','REPLAY_LIMIT','RECOVERY_UNSUPPORTED','RECOVERY_CORRUPT','RECOVERY_CONFLICT','RECOVERY_LIMIT','MATCH_SIZE_LIMIT','MATCH_QUARANTINED','ACTIVATION_LIMIT']);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -52,7 +56,10 @@ export function decodeSetupStateValue(value: unknown, audience: boolean | 'compu
 	const artV2 = source.projectionVersion === 2 || source.projectionVersion === 3 || detailsV4;
 	const targetsV3 = source.projectionVersion === 3 || detailsV4;
 	const required = artV2 ? [...base, 'projectionVersion', ...(detailsV4 ? ['homeTeamName','awayTeamName','homeResources','awayResources'] : [])] : base;
-	if ((source.projectionVersion !== undefined && !artV2) || required.some(key => !Object.hasOwn(source, key)) || keys.some(key => !required.includes(key) && key !== 'saveResume' && key !== 'clock' && key !== 'passing' && key !== 'kickoff' && key !== 'ballState' && key !== 'kickPreview' && key !== 'movementForecast' && key !== 'homeTeamArt' && key !== 'awayTeamArt' && key !== 'threats' && key !== 'driveTracker' && key !== 'blockPreview' && key !== 'blockContext' && key !== 'playerActionMenu' && key !== 'activePlayerAction' && key !== 'reaction' && key !== 'computer' && key !== 'savedFormations' && key !== 'stopReason' && key !== 'stageSeq' && key !== 'setupAdjustmentsExhausted') || (Object.hasOwn(source, 'clock') || Object.hasOwn(source, 'passing') || Object.hasOwn(source, 'kickoff') || Object.hasOwn(source, 'ballState') || Object.hasOwn(source, 'kickPreview') || Object.hasOwn(source, 'movementForecast') || Object.hasOwn(source, 'homeTeamArt') || Object.hasOwn(source, 'awayTeamArt') || Object.hasOwn(source, 'threats') || Object.hasOwn(source, 'driveTracker') || Object.hasOwn(source, 'blockPreview') || Object.hasOwn(source, 'blockContext') || Object.hasOwn(source, 'playerActionMenu') || Object.hasOwn(source, 'activePlayerAction') || Object.hasOwn(source, 'reaction') || Object.hasOwn(source, 'computer')) && !detailsV4) throw Error('Unexpected fields');
+	if ((source.projectionVersion !== undefined && !artV2) || required.some(key => !Object.hasOwn(source, key)) || keys.some(key => !required.includes(key) && key !== 'saveResume' && key !== 'clock' && key !== 'passing' && key !== 'kickoff' && key !== 'ballState' && key !== 'kickPreview' && key !== 'movementForecast' && key !== 'homeTeamArt' && key !== 'awayTeamArt' && key !== 'threats' && key !== 'driveTracker' && key !== 'blockPreview' && key !== 'blockContext' && key !== 'playerActionMenu' && key !== 'activePlayerAction' && key !== 'reaction' && key !== 'computer' && key !== 'savedFormations' && key !== 'stopReason' && key !== 'stageSeq' && key !== 'setupAdjustmentsExhausted' && key !== 'decisionKind') || (Object.hasOwn(source, 'clock') || Object.hasOwn(source, 'passing') || Object.hasOwn(source, 'kickoff') || Object.hasOwn(source, 'ballState') || Object.hasOwn(source, 'kickPreview') || Object.hasOwn(source, 'movementForecast') || Object.hasOwn(source, 'homeTeamArt') || Object.hasOwn(source, 'awayTeamArt') || Object.hasOwn(source, 'threats') || Object.hasOwn(source, 'driveTracker') || Object.hasOwn(source, 'blockPreview') || Object.hasOwn(source, 'blockContext') || Object.hasOwn(source, 'playerActionMenu') || Object.hasOwn(source, 'activePlayerAction') || Object.hasOwn(source, 'reaction') || Object.hasOwn(source, 'computer')) && !detailsV4) throw Error('Unexpected fields');
+    const hasPublicDecision = Object.hasOwn(source, 'decisionKind');
+    if (hasPublicDecision && (!detailsV4 || !publicDecisionKinds.includes(source.decisionKind as PublicDecisionKind)
+      || (source.decisionKind === 'none') !== (source.phase === 'FULL_TIME'))) throw Error('Invalid public decision');
     if (Object.hasOwn(source, 'stopReason') && (source.stopReason !== 'MATCH_SIZE_LIMIT' || source.phase !== 'FULL_TIME')) throw Error('Invalid stop reason');
 
     if (source.stageSeq !== undefined) {
@@ -80,9 +87,14 @@ export function decodeSetupStateValue(value: unknown, audience: boolean | 'compu
 		const value = source.reaction;
 		const hasDetail = !!value && typeof value === 'object' && Object.hasOwn(value, 'detail');
 		const hasAllowance = !!value && typeof value === 'object' && Object.hasOwn(value, 'allowanceMs');
-		const reaction = object(value, ['id', 'actor', 'title', 'expiresAt', 'serverNow', ...(hasDetail ? ['detail'] : []), ...(hasAllowance ? ['allowanceMs'] : [])]);
+		const hasId = !!value && typeof value === 'object' && Object.hasOwn(value, 'id');
+		const reaction = object(value, ['actor', 'title', 'expiresAt', 'serverNow', ...(hasId ? ['id'] : []),
+			...(hasDetail ? ['detail'] : []), ...(hasAllowance ? ['allowanceMs'] : [])]);
+		if (hasPublicDecision ? hasId !== (reaction.actor === source.callerRole) : !hasId)
+			throw Error('Invalid reaction identity scope');
 		if (hasAllowance) { integer(reaction.allowanceMs, Number.MAX_SAFE_INTEGER); if ((reaction.allowanceMs as number) <= 0) throw Error('Invalid reaction allowance'); }
-		text(reaction.id, 200); role(reaction.actor); text(reaction.title, 200);
+		if (hasId) text(reaction.id, 200);
+		role(reaction.actor); text(reaction.title, 200);
 		if (hasDetail) text(reaction.detail, 1000);
 		integer(reaction.expiresAt, Number.MAX_SAFE_INTEGER); integer(reaction.serverNow, Number.MAX_SAFE_INTEGER);
 		if (source.phase !== 'PLAY') throw Error('Invalid reaction context');
@@ -133,6 +145,11 @@ export function decodeSetupStateValue(value: unknown, audience: boolean | 'compu
         if (source?.x == null || source.y == null || Math.abs(source.x - square.x) + Math.abs(source.y - square.y) !== 1)
           throw Error('Invalid punt direction');
       } else { integer(square.x, 25); integer(square.y, 14); } } } if (detailsV4 && action.sourcePlayerId !== null && (typeof action.sourcePlayerId !== 'string' || !players.some(player => player.id === action.sourcePlayerId && player.role === action.actor))) throw Error('Invalid action source'); return action as SetupAction; });
+	if (hasPublicDecision && (actions.some(action => action.actor !== source.callerRole)
+		|| source.actor !== source.callerRole && ['playerActionMenu', 'movementForecast', 'blockPreview', 'threats'].some(field => Object.hasOwn(source, field))
+		|| source.prompt !== null && (source.actor !== source.callerRole || !(source.prompt && typeof source.prompt === 'object'
+			&& 'actor' in source.prompt && source.prompt.actor === source.callerRole))))
+		throw Error('Private offer outside its coach view');
 	for (const action of actions) {
 		if (!['reactiveSkill', 'reactiveSquare', 'reactionMove', 'reactionEnd'].includes(action.kind)) continue;
 		const reaction = source.reaction as Reaction | undefined;
@@ -314,15 +331,16 @@ export function decodeSetupStateValue(value: unknown, audience: boolean | 'compu
 		clock = value as MatchClock;
 	}
 	if (Object.hasOwn(result, 'saveResume')) {
-		const value = object(result.saveResume, ['status','proposalId','proposer','expiresAt']);
+		const publicStatus = hasPublicDecision && result.callerRole === 'spectator';
+		const value = object(result.saveResume, ['status', 'proposer', 'expiresAt', ...(publicStatus ? [] : ['proposalId'])]);
 		if (value.status !== 'ACTIVE' && value.status !== 'SAVE_PENDING' && value.status !== 'SUSPENDED' && value.status !== 'RESUME_PENDING' && value.status !== 'ABANDONED') throw Error('Invalid save status');
-		if (value.proposalId !== null && (typeof value.proposalId !== 'string' || !uuid.test(value.proposalId))) throw Error('Invalid proposal');
+		if (!publicStatus && value.proposalId !== null && (typeof value.proposalId !== 'string' || !uuid.test(value.proposalId))) throw Error('Invalid proposal');
 		if (value.proposer !== null) role(value.proposer);
 		const expiresAt = value.expiresAt;
 		if (expiresAt !== null && (!Number.isSafeInteger(expiresAt) || (expiresAt as number) < 0)) throw Error('Invalid expiry');
 		const pending = value.status === 'SAVE_PENDING' || value.status === 'RESUME_PENDING';
-		if (pending !== (value.proposalId !== null && value.proposer !== null && expiresAt !== null)) throw Error('Inconsistent save proposal');
-		if (!pending && (value.proposalId !== null || value.proposer !== null || expiresAt !== null)) throw Error('Inconsistent save proposal');
+		const fields = publicStatus ? [value.proposer, expiresAt] : [value.proposalId, value.proposer, expiresAt];
+		if (fields.some(field => (field !== null) !== pending)) throw Error('Inconsistent save proposal');
 		saveResume = value as SaveResumeStatus;
 	}
 	return { ...result, players, actions, ball, prompt, ...(movementForecast ? { movementForecast } : {}), ...(saveResume ? { saveResume } : {}), ...(clock ? { clock } : {}), ...(passing ? { passing } : {}), ...(kickoff ? { kickoff } : {}) } as SetupState;

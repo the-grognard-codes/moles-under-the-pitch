@@ -107,9 +107,14 @@ class PassWorkflowTest {
 	private void capture(SetupSession session, JsonArray frames, String role, String checkpoint) {
 		JsonObject actor = view(session, role);
 		JsonObject spectator = session.spectatorView();
-		assertEquals(actor.get("players"), spectator.get("players"));
-		assertEquals(actor.get("ball"), spectator.get("ball"));
-		assertEquals(actor.get("actions"), spectator.get("actions"));
+		JsonObject waiting = view(session, "home".equals(role) ? "away" : "home");
+		for (JsonObject observer : java.util.List.of(waiting, spectator)) {
+			assertEquals(actor.get("players"), observer.get("players"));
+			assertEquals(actor.get("ball"), observer.get("ball"));
+			assertEquals(actor.get("passing"), observer.get("passing"));
+			assertEquals(actor.get("decisionKind"), observer.get("decisionKind"));
+			assertTrue(observer.get("actions").asArray().isEmpty());
+		}
 		actor.set("matchId", "00000000-0000-0000-0000-000000000114");
 		frames.add(new JsonObject().add("checkpoint", checkpoint).add("actor", actor));
 	}
