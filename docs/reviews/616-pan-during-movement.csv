@@ -1,0 +1,37 @@
+round,league,angle,motion,control,interval_ms,dispatch_samples,commit_samples,commit_p50_ms,commit_p95_ms,raf_intervals,raf_p95_ms,begin_frame_events,draw_frame_events,dropped_frame_events,marker_paint_events,marker_paint_ms
+0,Old World Classic,50,stationary,normal,1625.3,157,149,15,19.5,264,6.2,269,151,46,3278,56.6
+0,Old World Classic,50,player,normal,1784.5,33,18,22.4,58.6,25,169.6,295,149,251,114,2.0
+0,Old World Classic,50,ball,normal,1804.7,32,19,16.3,95.8,25,145.4,297,187,255,176,2.5
+0,Old World Classic,90,stationary,normal,1634.9,153,144,13.5,19.1,269,6.2,271,146,7,3168,52.0
+0,Old World Classic,90,player,normal,1653.5,142,134,19.7,27.8,186,12.2,273,273,85,3417,55.1
+0,Old World Classic,90,ball,normal,1641.3,136,122,18.4,26.3,191,12.2,271,272,75,3796,66.2
+0,Badlands Brawl,90,stationary,normal,1627.7,158,150,13.5,19.9,264,6.2,272,151,20,3300,52.0
+0,Badlands Brawl,90,player,normal,1651.9,133,119,19.2,26.8,175,18.1,273,271,96,3260,53.7
+0,Badlands Brawl,90,ball,normal,1659.0,130,115,21.2,27.6,168,18.2,274,274,101,3168,55.5
+0,Old World Classic,50,player,hide-stationary,1654.5,145,137,16.9,22,217,12.2,274,270,57,185,8.7
+0,Old World Classic,50,player,hide-ground,1740.2,31,18,13.2,26.2,27,109.1,287,217,243,225,4.4
+0,Old World Classic,50,player,direct-stationary,1639.1,142,131,18.2,24.4,188,12.2,270,270,83,2887,53.2
+1,Old World Classic,50,player,direct-stationary,1645.2,139,131,19.3,24.7,195,12.2,272,269,75,2878,53.8
+1,Old World Classic,50,player,hide-ground,1786.5,31,18,16.1,51.4,24,133.2,295,136,248,116,2.8
+1,Old World Classic,50,player,hide-stationary,1649.5,148,139,18.5,24.1,208,12.2,272,271,63,186,9.2
+1,Badlands Brawl,90,ball,normal,1654.6,135,122,19.5,26.5,171,18.2,274,272,97,3190,51.6
+1,Badlands Brawl,90,player,normal,1655.6,130,117,20.1,27,166,18.2,274,272,106,3064,51.3
+1,Badlands Brawl,90,stationary,normal,1632.5,157,149,12.8,18.2,266,6.2,277,151,20,3278,50.4
+1,Old World Classic,90,ball,normal,1641.9,136,124,18.1,25.2,175,18.1,271,270,94,3234,55.7
+1,Old World Classic,90,player,normal,1650.9,132,121,16.6,23.7,194,12.2,272,272,76,3804,59.1
+1,Old World Classic,90,stationary,normal,1619.2,154,146,12,17.6,266,6.2,268,147,3,3212,50.0
+1,Old World Classic,50,ball,normal,1833.6,38,19,17.1,97.9,29,103.1,302,187,254,176,2.7
+1,Old World Classic,50,player,normal,1760.2,34,19,16.6,39,26,125.7,214,155,174,224,3.6
+1,Old World Classic,50,stationary,normal,1631.3,156,149,17.3,20.4,197,8.8,201,147,9,3256,38.6
+2,Old World Classic,50,stationary,normal,1631.9,157,148,19.1,21.8,193,8.8,204,147,31,3256,53.0
+2,Old World Classic,50,player,normal,1746.3,33,18,19,29.5,22,158.6,212,105,178,70,1.7
+2,Old World Classic,50,ball,normal,1792.5,36,19,19.3,73.6,24,108.6,221,120,184,66,1.1
+2,Old World Classic,90,stationary,normal,1626.0,155,147,17.4,20.8,196,8.7,202,146,8,3212,50.2
+2,Old World Classic,90,player,normal,1635.7,134,122,19.9,25.7,164,16.8,197,196,30,3083,47.9
+2,Old World Classic,90,ball,normal,1657.0,135,120,20,26.3,166,16.9,200,198,31,3190,51.0
+2,Badlands Brawl,90,stationary,normal,1628.3,153,145,17.1,20.3,194,8.7,204,142,11,3124,50.4
+2,Badlands Brawl,90,player,normal,1650.5,125,110,19.6,26.9,167,16.9,200,196,32,3086,53.4
+2,Badlands Brawl,90,ball,normal,1649.4,132,120,21.3,26.8,163,16.7,198,196,33,3036,46.8
+2,Old World Classic,50,player,hide-stationary,1643.9,144,134,19.8,23.6,185,15.1,201,198,13,166,8.0
+2,Old World Classic,50,player,hide-ground,1946.1,34,21,21.4,119.5,25,189.6,236,152,185,94,1.9
+2,Old World Classic,50,player,direct-stationary,1640.8,136,129,20.9,25.8,175,16.6,198,194,22,2860,50.1
